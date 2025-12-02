@@ -1,7 +1,7 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { 
   StyleSheet, Text, View, TouchableOpacity, ScrollView, 
-  Modal, TextInput, KeyboardAvoidingView, Platform
+  Modal, TextInput, KeyboardAvoidingView, Platform, AppState 
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,6 +15,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../context/ThemeContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Notifications from 'expo-notifications';
+// [QUAN TRỌNG] Import Supabase
+import { supabase } from '../supabaseConfig';
 // @ts-ignore
 import { Solar } from 'lunar-javascript';
 
@@ -38,9 +40,9 @@ export default function CalendarScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [notes, setNotes] = useState<Record<string, NoteData>>({});
   
-  // [MỚI] State lưu chu kỳ tùy chỉnh
+  // State lưu chu kỳ tùy chỉnh
   const [cycleStartDate, setCycleStartDate] = useState<Date | null>(null);
-  const [cyclePattern, setCyclePattern] = useState<string[]>(['ngay', 'dem', 'nghi']); // Mặc định cũ
+  const [cyclePattern, setCyclePattern] = useState<string[]>(['ngay', 'dem', 'nghi']);
 
   const [summaryMode, setSummaryMode] = useState<'date' | 'content'>('date');
   const [tempNotesList, setTempNotesList] = useState<string[]>([]);
@@ -54,6 +56,30 @@ export default function CalendarScreen() {
     normal: new Date(new Date().setHours(7,0,0,0)),
   });
 
+  // [AUTO SYNC] State User
+  const [user, setUser] = useState<any>(null);
+
+  // 1. Kiểm tra User khi vào app
+  useEffect(() => {
+    const checkUser = async () => {
+        const { data: { session } } = await supabase.auth.getSession();
+        setUser(session?.user || null);
+    };
+    checkUser();
+    
+    // [AUTO SYNC] Lắng nghe sự kiện thoát app (Background)
+    const subscription = AppState.addEventListener('change', nextAppState => {
+        if (nextAppState === 'background' || nextAppState === 'inactive') {
+            console.log("App ẩn -> Tự động đồng bộ...");
+            syncDataToSupabase();
+        }
+    });
+
+    return () => {
+        subscription.remove();
+    };
+  }, [user]); // Chạy lại nếu user thay đổi
+
   useFocusEffect(
     useCallback(() => {
       const loadAllData = async () => {
@@ -63,12 +89,10 @@ export default function CalendarScreen() {
           const savedDate = await AsyncStorage.getItem('CYCLE_START_DATE');
           if (savedDate) setCycleStartDate(new Date(savedDate));
 
-          // [MỚI] Load chu kỳ tùy chỉnh
           const savedPattern = await AsyncStorage.getItem('CYCLE_PATTERN');
           if (savedPattern) {
              setCyclePattern(JSON.parse(savedPattern));
           } else {
-             // Nếu chưa có, dùng mặc định
              setCyclePattern(['ngay', 'dem', 'nghi']);
           }
 
@@ -96,6 +120,34 @@ export default function CalendarScreen() {
     }, [])
   );
 
+  // [AUTO SYNC] Hàm đồng bộ dữ liệu lên Supabase (Chạy ngầm)
+  const syncDataToSupabase = async () => {
+    if (!user) return; // Chưa đăng nhập thì thôi
+    try {
+        const keys = ['QUICK_NOTES', 'CALENDAR_NOTES', 'USER_REMINDERS', 'CYCLE_START_DATE', 'NOTIF_ENABLED', 'GEMINI_API_KEY', 'CYCLE_PATTERN'];
+        const stores = await AsyncStorage.multiGet(keys);
+        
+        const dataToSave: any = {};
+        stores.forEach((store) => {
+            if (store[1]) {
+                try {
+                    dataToSave[store[0]] = JSON.parse(store[1]);
+                } catch {
+                    dataToSave[store[0]] = store[1];
+                }
+            }
+        });
+
+        // Upsert không báo lỗi (chạy ngầm)
+        await supabase.from('user_sync').upsert({ 
+            user_id: user.id, backup_data: dataToSave, updated_at: new Date()
+        });
+        console.log(">> Đã auto-sync lên Supabase thành công!");
+    } catch (e) {
+        console.log("Lỗi auto-sync:", e);
+    }
+  };
+
   const scheduleAutoNotification = async (date: Date, lines: string[], type: string) => {
     if (!isNotifEnabled) return;
     let selectedTime = times.normal;
@@ -113,18 +165,11 @@ export default function CalendarScreen() {
     }
   };
 
-  // [QUAN TRỌNG] HÀM TÍNH TOÁN CA THEO CHU KỲ MỚI
   const calculateAutoShift = (targetDate: Date) => {
     if (!cycleStartDate || cyclePattern.length === 0) return null;
-    
-    // Tính số ngày chênh lệch
     const diff = differenceInCalendarDays(targetDate, cycleStartDate);
-    
-    // Tính chỉ số trong mảng (dùng toán tử modulo %)
-    // Công thức này xử lý cả trường hợp ngày trong quá khứ (diff âm)
     const cycleLength = cyclePattern.length;
     const remainder = ((diff % cycleLength) + cycleLength) % cycleLength;
-    
     return cyclePattern[remainder] as 'ngay' | 'dem' | 'nghi';
   };
 
@@ -180,7 +225,13 @@ export default function CalendarScreen() {
       }
       setNotes(newNotes);
       setModalVisible(false);
-      try { await AsyncStorage.setItem('CALENDAR_NOTES', JSON.stringify(newNotes)); } catch (e) {}
+      try { 
+          await AsyncStorage.setItem('CALENDAR_NOTES', JSON.stringify(newNotes));
+          
+          // [AUTO SYNC] Gọi hàm đồng bộ ngay sau khi lưu
+          await syncDataToSupabase();
+          
+      } catch (e) {}
     }
   };
 
@@ -271,7 +322,6 @@ export default function CalendarScreen() {
                 const lunarInfo = getLunarInfo(day);
                 const manualData = notes[dateKey];
                 
-                // [TÍNH TOÁN CA TỰ ĐỘNG]
                 const autoType = calculateAutoShift(day);
                 
                 const displayType = manualData?.type || autoType;
