@@ -25,16 +25,12 @@ const withWidget = (config) => {
         return;
       }
 
-      const pbxProject = project.hash.project.objects;
-      
-      // Tạo các UUID cần thiết
+      // Tạo các UUID
       const targetUuid = project.generateUuid();
       const groupUuid = project.generateUuid();
       const sourcesBuildPhaseUuid = project.generateUuid();
       const resourcesBuildPhaseUuid = project.generateUuid();
-      const frameworksBuildPhaseUuid = project.generateUuid();
       const configurationListUuid = project.generateUuid();
-      // [FIX] Tạo UUID riêng cho file kết quả .appex
       const productFileRefUuid = project.generateUuid(); 
 
       const mainGroup = project.getFirstProject()['firstProject']['mainGroup'];
@@ -48,19 +44,15 @@ const withWidget = (config) => {
         fs.mkdirSync(widgetDestDir, { recursive: true });
       }
 
-      // Copy file Swift và Info.plist
       ['ShiftWidget.swift', 'Info.plist'].forEach((file) => {
         const src = path.join(widgetSourceDir, file);
         const dest = path.join(widgetDestDir, file);
         if (fs.existsSync(src)) {
             fs.copyFileSync(src, dest);
-        } else {
-            console.error(`⚠️ KHÔNG TÌM THẤY FILE: ${src}`);
         }
       });
 
-      // --- [FIX QUAN TRỌNG] TẠO FILE REFERENCE CHO SẢN PHẨM .APPEX ---
-      // Đây là bước thiếu gây ra lỗi "reading 'name' of undefined"
+      // --- TẠO FILE REFERENCE CHO .APPEX ---
       const productFile = {
         isa: 'PBXFileReference',
         explicitFileType: '"wrapper.app-extension"',
@@ -69,10 +61,8 @@ const withWidget = (config) => {
         sourceTree: 'BUILT_PRODUCTS_DIR'
       };
       
-      // Thêm file .appex vào danh sách file reference
       project.addToPbxFileReferenceSection(productFile, productFileRefUuid);
 
-      // Thêm file .appex vào nhóm "Products" (để Xcode nhận diện)
       const productsGroup = project.pbxGroupByName('Products');
       if (productsGroup) {
         project.addToPbxGroup(productFileRefUuid, 'Products');
@@ -82,44 +72,39 @@ const withWidget = (config) => {
       const swiftFile = project.addFile(`${WIDGET_TARGET_NAME}/ShiftWidget.swift`, mainGroup, {});
       const plistFile = project.addFile(`${WIDGET_TARGET_NAME}/Info.plist`, mainGroup, {});
 
-      // Tạo Widget Group
       const widgetGroup = project.addPbxGroup(
         [swiftFile.fileRef, plistFile.fileRef],
         WIDGET_TARGET_NAME,
         WIDGET_TARGET_NAME
       );
       
-      // Thêm group vào Main Group
       const mainPbxGroup = project.getPBXGroupByKey(mainGroup);
       mainPbxGroup.children.push({ value: widgetGroup.uuid, comment: WIDGET_TARGET_NAME });
 
-      // --- CREATE TARGET ---
+      // --- CREATE TARGET (ĐÃ BỎ PHẦN FRAMEWORKS GÂY LỖI) ---
       const widgetTarget = {
         isa: 'PBXNativeTarget',
         buildConfigurationList: configurationListUuid,
         buildPhases: [
           { value: sourcesBuildPhaseUuid, comment: 'Sources' },
           { value: resourcesBuildPhaseUuid, comment: 'Resources' },
-          { value: frameworksBuildPhaseUuid, comment: 'Frameworks' },
         ],
         buildRules: [],
         dependencies: [],
         name: WIDGET_TARGET_NAME,
         productName: WIDGET_TARGET_NAME,
-        productReference: productFileRefUuid, // [FIX] Trỏ đúng vào UUID của file .appex vừa tạo
+        productReference: productFileRefUuid,
         productType: '"com.apple.product-type.app-extension"',
       };
 
-      // Thêm Build Phases
+      // Chỉ thêm Sources và Resources, bỏ Frameworks
       project.addBuildPhase([swiftFile.path], 'PBXSourcesBuildPhase', 'Sources', widgetTarget.uuid);
       project.addBuildPhase([], 'PBXResourcesBuildPhase', 'Resources', widgetTarget.uuid);
-      project.addBuildPhase([], 'PBXFrameworksBuildPhase', 'Frameworks', widgetTarget.uuid);
 
-      // Thêm Target vào Project
       project.addToPbxNativeTargetSection(widgetTarget);
       project.addToPbxProjectSection(widgetTarget);
 
-      // --- CONFIGURATION LIST (Debug/Release) ---
+      // --- CONFIGURATION LIST ---
       const widgetBundleId = `${config.ios.bundleIdentifier}.${WIDGET_TARGET_NAME}`;
       
       const buildSettings = {
@@ -159,7 +144,7 @@ const withWidget = (config) => {
       project.hash.project.objects['XCConfigurationList'] = project.hash.project.objects['XCConfigurationList'] || {};
       project.hash.project.objects['XCConfigurationList'][configurationListUuid] = xcConfig;
 
-      // --- TẠO FILE ENTITLEMENTS ---
+      // --- ENTITLEMENTS ---
       const entitlementsContent = `
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -176,7 +161,6 @@ const withWidget = (config) => {
       
       const entitlementsFile = project.addFile(`${WIDGET_TARGET_NAME}/${WIDGET_TARGET_NAME}.entitlements`, widgetGroup.uuid, {});
       
-      // Ghi đè lại Project
       fs.writeFileSync(projectPath, project.writeSync());
     });
 
