@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { 
   StyleSheet, Text, View, TouchableOpacity, TextInput, 
-  ScrollView, Alert, KeyboardAvoidingView, Platform, ActivityIndicator, Image
+  ScrollView, Alert, KeyboardAvoidingView, Platform, ActivityIndicator
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,10 +9,11 @@ import { useTheme } from '../context/ThemeContext';
 import * as Clipboard from 'expo-clipboard';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import * as ImagePicker from 'expo-image-picker';
+// [QUAN TRỌNG] Dùng useFocusEffect để load lại key mỗi khi mở tab
+import { useFocusEffect } from 'expo-router';
 
 type Character = { id: string; name: string; desc: string; generatedPrompt: string; };
-type MediaType = 'video' | 'image' | 'title' | 'edit_image';
+type MediaType = 'video' | 'image' | 'title';
 
 export default function MediaScreen() {
   const { colors } = useTheme();
@@ -21,7 +22,6 @@ export default function MediaScreen() {
   const [apiKey, setApiKey] = useState('');
   const [mediaType, setMediaType] = useState<MediaType>('video'); 
   const [isGenerating, setIsGenerating] = useState(false); 
-  const [showMenu, setShowMenu] = useState(false);
 
   // --- STATE CẤU HÌNH ---
   const [charMaxChars, setCharMaxChars] = useState('300'); 
@@ -49,42 +49,21 @@ export default function MediaScreen() {
   const [titlePlatform, setTitlePlatform] = useState<'short' | 'video'>('video'); 
   const [titleResult, setTitleResult] = useState(''); 
 
-  // --- EDIT IMAGE ---
-  const [editPrompt, setEditPrompt] = useState('Ghép sản phẩm vào tay người mẫu một cách tự nhiên. Chỉnh sửa ánh sáng và màu sắc cho phù hợp với phong cách quảng cáo mỹ phẩm cao cấp.');
-  const [modelImage, setModelImage] = useState<string | null>(null);
-  const [productImage, setProductImage] = useState<string | null>(null);
-  const [editResult, setEditResult] = useState<string | null>(null);
-  const [editTimer, setEditTimer] = useState(0);
-
-  useEffect(() => {
-    const loadKey = async () => {
-      try {
-        const savedKey = await AsyncStorage.getItem('GEMINI_API_KEY');
-        if (savedKey) setApiKey(savedKey);
-      } catch (e) { console.log("Lỗi load key:", e); }
-    };
-    loadKey();
-  }, []);
-
-  useEffect(() => {
-    let interval: any;
-    if (isGenerating && mediaType === 'edit_image') {
-      interval = setInterval(() => {
-        setEditTimer(prev => prev + 1);
-      }, 1000);
-    } else {
-      setEditTimer(0);
-    }
-    return () => clearInterval(interval);
-  }, [isGenerating, mediaType]);
-
-  const handleKeyChange = async (text: string) => {
-    setApiKey(text);
-    try { await AsyncStorage.setItem('GEMINI_API_KEY', text); } catch (e) {}
-  };
+  // [LOGIC MỚI] Load key mỗi khi tab được focus (để lỡ user đổi bên Setting)
+  useFocusEffect(
+    useCallback(() => {
+        const loadKey = async () => {
+            try {
+                const savedKey = await AsyncStorage.getItem('GEMINI_API_KEY');
+                if (savedKey) setApiKey(savedKey);
+            } catch (e) { console.log("Lỗi load key:", e); }
+        };
+        loadKey();
+    }, [])
+  );
 
   const handleClearAll = () => {
-    let tabName = mediaType === 'video' ? 'Video' : mediaType === 'image' ? 'Ảnh' : mediaType === 'title' ? 'Tiêu đề' : 'Xử lý ảnh';
+    let tabName = mediaType === 'video' ? 'Video' : mediaType === 'image' ? 'Ảnh' : 'Tiêu đề';
     Alert.alert("Dọn dẹp", `Xóa sạch tab ${tabName}?`, [
         { text: "Hủy", style: "cancel" },
         { text: "Xóa", style: 'destructive', onPress: () => {
@@ -96,8 +75,6 @@ export default function MediaScreen() {
                 setImagePromptMain(''); setImageStyle(''); setImageResultEn(''); setImageResultVi('');
             } else if (mediaType === 'title') { 
                 setTitleInput(''); setTitleResult(''); 
-            } else {
-                setEditPrompt(''); setModelImage(null); setProductImage(null); setEditResult(null);
             }
         }}
     ]);
@@ -109,44 +86,11 @@ export default function MediaScreen() {
     Alert.alert("Đã Copy!", `Đã lưu ${text.length} ký tự vào bộ nhớ tạm.`);
   };
 
-  const pickImage = async (type: 'model' | 'product') => {
-    let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 1,
-      base64: true,
-    });
-
-    if (!result.canceled && result.assets && result.assets.length > 0) {
-      if (type === 'model') setModelImage(result.assets[0].base64 || null);
-      else setProductImage(result.assets[0].base64 || null);
-    }
-  };
-
   const callGemini = async (promptInput: string, maxChars: number, mode: MediaType | 'character', style: string = '') => {
-    if (!apiKey.trim()) { Alert.alert("Thiếu Key", "Nhập API Key trước đã đại ca!"); return null; }
+    if (!apiKey.trim()) { Alert.alert("Thiếu Key", "Chưa nhập API Key. Vào Cài Đặt nhập đi đại ca!"); return null; }
     setIsGenerating(true);
     try {
       const genAI = new GoogleGenerativeAI(apiKey);
-      
-      if (mode === 'edit_image') {
-        if (!modelImage || !productImage) { Alert.alert("Lỗi", "Vui lòng chọn đủ ảnh người mẫu và sản phẩm."); setIsGenerating(false); return; }
-        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-image" });
-        const result = await model.generateContent([
-            { inlineData: { data: modelImage, mimeType: 'image/jpeg' } },
-            { inlineData: { data: productImage, mimeType: 'image/jpeg' } },
-            { text: promptInput }
-        ]);
-        const response = await result.response;
-        if (response.candidates?.[0]?.content?.parts[0]?.inlineData) {
-            setEditResult(response.candidates[0].content.parts[0].inlineData.data);
-        } else {
-            Alert.alert("Lỗi AI", "Không nhận được hình ảnh.");
-        }
-        return;
-      }
-
       const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" }); 
       let finalPrompt = '';
       const minChars = Math.max(10, maxChars - 50); 
@@ -214,14 +158,9 @@ export default function MediaScreen() {
     if (res?.en) setTitleResult(res.en);
   };
 
-  const generateEditImage = async () => {
-    if (!editPrompt) return Alert.alert("Thiếu yêu cầu", "Nhập yêu cầu chỉnh sửa đi đại ca!");
-    await callGemini(editPrompt, 0, 'edit_image');
-  };
-
   const dynamicStyles = {
     container: { flex: 1, backgroundColor: colors.bg },
-    header: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, alignItems: 'center' as const, marginBottom: 20 },
+    header: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, alignItems: 'center' as const, marginBottom: 15 },
     title: { fontSize: 24, fontWeight: 'bold' as const, color: colors.text },
     label: { fontSize: 14, fontWeight: '600' as const, color: colors.subText, marginBottom: 5, marginTop: 15 },
     input: { backgroundColor: colors.iconBg, color: colors.text, borderRadius: 10, padding: 12, borderWidth: 1, borderColor: colors.border },
@@ -232,29 +171,12 @@ export default function MediaScreen() {
     resultBox: { backgroundColor: colors.inputBg, padding: 15, borderRadius: 10, marginTop: 20, borderWidth: 1, borderColor: colors.border },
     resultTitle: { color: colors.subText, fontSize: 11, fontWeight: 'bold' as const, textTransform: 'uppercase' as const },
     resultText: { color: colors.text, fontSize: 14, fontStyle: 'italic' as const, lineHeight: 24, marginTop: 5 },
-    menuContainer: { position: 'absolute' as const, top: 60, right: 20, backgroundColor: colors.card, borderRadius: 12, padding: 10, borderWidth: 1, borderColor: colors.border, zIndex: 100 },
-    menuItem: { flexDirection: 'row' as const, alignItems: 'center' as const, paddingVertical: 12, paddingHorizontal: 15, borderBottomWidth: 1, borderBottomColor: colors.border },
-    
-    // [FIX LỖI HERE] Thêm 'as const' vào '100%' để TS hiểu đây là kích thước hợp lệ
-    uploadBox: { 
-        width: '100%' as const, 
-        height: 150, 
-        borderWidth: 2, 
-        borderColor: colors.border, 
-        borderStyle: 'dashed' as const, 
-        borderRadius: 12, 
-        justifyContent: 'center' as const, 
-        alignItems: 'center' as const, 
-        backgroundColor: colors.iconBg 
-    },
+    // Style cho các nút Tab
+    tabButton: { flex: 1, paddingVertical: 10, alignItems: 'center' as const, borderRadius: 10, borderWidth: 1, borderColor: 'transparent', marginHorizontal: 2 },
+    tabButtonActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+    tabButtonInactive: { backgroundColor: colors.iconBg, borderColor: colors.border },
+    tabText: { fontWeight: 'bold' as const, fontSize: 14 },
   };
-
-  const menuItems: { type: MediaType, label: string, icon: any }[] = [
-    { type: 'video', label: 'Video 🎥', icon: 'videocam' },
-    { type: 'image', label: 'Ảnh 🖼️', icon: 'image' },
-    { type: 'title', label: 'Tiêu đề ✍️', icon: 'text' },
-    { type: 'edit_image', label: 'Xử lý ảnh 🪄', icon: 'color-wand' },
-  ];
 
   return (
     <SafeAreaView style={dynamicStyles.container} edges={['top']}>
@@ -263,30 +185,35 @@ export default function MediaScreen() {
           
           <View style={dynamicStyles.header}>
               <Text style={dynamicStyles.title}>Media Creator 🎬</Text>
-              <View style={{flexDirection: 'row'}}>
-                <TouchableOpacity onPress={handleClearAll} style={{padding:8, backgroundColor: colors.iconBg, borderRadius:8, marginRight: 10}}><Ionicons name="trash-bin-outline" size={24} color="#EF4444" /></TouchableOpacity>
-                <TouchableOpacity onPress={() => setShowMenu(!showMenu)} style={{padding:8, backgroundColor: colors.iconBg, borderRadius:8}}><Ionicons name="menu" size={24} color={colors.text} /></TouchableOpacity>
-              </View>
+              <TouchableOpacity onPress={handleClearAll} style={{padding:8, backgroundColor: colors.iconBg, borderRadius:8}}><Ionicons name="trash-bin-outline" size={24} color="#EF4444" /></TouchableOpacity>
           </View>
           
-          {showMenu && (
-            <View style={dynamicStyles.menuContainer}>
-                {menuItems.map((item, index) => (
-                    <TouchableOpacity key={item.type} style={[dynamicStyles.menuItem, index === menuItems.length - 1 && {borderBottomWidth: 0}, mediaType === item.type && {backgroundColor: colors.iconBg}]} onPress={() => { setMediaType(item.type); setShowMenu(false); }}>
-                        <Ionicons name={item.icon} size={20} color={mediaType === item.type ? colors.primary : colors.subText} />
-                        <Text style={{marginLeft: 10, fontWeight: 'bold', color: mediaType === item.type ? colors.primary : colors.text}}>{item.label}</Text>
-                    </TouchableOpacity>
-                ))}
-            </View>
-          )}
+          {/* THANH TAB CHỌN CHẾ ĐỘ */}
+          <View style={{flexDirection: 'row', marginBottom: 20}}>
+              <TouchableOpacity 
+                style={[dynamicStyles.tabButton, mediaType === 'video' ? dynamicStyles.tabButtonActive : dynamicStyles.tabButtonInactive]} 
+                onPress={() => setMediaType('video')}
+              >
+                  <Text style={[dynamicStyles.tabText, {color: mediaType === 'video' ? 'white' : colors.subText}]}>Video 🎥</Text>
+              </TouchableOpacity>
 
-          <Text style={[dynamicStyles.label, {marginTop: 0}]}>API Key (Gemini):</Text>
-          <TextInput style={dynamicStyles.input} placeholder="Key Gemini..." placeholderTextColor={colors.subText} secureTextEntry value={apiKey} onChangeText={handleKeyChange} />
-          
-          <Text style={[dynamicStyles.label, {fontSize: 18, color: colors.primary}]}>Đang chọn: {menuItems.find(i => i.type === mediaType)?.label}</Text>
+              <TouchableOpacity 
+                style={[dynamicStyles.tabButton, mediaType === 'image' ? dynamicStyles.tabButtonActive : dynamicStyles.tabButtonInactive]} 
+                onPress={() => setMediaType('image')}
+              >
+                  <Text style={[dynamicStyles.tabText, {color: mediaType === 'image' ? 'white' : colors.subText}]}>Ảnh 🖼️</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={[dynamicStyles.tabButton, mediaType === 'title' ? dynamicStyles.tabButtonActive : dynamicStyles.tabButtonInactive]} 
+                onPress={() => setMediaType('title')}
+              >
+                  <Text style={[dynamicStyles.tabText, {color: mediaType === 'title' ? 'white' : colors.subText}]}>Tiêu đề ✍️</Text>
+              </TouchableOpacity>
+          </View>
 
           {mediaType === 'title' && (
-            <View style={{marginTop: 10}}>
+            <View>
                 <Text style={dynamicStyles.label}>Nội dung:</Text>
                 <TextInput style={[dynamicStyles.input, {height: 120, textAlignVertical: 'top'}]} placeholder="Nhập ý tưởng..." placeholderTextColor={colors.subText} multiline value={titleInput} onChangeText={setTitleInput} />
                 <View style={{flexDirection: 'row', marginTop: 15}}>
@@ -312,42 +239,9 @@ export default function MediaScreen() {
             </View>
           )}
 
-          {mediaType === 'edit_image' && (
-            <View style={{marginTop: 10}}>
-                <View style={{flexDirection: 'row', justifyContent: 'space-between'}}>
-                    <View style={{flex: 1, marginRight: 10}}>
-                        <Text style={dynamicStyles.label}>1. Ảnh người mẫu:</Text>
-                        <TouchableOpacity style={dynamicStyles.uploadBox} onPress={() => pickImage('model')}>
-                            {modelImage ? <Image source={{ uri: `data:image/jpeg;base64,${modelImage}` }} style={{width: '100%', height: '100%', borderRadius: 10}} resizeMode="contain" /> : <Ionicons name="person-add" size={40} color={colors.subText} />}
-                        </TouchableOpacity>
-                    </View>
-                    <View style={{flex: 1}}>
-                        <Text style={dynamicStyles.label}>2. Ảnh sản phẩm:</Text>
-                        <TouchableOpacity style={dynamicStyles.uploadBox} onPress={() => pickImage('product')}>
-                            {productImage ? <Image source={{ uri: `data:image/jpeg;base64,${productImage}` }} style={{width: '100%', height: '100%', borderRadius: 10}} resizeMode="contain" /> : <Ionicons name="gift" size={40} color={colors.subText} />}
-                        </TouchableOpacity>
-                    </View>
-                </View>
-                
-                <Text style={dynamicStyles.label}>3. Yêu cầu chỉnh sửa:</Text>
-                <TextInput style={[dynamicStyles.input, {height: 100, textAlignVertical: 'top'}]} placeholder="Mô tả cách ghép..." placeholderTextColor={colors.subText} multiline value={editPrompt} onChangeText={setEditPrompt} />
-                
-                <TouchableOpacity style={dynamicStyles.btnPrimary} onPress={generateEditImage} disabled={isGenerating || !modelImage || !productImage}>
-                    {isGenerating ? <View style={{flexDirection: 'row', alignItems: 'center'}}><ActivityIndicator color="#fff" /><Text style={[dynamicStyles.btnText, {marginLeft: 10}]}>Đang xử lý ({editTimer}s)...</Text></View> : <Text style={dynamicStyles.btnText}>🪄 Chỉnh sửa & Kết hợp</Text>}
-                </TouchableOpacity>
-
-                {editResult && (
-                    <View style={[dynamicStyles.resultBox, {borderColor: colors.primary, alignItems: 'center'}]}>
-                        <Text style={[dynamicStyles.resultTitle, {color: colors.primary, marginBottom: 10}]}>KẾT QUẢ:</Text>
-                        <Image source={{ uri: `data:image/jpeg;base64,${editResult}` }} style={{width: 300, height: 300, borderRadius: 10}} resizeMode="contain" />
-                    </View>
-                )}
-            </View>
-          )}
-
           {(mediaType === 'video' || mediaType === 'image') && (
-            <View style={{marginTop: 10}}>
-               <View style={{flexDirection:'row', justifyContent:'space-between', alignItems:'center', marginTop:15}}>
+            <View>
+               <View style={{flexDirection:'row', justifyContent:'space-between', alignItems:'center'}}>
                   <Text style={[dynamicStyles.label, {marginTop:0}]}>Nhân Vật:</Text>
                   <View style={{flexDirection:'row', alignItems:'center'}}>
                     <Text style={{color:colors.subText, fontSize:12}}>Max:</Text>
