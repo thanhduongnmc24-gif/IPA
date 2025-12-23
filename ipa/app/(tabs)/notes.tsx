@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { 
   StyleSheet, Text, View, TouchableOpacity, FlatList, Modal, TextInput, 
-  Platform, KeyboardAvoidingView, ScrollView, Animated, Keyboard 
+  Platform, KeyboardAvoidingView, ScrollView, Animated, Keyboard, LayoutAnimation, UIManager 
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,14 +9,21 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../context/ThemeContext';
 import { GestureHandlerRootView, Swipeable, RectButton } from 'react-native-gesture-handler';
 import * as WebBrowser from 'expo-web-browser';
-// [QUAN TRỌNG] Import cái này để biết khi nào tab được focus
 import { useFocusEffect } from 'expo-router';
+
+// Kích hoạt LayoutAnimation cho Android để list nhảy mượt hơn
+if (Platform.OS === 'android') {
+  if (UIManager.setLayoutAnimationEnabledExperimental) {
+    UIManager.setLayoutAnimationEnabledExperimental(true);
+  }
+}
 
 type QuickNote = {
   id: string;
   title: string;
   content: string;
   date: string;
+  isPinned?: boolean; // [MỚI] Thêm trạng thái ghim
 };
 
 export default function NotesScreen() {
@@ -31,8 +38,6 @@ export default function NotesScreen() {
 
   const rowRefs = useRef<Map<string, Swipeable>>(new Map());
 
-  // [SỬA LỖI] Thay useEffect bằng useFocusEffect
-  // Mỗi khi anh hai chuyển qua tab này, nó sẽ tự chạy lại hàm loadNotes
   useFocusEffect(
     useCallback(() => {
       loadNotes();
@@ -42,14 +47,36 @@ export default function NotesScreen() {
   const loadNotes = async () => {
     try {
       const data = await AsyncStorage.getItem('QUICK_NOTES');
-      if (data) setNotes(JSON.parse(data));
+      if (data) {
+          let loadedNotes = JSON.parse(data);
+          // Sắp xếp lại khi load để đảm bảo pin luôn ở đầu
+          loadedNotes = sortNotes(loadedNotes);
+          setNotes(loadedNotes);
+      }
     } catch (e) {}
+  };
+
+  // [MỚI] Hàm sắp xếp: Đưa Pinned lên đầu
+  const sortNotes = (list: QuickNote[]) => {
+      return list.sort((a, b) => {
+          // Nếu a ghim mà b không ghim -> a lên trước (-1)
+          if (a.isPinned && !b.isPinned) return -1;
+          // Nếu b ghim mà a không ghim -> b lên trước (1)
+          if (!a.isPinned && b.isPinned) return 1;
+          // Còn lại giữ nguyên thứ tự (hoặc theo ngày nếu muốn)
+          return 0;
+      });
   };
 
   const saveNotes = async (newNotes: QuickNote[]) => {
     try {
-      await AsyncStorage.setItem('QUICK_NOTES', JSON.stringify(newNotes));
-      setNotes(newNotes);
+      // Luôn sắp xếp trước khi lưu
+      const sortedNotes = sortNotes(newNotes);
+      await AsyncStorage.setItem('QUICK_NOTES', JSON.stringify(sortedNotes));
+      
+      // Hiệu ứng chuyển động mượt mà
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setNotes(sortedNotes);
     } catch (e) {}
   };
 
@@ -71,14 +98,39 @@ export default function NotesScreen() {
       setModalVisible(false); return;
     }
     let updatedNotes = [...notes];
+    
     if (editingId) {
-      updatedNotes = updatedNotes.map(n => n.id === editingId ? { ...n, title, content } : n);
+      // Khi sửa, giữ nguyên trạng thái isPinned cũ
+      updatedNotes = updatedNotes.map(n => 
+          n.id === editingId ? { ...n, title, content } : n
+      );
     } else {
-      const newNote = { id: Date.now().toString(), title, content, date: new Date().toLocaleDateString('vi-VN') };
+      // Ghi chú mới mặc định không ghim
+      const newNote = { 
+          id: Date.now().toString(), 
+          title, 
+          content, 
+          date: new Date().toLocaleDateString('vi-VN'),
+          isPinned: false 
+      };
+      // Thêm vào đầu danh sách (nhưng sau các items đã Pin nhờ hàm sort ở saveNotes)
       updatedNotes = [newNote, ...updatedNotes];
     }
     saveNotes(updatedNotes);
     setModalVisible(false);
+  };
+
+  // [MỚI] Hàm xử lý Ghim/Bỏ ghim
+  const togglePin = (id: string) => {
+      const updatedNotes = notes.map(n => 
+          n.id === id ? { ...n, isPinned: !n.isPinned } : n
+      );
+      saveNotes(updatedNotes);
+      
+      // Đóng swipe nếu đang mở
+      if (rowRefs.current.has(id)) {
+          rowRefs.current.get(id)?.close();
+      }
   };
 
   const handleDelete = (id: string) => {
@@ -139,9 +191,18 @@ export default function NotesScreen() {
           overshootRight={false}
           containerStyle={{borderRadius: 12, overflow: 'hidden'}} 
         >
-          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          {/* [MỚI] Thêm viền nếu là Pinned */}
+          <View style={[
+              styles.card, 
+              { 
+                  backgroundColor: item.isPinned ? (colors.theme === 'dark' ? '#312e81' : '#EEF2FF') : colors.card, 
+                  borderColor: item.isPinned ? colors.primary : colors.border,
+                  borderWidth: item.isPinned ? 1.5 : 1
+              }
+          ]}>
             
             <View style={styles.titleSection}>
+               {/* Phần tiêu đề */}
                {isLink ? (
                   <TouchableOpacity onPress={() => handlePressLink(item.title)} style={{flex: 1}}>
                       <Text numberOfLines={1} style={[styles.cardTitle, { color: colors.primary, textDecorationLine: 'underline' }]}>
@@ -155,7 +216,18 @@ export default function NotesScreen() {
                     </Text>
                   </View>
                )}
-               <Text style={{fontSize: 11, color: colors.subText, marginLeft: 10}}>{item.date}</Text>
+               
+               {/* Ngày tháng */}
+               <Text style={{fontSize: 11, color: colors.subText, marginLeft: 10, marginRight: 10}}>{item.date}</Text>
+               
+               {/* [MỚI] Nút PIN */}
+               <TouchableOpacity onPress={() => togglePin(item.id)} style={{padding: 4}}>
+                   <Ionicons 
+                      name={item.isPinned ? "push-pin" : "push-pin-outline"} 
+                      size={20} 
+                      color={item.isPinned ? colors.primary : colors.subText} 
+                   />
+               </TouchableOpacity>
             </View>
 
             <View style={[styles.divider, {backgroundColor: colors.border}]} />
@@ -251,7 +323,7 @@ const styles = StyleSheet.create({
   searchBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, borderWidth: 1, marginBottom: 5 },
   searchInput: { flex: 1, marginLeft: 10, fontSize: 15, height: 30 },
   noteWrapper: { marginBottom: 12 },
-  card: { borderWidth: 1 },
+  card: { },
   titleSection: { padding: 12, paddingBottom: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   cardTitle: { fontSize: 16, fontWeight: 'bold' },
   divider: { height: 1, width: '100%', opacity: 0.5 },
