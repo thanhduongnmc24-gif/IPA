@@ -1,0 +1,1158 @@
+import UIKit
+
+final class ManHinhXuongCan: UIViewController, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+    private let hienNutDongModal: Bool
+    private var chiSoBang: Int = 0
+
+    // Lưu vị trí ô ảnh đang chọn để nhận kết quả từ Camera / Thư viện ảnh
+    private var oAnhDangChon: (idBang: String, idDong: String, idCot: String)?
+
+    // Giao diện
+    private let thanhChonBangCuon = UIScrollView()
+    private let nganChonBang = UIStackView()
+    private let nhanThongTinBang = UILabel()
+    private let cuonNgangBang = UIScrollView()
+    private let cuonDocBang = UIScrollView()
+    private let nganBangDuLieu = UIStackView()
+
+    init(hienNutDongModal: Bool = false) {
+        self.hienNutDongModal = hienNutDongModal
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("Khong ho tro coder")
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        title = "🏭 Xưởng Cán"
+
+        if hienNutDongModal {
+            navigationItem.leftBarButtonItem = UIBarButtonItem(
+                title: "Đóng",
+                style: .done,
+                target: self,
+                action: #selector(dongModal)
+            )
+        } else {
+            navigationItem.leftBarButtonItem = UIBarButtonItem(
+                image: UIImage(systemName: "externaldrive.badge.icloud"),
+                style: .plain,
+                target: self,
+                action: #selector(moCauHinhDrive)
+            )
+        }
+
+        let nutDongBo = UIBarButtonItem(
+            image: UIImage(systemName: "arrow.triangle.2.circlepath.icloud"),
+            style: .plain,
+            target: self,
+            action: #selector(dongBoThuCong)
+        )
+        let nutThemBang = UIBarButtonItem(
+            image: UIImage(systemName: "plus.rectangle.on.folder.fill"),
+            style: .plain,
+            target: self,
+            action: #selector(hienHopThoaiThemBang)
+        )
+        navigationItem.rightBarButtonItems = [nutThemBang, nutDongBo]
+
+        taoGiaoDien()
+        napGiaoDien()
+
+        NotificationCenter.default.addObserver(self, selector: #selector(napGiaoDien), name: .caiDatThayDoi, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(napGiaoDien), name: .xuongCanCapNhat, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(napGiaoDien), name: .duLieuDongBoXong, object: nil)
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        napGiaoDien()
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    @objc private func dongModal() {
+        dismiss(animated: true)
+    }
+
+    private var bangHienTai: BangXuongCan? {
+        let ds = KhoDuLieu.dungChung.danhSachBangXuongCan
+        guard !ds.isEmpty else { return nil }
+        if chiSoBang >= ds.count { chiSoBang = max(0, ds.count - 1) }
+        return ds[chiSoBang]
+    }
+
+    private func taoGiaoDien() {
+        // 1. Thanh chọn bảng ngang
+        thanhChonBangCuon.showsHorizontalScrollIndicator = false
+        thanhChonBangCuon.translatesAutoresizingMaskIntoConstraints = false
+
+        nganChonBang.axis = .horizontal
+        nganChonBang.spacing = 8
+        nganChonBang.alignment = .center
+        nganChonBang.translatesAutoresizingMaskIntoConstraints = false
+        thanhChonBangCuon.addSubview(nganChonBang)
+
+        // 2. Thanh nút chức năng: Thêm cột, Thêm hàng, Quản lý bảng & Drive
+        let nutThemCot = taoNutCongCu(tieuDe: "＋ Thêm cột", bieuTuong: "rectangle.split.3x1.fill", mauNen: .systemBlue)
+        nutThemCot.addTarget(self, action: #selector(hienHopThoaiThemCot), for: .touchUpInside)
+
+        let nutThemHang = taoNutCongCu(tieuDe: "＋ Thêm dòng", bieuTuong: "plus.square.fill.on.square.fill", mauNen: .systemGreen)
+        nutThemHang.addTarget(self, action: #selector(themDongMoi), for: .touchUpInside)
+
+        let nutTuyChonBang = taoNutCongCu(tieuDe: "Tùy chọn bảng", bieuTuong: "slider.horizontal.3", mauNen: .systemOrange)
+        nutTuyChonBang.addTarget(self, action: #selector(moMenuTuyChonBang), for: .touchUpInside)
+
+        let hangNutChucNang = UIStackView(arrangedSubviews: [nutThemCot, nutThemHang, nutTuyChonBang])
+        hangNutChucNang.axis = .horizontal
+        hangNutChucNang.distribution = .fillEqually
+        hangNutChucNang.spacing = 8
+        hangNutChucNang.translatesAutoresizingMaskIntoConstraints = false
+
+        nhanThongTinBang.font = .systemFont(ofSize: 12, weight: .medium)
+        nhanThongTinBang.numberOfLines = 2
+        nhanThongTinBang.translatesAutoresizingMaskIntoConstraints = false
+
+        // 3. Khung bảng cuộn 2 chiều (Ngang + Dọc)
+        cuonDocBang.alwaysBounceVertical = true
+        cuonDocBang.translatesAutoresizingMaskIntoConstraints = false
+
+        cuonNgangBang.showsHorizontalScrollIndicator = true
+        cuonNgangBang.alwaysBounceHorizontal = false
+        cuonNgangBang.translatesAutoresizingMaskIntoConstraints = false
+
+        nganBangDuLieu.axis = .vertical
+        nganBangDuLieu.spacing = 0
+        nganBangDuLieu.translatesAutoresizingMaskIntoConstraints = false
+
+        view.addSubview(thanhChonBangCuon)
+        view.addSubview(hangNutChucNang)
+        view.addSubview(nhanThongTinBang)
+        view.addSubview(cuonDocBang)
+        cuonDocBang.addSubview(cuonNgangBang)
+        cuonNgangBang.addSubview(nganBangDuLieu)
+
+        NSLayoutConstraint.activate([
+            thanhChonBangCuon.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 6),
+            thanhChonBangCuon.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
+            thanhChonBangCuon.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
+            thanhChonBangCuon.heightAnchor.constraint(equalToConstant: 42),
+
+            nganChonBang.topAnchor.constraint(equalTo: thanhChonBangCuon.contentLayoutGuide.topAnchor),
+            nganChonBang.bottomAnchor.constraint(equalTo: thanhChonBangCuon.contentLayoutGuide.bottomAnchor),
+            nganChonBang.leadingAnchor.constraint(equalTo: thanhChonBangCuon.contentLayoutGuide.leadingAnchor),
+            nganChonBang.trailingAnchor.constraint(equalTo: thanhChonBangCuon.contentLayoutGuide.trailingAnchor),
+            nganChonBang.heightAnchor.constraint(equalTo: thanhChonBangCuon.frameLayoutGuide.heightAnchor),
+
+            hangNutChucNang.topAnchor.constraint(equalTo: thanhChonBangCuon.bottomAnchor, constant: 8),
+            hangNutChucNang.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
+            hangNutChucNang.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
+            hangNutChucNang.heightAnchor.constraint(equalToConstant: 38),
+
+            nhanThongTinBang.topAnchor.constraint(equalTo: hangNutChucNang.bottomAnchor, constant: 6),
+            nhanThongTinBang.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
+            nhanThongTinBang.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
+
+            cuonDocBang.topAnchor.constraint(equalTo: nhanThongTinBang.bottomAnchor, constant: 6),
+            cuonDocBang.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 8),
+            cuonDocBang.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -8),
+            cuonDocBang.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -6),
+
+            cuonNgangBang.topAnchor.constraint(equalTo: cuonDocBang.contentLayoutGuide.topAnchor),
+            cuonNgangBang.bottomAnchor.constraint(equalTo: cuonDocBang.contentLayoutGuide.bottomAnchor),
+            cuonNgangBang.leadingAnchor.constraint(equalTo: cuonDocBang.frameLayoutGuide.leadingAnchor),
+            cuonNgangBang.trailingAnchor.constraint(equalTo: cuonDocBang.frameLayoutGuide.trailingAnchor),
+            cuonNgangBang.heightAnchor.constraint(equalTo: nganBangDuLieu.heightAnchor),
+
+            nganBangDuLieu.topAnchor.constraint(equalTo: cuonNgangBang.contentLayoutGuide.topAnchor),
+            nganBangDuLieu.bottomAnchor.constraint(equalTo: cuonNgangBang.contentLayoutGuide.bottomAnchor),
+            nganBangDuLieu.leadingAnchor.constraint(equalTo: cuonNgangBang.contentLayoutGuide.leadingAnchor),
+            nganBangDuLieu.trailingAnchor.constraint(equalTo: cuonNgangBang.contentLayoutGuide.trailingAnchor)
+        ])
+    }
+
+    private func taoNutCongCu(tieuDe: String, bieuTuong: String, mauNen: UIColor) -> UIButton {
+        let nut = UIButton(type: .system)
+        var ch = UIButton.Configuration.filled()
+        ch.title = tieuDe
+        ch.image = UIImage(systemName: bieuTuong)
+        ch.imagePadding = 5
+        ch.cornerStyle = .medium
+        ch.baseBackgroundColor = mauNen
+        ch.baseForegroundColor = .white
+        ch.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
+            var out = incoming
+            out.font = UIFont.systemFont(ofSize: 12, weight: .bold)
+            return out
+        }
+        nut.configuration = ch
+        return nut
+    }
+
+    @objc private func napGiaoDien() {
+        let mau = KhoDuLieu.dungChung.mauSac
+        view.backgroundColor = mau.bg
+        nhanThongTinBang.textColor = mau.subText
+
+        // 1. Vẽ lại các thẻ chọn bảng
+        nganChonBang.arrangedSubviews.forEach {
+            nganChonBang.removeArrangedSubview($0)
+            $0.removeFromSuperview()
+        }
+
+        let dsBang = KhoDuLieu.dungChung.danhSachBangXuongCan
+        for (idx, bang) in dsBang.enumerated() {
+            let dangChon = (idx == chiSoBang)
+            let nut = UIButton(type: .system)
+            var ch = dangChon ? UIButton.Configuration.filled() : UIButton.Configuration.tinted()
+            ch.title = bang.tenBang
+            ch.image = UIImage(systemName: "tablecells")
+            ch.imagePadding = 5
+            ch.cornerStyle = .capsule
+            ch.baseBackgroundColor = dangChon ? mau.xuongCanAccent : mau.iconBg
+            ch.baseForegroundColor = dangChon ? .white : mau.text
+            nut.configuration = ch
+            nut.addAction(UIAction { [weak self] _ in
+                self?.chiSoBang = idx
+                self?.napGiaoDien()
+            }, for: .touchUpInside)
+            nganChonBang.addArrangedSubview(nut)
+        }
+
+        let nutThemNhanh = UIButton(type: .system)
+        var chThem = UIButton.Configuration.bordered()
+        chThem.title = "＋ Bảng mới"
+        chThem.cornerStyle = .capsule
+        nutThemNhanh.configuration = chThem
+        nutThemNhanh.addTarget(self, action: #selector(hienHopThoaiThemBang), for: .touchUpInside)
+        nganChonBang.addArrangedSubview(nutThemNhanh)
+
+        // 2. Vẽ nội dung bảng hiện tại
+        nganBangDuLieu.arrangedSubviews.forEach {
+            nganBangDuLieu.removeArrangedSubview($0)
+            $0.removeFromSuperview()
+        }
+
+        guard let bang = bangHienTai else {
+            nhanThongTinBang.text = "Chưa có bảng nào. Hãy bấm '＋ Bảng mới' để bắt đầu."
+            return
+        }
+
+        let dungLuongCache = BoNhoDemAnh.dungChung.dungLuongBoNhoDemChuoi()
+        nhanThongTinBang.text = "📋 \(bang.tenBang) • \(bang.cot.count) cột • \(bang.dong.count) dòng • Bộ nhớ đệm ảnh: \(dungLuongCache) (Chạm vào tên cột để sửa/xóa cột)"
+
+        // Hàng tiêu đề cột (Header)
+        let hangTieuDe = taoHangTieuDeCot(bang: bang)
+        nganBangDuLieu.addArrangedSubview(hangTieuDe)
+
+        // Các dòng dữ liệu
+        if bang.dong.isEmpty {
+            let oTrong = UILabel()
+            oTrong.text = "Bảng chưa có dòng dữ liệu nào. Bấm '＋ Thêm dòng' để bắt đầu điền chữ hoặc chụp ảnh."
+            oTrong.font = .italicSystemFont(ofSize: 14)
+            oTrong.textColor = mau.subText
+            oTrong.textAlignment = .center
+            oTrong.heightAnchor.constraint(equalToConstant: 80).isActive = true
+            nganBangDuLieu.addArrangedSubview(oTrong)
+        } else {
+            for (chiSoDong, dong) in bang.dong.enumerated() {
+                let hangDong = taoHangDuLieu(bang: bang, dong: dong, soThuTu: chiSoDong + 1)
+                nganBangDuLieu.addArrangedSubview(hangDong)
+            }
+        }
+    }
+
+    // MARK: - Vẽ Lưới Bảng (Header + Rows)
+
+    private func chieuRongCot(_ cot: CotXuongCan) -> CGFloat {
+        cot.loai == .anh ? 145 : 160
+    }
+
+    private func taoHangTieuDeCot(bang: BangXuongCan) -> UIView {
+        let mau = KhoDuLieu.dungChung.mauSac
+        let hang = UIStackView()
+        hang.axis = .horizontal
+        hang.spacing = 1
+        hang.backgroundColor = mau.border
+
+        // Cột STT
+        let oSTT = taoKhungO(rong: 44, cao: 46, mauNen: mau.iconBg)
+        let lbSTT = UILabel()
+        lbSTT.text = "#"
+        lbSTT.font = .systemFont(ofSize: 13, weight: .bold)
+        lbSTT.textColor = mau.subText
+        lbSTT.textAlignment = .center
+        ganGiua(lbSTT, vao: oSTT)
+        hang.addArrangedSubview(oSTT)
+
+        // Các cột động
+        let cacCot = bang.cot.sorted { $0.thuTu < $1.thuTu }
+        for cot in cacCot {
+            let khungCot = taoKhungO(rong: chieuRongCot(cot), cao: 46, mauNen: mau.iconBg)
+            let nutCot = UIButton(type: .system)
+            let kyHieu = cot.loai == .anh ? "📸 " : "📝 "
+            nutCot.setTitle(kyHieu + cot.tenCot, for: .normal)
+            nutCot.setTitleColor(mau.text, for: .normal)
+            nutCot.titleLabel?.font = .systemFont(ofSize: 13, weight: .bold)
+            nutCot.titleLabel?.numberOfLines = 2
+            nutCot.titleLabel?.textAlignment = .center
+            nutCot.translatesAutoresizingMaskIntoConstraints = false
+            khungCot.addSubview(nutCot)
+            NSLayoutConstraint.activate([
+                nutCot.topAnchor.constraint(equalTo: khungCot.topAnchor, constant: 2),
+                nutCot.bottomAnchor.constraint(equalTo: khungCot.bottomAnchor, constant: -2),
+                nutCot.leadingAnchor.constraint(equalTo: khungCot.leadingAnchor, constant: 4),
+                nutCot.trailingAnchor.constraint(equalTo: khungCot.trailingAnchor, constant: -4)
+            ])
+            nutCot.addAction(UIAction { [weak self] _ in
+                self?.hienMenuChinhSuaCot(bang: bang, cot: cot)
+            }, for: .touchUpInside)
+            hang.addArrangedSubview(khungCot)
+        }
+
+        // Cột Xóa dòng
+        let oXoa = taoKhungO(rong: 50, cao: 46, mauNen: mau.iconBg)
+        let lbXoa = UILabel()
+        lbXoa.text = "Xóa"
+        lbXoa.font = .systemFont(ofSize: 12, weight: .bold)
+        lbXoa.textColor = mau.error
+        lbXoa.textAlignment = .center
+        ganGiua(lbXoa, vao: oXoa)
+        hang.addArrangedSubview(oXoa)
+
+        let vienBao = UIView()
+        vienBao.backgroundColor = mau.border
+        hang.translatesAutoresizingMaskIntoConstraints = false
+        vienBao.addSubview(hang)
+        NSLayoutConstraint.activate([
+            hang.topAnchor.constraint(equalTo: vienBao.topAnchor, constant: 1),
+            hang.bottomAnchor.constraint(equalTo: vienBao.bottomAnchor, constant: -1),
+            hang.leadingAnchor.constraint(equalTo: vienBao.leadingAnchor, constant: 1),
+            hang.trailingAnchor.constraint(equalTo: vienBao.trailingAnchor, constant: -1)
+        ])
+        return vienBao
+    }
+
+    private func taoHangDuLieu(bang: BangXuongCan, dong: DongXuongCan, soThuTu: Int) -> UIView {
+        let mau = KhoDuLieu.dungChung.mauSac
+        let chieuCaoDong: CGFloat = bang.cot.contains(where: { $0.loai == .anh }) ? 116 : 64
+        let hang = UIStackView()
+        hang.axis = .horizontal
+        hang.spacing = 1
+        hang.backgroundColor = mau.border
+
+        // Ô STT
+        let oSTT = taoKhungO(rong: 44, cao: chieuCaoDong, mauNen: mau.card)
+        let lbSTT = UILabel()
+        lbSTT.text = "\(soThuTu)"
+        lbSTT.font = .monospacedDigitSystemFont(ofSize: 13, weight: .semibold)
+        lbSTT.textColor = mau.subText
+        lbSTT.textAlignment = .center
+        ganGiua(lbSTT, vao: oSTT)
+        hang.addArrangedSubview(oSTT)
+
+        // Các ô theo từng cột
+        let cacCot = bang.cot.sorted { $0.thuTu < $1.thuTu }
+        for cot in cacCot {
+            let giaTriO = dong.giaTri[cot.id]
+            let khungO = taoKhungO(rong: chieuRongCot(cot), cao: chieuCaoDong, mauNen: mau.card)
+
+            if cot.loai == .chu {
+                let chuHienTai = giaTriO?.vanBan ?? ""
+                let nutChu = UIButton(type: .system)
+                nutChu.setTitle(chuHienTai.isEmpty ? "Chạm để nhập..." : chuHienTai, for: .normal)
+                nutChu.setTitleColor(chuHienTai.isEmpty ? mau.subText.withAlphaComponent(0.6) : mau.text, for: .normal)
+                nutChu.titleLabel?.font = chuHienTai.isEmpty ? .italicSystemFont(ofSize: 13) : .systemFont(ofSize: 14, weight: .regular)
+                nutChu.titleLabel?.numberOfLines = 4
+                nutChu.contentHorizontalAlignment = .left
+                nutChu.contentEdgeInsets = UIEdgeInsets(top: 6, left: 8, bottom: 6, right: 8)
+                nutChu.translatesAutoresizingMaskIntoConstraints = false
+                khungO.addSubview(nutChu)
+                NSLayoutConstraint.activate([
+                    nutChu.topAnchor.constraint(equalTo: khungO.topAnchor),
+                    nutChu.bottomAnchor.constraint(equalTo: khungO.bottomAnchor),
+                    nutChu.leadingAnchor.constraint(equalTo: khungO.leadingAnchor),
+                    nutChu.trailingAnchor.constraint(equalTo: khungO.trailingAnchor)
+                ])
+                nutChu.addAction(UIAction { [weak self] _ in
+                    self?.moHopThoaiNhapChu(bang: bang, dong: dong, cot: cot, giaTriCu: chuHienTai)
+                }, for: .touchUpInside)
+            } else {
+                // Ô kiểu Ảnh chụp
+                if let thongTinAnh = giaTriO?.anh {
+                    let khungAnh = UIImageView()
+                    khungAnh.contentMode = .scaleAspectFill
+                    khungAnh.clipsToBounds = true
+                    khungAnh.layer.cornerRadius = 8
+                    khungAnh.backgroundColor = mau.iconBg
+                    khungAnh.translatesAutoresizingMaskIntoConstraints = false
+                    khungO.addSubview(khungAnh)
+
+                    let nhanTrangThai = UILabel()
+                    nhanTrangThai.font = .systemFont(ofSize: 9, weight: .bold)
+                    nhanTrangThai.textColor = .white
+                    nhanTrangThai.backgroundColor = (thongTinAnh.daTaiLenDrive ? mau.success : mau.primary).withAlphaComponent(0.85)
+                    nhanTrangThai.text = thongTinAnh.daTaiLenDrive ? " ☁️ Drive + Cache " : " ⚡ Cache + Supabase "
+                    nhanTrangThai.layer.cornerRadius = 4
+                    nhanTrangThai.clipsToBounds = true
+                    nhanTrangThai.translatesAutoresizingMaskIntoConstraints = false
+                    khungO.addSubview(nhanTrangThai)
+
+                    let nutChamAnh = UIButton(type: .custom)
+                    nutChamAnh.translatesAutoresizingMaskIntoConstraints = false
+                    khungO.addSubview(nutChamAnh)
+
+                    NSLayoutConstraint.activate([
+                        khungAnh.topAnchor.constraint(equalTo: khungO.topAnchor, constant: 6),
+                        khungAnh.bottomAnchor.constraint(equalTo: khungO.bottomAnchor, constant: -6),
+                        khungAnh.leadingAnchor.constraint(equalTo: khungO.leadingAnchor, constant: 6),
+                        khungAnh.trailingAnchor.constraint(equalTo: khungO.trailingAnchor, constant: -6),
+
+                        nhanTrangThai.bottomAnchor.constraint(equalTo: khungAnh.bottomAnchor, constant: -4),
+                        nhanTrangThai.trailingAnchor.constraint(equalTo: khungAnh.trailingAnchor, constant: -4),
+                        nhanTrangThai.heightAnchor.constraint(equalToConstant: 16),
+
+                        nutChamAnh.topAnchor.constraint(equalTo: khungO.topAnchor),
+                        nutChamAnh.bottomAnchor.constraint(equalTo: khungO.bottomAnchor),
+                        nutChamAnh.leadingAnchor.constraint(equalTo: khungO.leadingAnchor),
+                        nutChamAnh.trailingAnchor.constraint(equalTo: khungO.trailingAnchor)
+                    ])
+
+                    // Nạp ảnh từ Bộ nhớ đệm (RAM / Disk) hoặc tự tải từ Google Drive
+                    BoNhoDemAnh.dungChung.taiAnh(thongTin: thongTinAnh) { [weak khungAnh] anh in
+                        khungAnh?.image = anh ?? UIImage(systemName: "photo")
+                    }
+
+                    nutChamAnh.addAction(UIAction { [weak self] _ in
+                        self?.moMenuThaoTacOAnh(bang: bang, dong: dong, cot: cot, thongTinAnh: thongTinAnh)
+                    }, for: .touchUpInside)
+                } else {
+                    let nutChonAnh = UIButton(type: .system)
+                    var ch = UIButton.Configuration.tinted()
+                    ch.title = "Chụp / Chọn"
+                    ch.image = UIImage(systemName: "camera.badge.ellipsis")
+                    ch.imagePlacement = .top
+                    ch.imagePadding = 4
+                    ch.baseBackgroundColor = mau.primary
+                    ch.baseForegroundColor = mau.primary
+                    nutChonAnh.configuration = ch
+                    nutChonAnh.translatesAutoresizingMaskIntoConstraints = false
+                    khungO.addSubview(nutChonAnh)
+                    NSLayoutConstraint.activate([
+                        nutChonAnh.topAnchor.constraint(equalTo: khungO.topAnchor, constant: 8),
+                        nutChonAnh.bottomAnchor.constraint(equalTo: khungO.bottomAnchor, constant: -8),
+                        nutChonAnh.leadingAnchor.constraint(equalTo: khungO.leadingAnchor, constant: 8),
+                        nutChonAnh.trailingAnchor.constraint(equalTo: khungO.trailingAnchor, constant: -8)
+                    ])
+                    nutChonAnh.addAction(UIAction { [weak self] _ in
+                        self?.chonNguonAnh(idBang: bang.id, idDong: dong.id, idCot: cot.id)
+                    }, for: .touchUpInside)
+                }
+            }
+            hang.addArrangedSubview(khungO)
+        }
+
+        // Ô Xóa dòng
+        let oXoa = taoKhungO(rong: 50, cao: chieuCaoDong, mauNen: mau.card)
+        let nutXoa = UIButton(type: .system)
+        nutXoa.setImage(UIImage(systemName: "trash.fill"), for: .normal)
+        nutXoa.tintColor = mau.error
+        ganGiua(nutXoa, vao: oXoa)
+        nutXoa.addAction(UIAction { [weak self] _ in
+            self?.xacNhanXoaDong(bang: bang, idDong: dong.id, soThuTu: soThuTu)
+        }, for: .touchUpInside)
+        hang.addArrangedSubview(oXoa)
+
+        let vienBao = UIView()
+        vienBao.backgroundColor = mau.border
+        hang.translatesAutoresizingMaskIntoConstraints = false
+        vienBao.addSubview(hang)
+        NSLayoutConstraint.activate([
+            hang.topAnchor.constraint(equalTo: vienBao.topAnchor),
+            hang.bottomAnchor.constraint(equalTo: vienBao.bottomAnchor, constant: -1),
+            hang.leadingAnchor.constraint(equalTo: vienBao.leadingAnchor, constant: 1),
+            hang.trailingAnchor.constraint(equalTo: vienBao.trailingAnchor, constant: -1)
+        ])
+        return vienBao
+    }
+
+    private func taoKhungO(rong: CGFloat, cao: CGFloat, mauNen: UIColor) -> UIView {
+        let v = UIView()
+        v.backgroundColor = mauNen
+        v.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            v.widthAnchor.constraint(equalToConstant: rong),
+            v.heightAnchor.constraint(equalToConstant: cao)
+        ])
+        return v
+    }
+
+    private func ganGiua(_ con: UIView, vao cha: UIView) {
+        con.translatesAutoresizingMaskIntoConstraints = false
+        cha.addSubview(con)
+        NSLayoutConstraint.activate([
+            con.centerXAnchor.constraint(equalTo: cha.centerXAnchor),
+            con.centerYAnchor.constraint(equalTo: cha.centerYAnchor)
+        ])
+    }
+
+    // MARK: - Thao tác Bảng, Cột, Hàng
+
+    @objc private func hienHopThoaiThemBang() {
+        let alert = UIAlertController(
+            title: "Thêm bảng Xưởng Cán mới",
+            message: "Tạo bảng mới với các cột mặc định (có thể thêm/sửa cột tùy ý).",
+            preferredStyle: .alert
+        )
+        alert.addTextField { tf in
+            tf.placeholder = "Tên bảng (VD: Cán Thép Lô B2)"
+        }
+        alert.addTextField { tf in
+            tf.placeholder = "Mô tả ngắn (tùy chọn)"
+        }
+        alert.addAction(UIAlertAction(title: "Hủy", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Tạo bảng", style: .default) { [weak self] _ in
+            guard let self else { return }
+            let ten = alert.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let moTa = alert.textFields?.last?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let tenChuan = ten.isEmpty ? "Bảng Xưởng Cán \(KhoDuLieu.dungChung.danhSachBangXuongCan.count + 1)" : ten
+
+            let c1 = CotXuongCan(tenCot: " Nội dung / Mã", loai: .chu, thuTu: 0)
+            let c2 = CotXuongCan(tenCot: "Thông số", loai: .chu, thuTu: 1)
+            let c3 = CotXuongCan(tenCot: "Ảnh chụp", loai: .anh, thuTu: 2)
+            let bangMoi = BangXuongCan(tenBang: tenChuan, moTa: moTa, cot: [c1, c2, c3], dong: [DongXuongCan()])
+
+            var ds = KhoDuLieu.dungChung.danhSachBangXuongCan
+            ds.append(bangMoi)
+            self.chiSoBang = ds.count - 1
+            KhoDuLieu.dungChung.luuBangXuongCan(ds)
+        })
+        present(alert, animated: true)
+    }
+
+    @objc private func hienHopThoaiThemCot() {
+        guard var bang = bangHienTai else { return }
+        let alert = UIAlertController(
+            title: "Thêm cột mới vào '\(bang.tenBang)'",
+            message: "Nhập tên cột và chọn kiểu dữ liệu muốn điền vào cột này:",
+            preferredStyle: .alert
+        )
+        alert.addTextField { tf in
+            tf.placeholder = "Tên cột (VD: Nhiệt độ cán, Ảnh bề mặt...)"
+        }
+        alert.addAction(UIAlertAction(title: "📝 Thêm cột Chữ (Text)", style: .default) { _ in
+            let ten = alert.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let cotMoi = CotXuongCan(
+                tenCot: ten.isEmpty ? "Cột chữ \(bang.cot.count + 1)" : ten,
+                loai: .chu,
+                thuTu: bang.cot.count
+            )
+            bang.cot.append(cotMoi)
+            bang.capNhatLuc = Date()
+            KhoDuLieu.dungChung.capNhatMotBangXuongCan(bang)
+        })
+        alert.addAction(UIAlertAction(title: "📸 Thêm cột Ảnh chụp (Image)", style: .default) { _ in
+            let ten = alert.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let cotMoi = CotXuongCan(
+                tenCot: ten.isEmpty ? "Cột ảnh \(bang.cot.count + 1)" : ten,
+                loai: .anh,
+                thuTu: bang.cot.count
+            )
+            bang.cot.append(cotMoi)
+            bang.capNhatLuc = Date()
+            KhoDuLieu.dungChung.capNhatMotBangXuongCan(bang)
+        })
+        alert.addAction(UIAlertAction(title: "Hủy", style: .cancel))
+        present(alert, animated: true)
+    }
+
+    @objc private func themDongMoi() {
+        guard var bang = bangHienTai else { return }
+        bang.dong.append(DongXuongCan())
+        bang.capNhatLuc = Date()
+        KhoDuLieu.dungChung.capNhatMotBangXuongCan(bang)
+    }
+
+    private func hienMenuChinhSuaCot(bang: BangXuongCan, cot: CotXuongCan) {
+        let sheet = UIAlertController(
+            title: "Cột: \(cot.tenCot)",
+            message: "Kiểu hiện tại: \(cot.loai.tenHienThi)",
+            preferredStyle: .actionSheet
+        )
+        sheet.addAction(UIAlertAction(title: "✏️ Đổi tên cột", style: .default) { [weak self] _ in
+            self?.doiTenCot(bang: bang, cot: cot)
+        })
+        let loaiKhac: LoaiCotXuongCan = (cot.loai == .chu) ? .anh : .chu
+        sheet.addAction(UIAlertAction(title: "🔄 Chuyển sang kiểu \(loaiKhac.tenHienThi)", style: .default) { _ in
+            var bangMoi = bang
+            if let idx = bangMoi.cot.firstIndex(where: { $0.id == cot.id }) {
+                bangMoi.cot[idx].loai = loaiKhac
+                bangMoi.capNhatLuc = Date()
+                KhoDuLieu.dungChung.capNhatMotBangXuongCan(bangMoi)
+            }
+        })
+        if bang.cot.count > 1 {
+            sheet.addAction(UIAlertAction(title: "🗑️ Xóa cột này", style: .destructive) { _ in
+                var bangMoi = bang
+                bangMoi.cot.removeAll { $0.id == cot.id }
+                bangMoi.capNhatLuc = Date()
+                KhoDuLieu.dungChung.capNhatMotBangXuongCan(bangMoi)
+            })
+        }
+        sheet.addAction(UIAlertAction(title: "Đóng", style: .cancel))
+        if let pop = sheet.popoverPresentationController {
+            pop.sourceView = view
+            pop.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 1, height: 1)
+        }
+        present(sheet, animated: true)
+    }
+
+    private func doiTenCot(bang: BangXuongCan, cot: CotXuongCan) {
+        let alert = UIAlertController(title: "Đổi tên cột", message: nil, preferredStyle: .alert)
+        alert.addTextField { tf in tf.text = cot.tenCot }
+        alert.addAction(UIAlertAction(title: "Hủy", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Lưu", style: .default) { _ in
+            let tenMoi = alert.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard !tenMoi.isEmpty else { return }
+            var bangMoi = bang
+            if let idx = bangMoi.cot.firstIndex(where: { $0.id == cot.id }) {
+                bangMoi.cot[idx].tenCot = tenMoi
+                bangMoi.capNhatLuc = Date()
+                KhoDuLieu.dungChung.capNhatMotBangXuongCan(bangMoi)
+            }
+        })
+        present(alert, animated: true)
+    }
+
+    private func xacNhanXoaDong(bang: BangXuongCan, idDong: String, soThuTu: Int) {
+        let alert = UIAlertController(
+            title: "Xóa dòng #\(soThuTu)?",
+            message: "Dữ liệu của dòng này sẽ bị xóa khỏi bảng.",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "Hủy", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Xóa dòng", style: .destructive) { _ in
+            var bangMoi = bang
+            bangMoi.dong.removeAll { $0.id == idDong }
+            bangMoi.capNhatLuc = Date()
+            KhoDuLieu.dungChung.capNhatMotBangXuongCan(bangMoi)
+        })
+        present(alert, animated: true)
+    }
+
+    @objc private func moMenuTuyChonBang() {
+        guard let bang = bangHienTai else { return }
+        let sheet = UIAlertController(
+            title: bang.tenBang,
+            message: "Quản lý bảng, đồng bộ Supabase và cấu hình lưu ảnh Google Drive",
+            preferredStyle: .actionSheet
+        )
+        sheet.addAction(UIAlertAction(title: "✏️ Đổi tên bảng hiện tại", style: .default) { [weak self] _ in
+            self?.doiTenBang(bang)
+        })
+        sheet.addAction(UIAlertAction(title: "☁️ Đồng bộ ngay lên Supabase", style: .default) { [weak self] _ in
+            self?.dongBoThuCong()
+        })
+        sheet.addAction(UIAlertAction(title: "📥 Tải dữ liệu Xưởng Cán từ Supabase về", style: .default) { [weak self] _ in
+            DichVuSupabase.dungChung.taiXuongCanTuSupabase { ok, msg in
+                self?.hienThongBao(tieuDe: ok ? "Thành công" : "Thông báo", noiDung: msg)
+            }
+        })
+        sheet.addAction(UIAlertAction(title: "🔑 Cấu hình Key Google Drive & Hướng dẫn lấy Key", style: .default) { [weak self] _ in
+            self?.moCauHinhDrive()
+        })
+        if KhoDuLieu.dungChung.danhSachBangXuongCan.count > 1 {
+            sheet.addAction(UIAlertAction(title: "🗑️ Xóa bảng '\(bang.tenBang)'", style: .destructive) { [weak self] _ in
+                guard let self else { return }
+                var ds = KhoDuLieu.dungChung.danhSachBangXuongCan
+                ds.removeAll { $0.id == bang.id }
+                self.chiSoBang = max(0, self.chiSoBang - 1)
+                KhoDuLieu.dungChung.luuBangXuongCan(ds)
+            })
+        }
+        sheet.addAction(UIAlertAction(title: "Đóng", style: .cancel))
+        if let pop = sheet.popoverPresentationController {
+            pop.sourceView = view
+            pop.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 1, height: 1)
+        }
+        present(sheet, animated: true)
+    }
+
+    private func doiTenBang(_ bang: BangXuongCan) {
+        let alert = UIAlertController(title: "Đổi tên bảng", message: nil, preferredStyle: .alert)
+        alert.addTextField { tf in tf.text = bang.tenBang }
+        alert.addAction(UIAlertAction(title: "Hủy", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Lưu", style: .default) { _ in
+            let tenMoi = alert.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard !tenMoi.isEmpty else { return }
+            var bangMoi = bang
+            bangMoi.tenBang = tenMoi
+            bangMoi.capNhatLuc = Date()
+            KhoDuLieu.dungChung.capNhatMotBangXuongCan(bangMoi)
+        })
+        present(alert, animated: true)
+    }
+
+    // MARK: - Nhập dữ liệu Ô Chữ (Text)
+
+    private func moHopThoaiNhapChu(bang: BangXuongCan, dong: DongXuongCan, cot: CotXuongCan, giaTriCu: String) {
+        let vc = ManHinhNhapVanBanO(tenCot: cot.tenCot, giaTriBanDau: giaTriCu) { vanBanMoi in
+            var bangMoi = bang
+            guard let iDong = bangMoi.dong.firstIndex(where: { $0.id == dong.id }) else { return }
+            var oHienTai = bangMoi.dong[iDong].giaTri[cot.id] ?? GiaTriOXuongCan()
+            oHienTai.vanBan = vanBanMoi
+            bangMoi.dong[iDong].giaTri[cot.id] = oHienTai
+            bangMoi.dong[iDong].capNhatLuc = Date()
+            bangMoi.capNhatLuc = Date()
+            KhoDuLieu.dungChung.capNhatMotBangXuongCan(bangMoi)
+        }
+        let nav = UINavigationController(rootViewController: vc)
+        if let sheet = nav.sheetPresentationController {
+            sheet.detents = [.medium()]
+        }
+        present(nav, animated: true)
+    }
+
+    // MARK: - Chụp ảnh / Chọn ảnh, Lưu Bộ nhớ đệm (Cache) + Google Drive + Đồng bộ Supabase
+
+    private func moMenuThaoTacOAnh(bang: BangXuongCan, dong: DongXuongCan, cot: CotXuongCan, thongTinAnh: ThongTinAnhXuongCan) {
+        let sheet = UIAlertController(
+            title: "Ảnh: \(cot.tenCot)",
+            message: thongTinAnh.daTaiLenDrive
+                ? "Đã lưu trên Google Drive (\(thongTinAnh.driveFileId ?? "")) & Bộ nhớ đệm ứng dụng."
+                : "Đã lưu trong Bộ nhớ đệm ứng dụng & đồng bộ Supabase.",
+            preferredStyle: .actionSheet
+        )
+        sheet.addAction(UIAlertAction(title: "🔍 Xem ảnh phóng to toàn màn hình", style: .default) { [weak self] _ in
+            let xemVC = ManHinhXemAnhToanManHinh(thongTinAnh: thongTinAnh, tieuDe: cot.tenCot)
+            let nav = UINavigationController(rootViewController: xemVC)
+            nav.modalPresentationStyle = .fullScreen
+            self?.present(nav, animated: true)
+        })
+        sheet.addAction(UIAlertAction(title: "📸 Chụp hoặc chọn ảnh khác", style: .default) { [weak self] _ in
+            self?.chonNguonAnh(idBang: bang.id, idDong: dong.id, idCot: cot.id)
+        })
+        if let link = thongTinAnh.driveUrl, !link.isEmpty {
+            sheet.addAction(UIAlertAction(title: "📋 Copy Link ảnh Google Drive", style: .default) { [weak self] _ in
+                UIPasteboard.general.string = link
+                self?.hienThongBao(tieuDe: "Đã Copy", noiDung: "Đã sao chép đường dẫn ảnh trên Google Drive:\n\(link)")
+            })
+        }
+        sheet.addAction(UIAlertAction(title: "🗑️ Xóa ảnh này", style: .destructive) { _ in
+            var bangMoi = bang
+            guard let iDong = bangMoi.dong.firstIndex(where: { $0.id == dong.id }) else { return }
+            bangMoi.dong[iDong].giaTri.removeValue(forKey: cot.id)
+            bangMoi.dong[iDong].capNhatLuc = Date()
+            bangMoi.capNhatLuc = Date()
+            KhoDuLieu.dungChung.capNhatMotBangXuongCan(bangMoi)
+        })
+        sheet.addAction(UIAlertAction(title: "Đóng", style: .cancel))
+        if let pop = sheet.popoverPresentationController {
+            pop.sourceView = view
+            pop.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 1, height: 1)
+        }
+        present(sheet, animated: true)
+    }
+
+    private func chonNguonAnh(idBang: String, idDong: String, idCot: String) {
+        oAnhDangChon = (idBang, idDong, idCot)
+        let sheet = UIAlertController(title: "Điền ảnh vào ô", message: "Ảnh sẽ được lưu vào Bộ nhớ đệm để mở tức thì và tải lên Google Drive + Supabase.", preferredStyle: .actionSheet)
+        if UIImagePickerController.isSourceTypeAvailable(.camera) {
+            sheet.addAction(UIAlertAction(title: "📸 Chụp ảnh trực tiếp (Camera)", style: .default) { [weak self] _ in
+                self?.moTrinhChonAnh(loai: .camera)
+            })
+        }
+        sheet.addAction(UIAlertAction(title: "🖼️ Chọn từ Thư viện ảnh", style: .default) { [weak self] _ in
+            self?.moTrinhChonAnh(loai: .photoLibrary)
+        })
+        sheet.addAction(UIAlertAction(title: "Hủy", style: .cancel))
+        if let pop = sheet.popoverPresentationController {
+            pop.sourceView = view
+            pop.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 1, height: 1)
+        }
+        present(sheet, animated: true)
+    }
+
+    private func moTrinhChonAnh(loai: UIImagePickerController.SourceType) {
+        let picker = UIImagePickerController()
+        picker.sourceType = loai
+        picker.delegate = self
+        picker.allowsEditing = false
+        present(picker, animated: true)
+    }
+
+    func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+        picker.dismiss(animated: true)
+        guard let anhGoc = info[.originalImage] as? UIImage,
+              let viTri = oAnhDangChon else { return }
+
+        let maAnh = "XC_\(UUID().uuidString)"
+        let tenTep = "XuongCan_\(Int(Date().timeIntervalSince1970)).jpg"
+
+        // 1. Lưu ngay vào Bộ nhớ đệm 2 tầng (RAM + Disk Cache) để lần sau mở siêu nhanh
+        BoNhoDemAnh.dungChung.luuAnh(anhGoc, maAnh: maAnh)
+        let thumbB64 = BoNhoDemAnh.dungChung.taoThumbnailBase64(tu: anhGoc)
+
+        let thongTinTam = ThongTinAnhXuongCan(
+            maAnh: maAnh,
+            driveFileId: nil,
+            driveUrl: nil,
+            thumbnailBase64: thumbB64,
+            capNhatLuc: Date(),
+            daTaiLenDrive: false
+        )
+
+        capNhatThongTinAnhVaoBang(viTri: viTri, thongTin: thongTinTam)
+
+        // 2. Tải ảnh lên Google Drive ở chế độ nền và cập nhật lại Supabase khi hoàn tất
+        DichVuGoogleDrive.dungChung.taiAnhLenDrive(anh: anhGoc, tenTep: tenTep) { [weak self] fileId, driveUrl, _ in
+            guard let self else { return }
+            if let fileId, !fileId.isEmpty {
+                BoNhoDemAnh.dungChung.luuAnh(anhGoc, maAnh: fileId)
+                let thongTinDaLuuDrive = ThongTinAnhXuongCan(
+                    maAnh: maAnh,
+                    driveFileId: fileId,
+                    driveUrl: driveUrl,
+                    thumbnailBase64: thumbB64,
+                    capNhatLuc: Date(),
+                    daTaiLenDrive: true
+                )
+                self.capNhatThongTinAnhVaoBang(viTri: viTri, thongTin: thongTinDaLuuDrive)
+            }
+        }
+    }
+
+    private func capNhatThongTinAnhVaoBang(viTri: (idBang: String, idDong: String, idCot: String), thongTin: ThongTinAnhXuongCan) {
+        var dsBang = KhoDuLieu.dungChung.danhSachBangXuongCan
+        guard let iBang = dsBang.firstIndex(where: { $0.id == viTri.idBang }),
+              let iDong = dsBang[iBang].dong.firstIndex(where: { $0.id == viTri.idDong }) else { return }
+        var o = dsBang[iBang].dong[iDong].giaTri[viTri.idCot] ?? GiaTriOXuongCan()
+        o.anh = thongTin
+        dsBang[iBang].dong[iDong].giaTri[viTri.idCot] = o
+        dsBang[iBang].dong[iDong].capNhatLuc = Date()
+        dsBang[iBang].capNhatLuc = Date()
+        KhoDuLieu.dungChung.luuBangXuongCan(dsBang, dongBoSupabase: true)
+    }
+
+    @objc private func dongBoThuCong() {
+        DichVuSupabase.dungChung.dongBoXuongCanTuDong { [weak self] ok, msg in
+            self?.hienThongBao(tieuDe: ok ? "Đồng bộ thành công" : "Thông báo đồng bộ", noiDung: msg)
+        }
+    }
+
+    @objc private func moCauHinhDrive() {
+        let vc = ManHinhCauHinhDriveXuongCan()
+        let nav = UINavigationController(rootViewController: vc)
+        present(nav, animated: true)
+    }
+
+    private func hienThongBao(tieuDe: String, noiDung: String) {
+        let alert = UIAlertController(title: tieuDe, message: noiDung, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Đóng", style: .default))
+        present(alert, animated: true)
+    }
+}
+
+// MARK: - Màn hình Nhập Văn Bản Cho Ô
+
+final class ManHinhNhapVanBanO: UIViewController {
+    private let tenCot: String
+    private let giaTriBanDau: String
+    private let khiLuu: (String) -> Void
+    private let oVanBan = UITextView()
+
+    init(tenCot: String, giaTriBanDau: String, khiLuu: @escaping (String) -> Void) {
+        self.tenCot = tenCot
+        self.giaTriBanDau = giaTriBanDau
+        self.khiLuu = khiLuu
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("Khong ho tro coder")
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        let mau = KhoDuLieu.dungChung.mauSac
+        view.backgroundColor = mau.card
+        title = tenCot
+
+        navigationItem.leftBarButtonItem = UIBarButtonItem(title: "Hủy", style: .plain, target: self, action: #selector(huy))
+        navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Lưu", style: .done, target: self, action: #selector(luu))
+
+        oVanBan.text = giaTriBanDau
+        oVanBan.font = .systemFont(ofSize: 16)
+        oVanBan.textColor = mau.text
+        oVanBan.backgroundColor = mau.iconBg
+        oVanBan.layer.cornerRadius = 12
+        oVanBan.layer.borderWidth = 1
+        oVanBan.layer.borderColor = mau.border.cgColor
+        oVanBan.textContainerInset = UIEdgeInsets(top: 12, left: 10, bottom: 12, right: 10)
+        oVanBan.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(oVanBan)
+
+        NSLayoutConstraint.activate([
+            oVanBan.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
+            oVanBan.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            oVanBan.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            oVanBan.heightAnchor.constraint(equalToConstant: 200)
+        ])
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        oVanBan.becomeFirstResponder()
+    }
+
+    @objc private func huy() {
+        dismiss(animated: true)
+    }
+
+    @objc private func luu() {
+        let chu = oVanBan.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        khiLuu(chu)
+        dismiss(animated: true)
+    }
+}
+
+// MARK: - Màn hình Xem Ảnh Phóng To Toàn Màn Hình (Hỗ trợ Zoom 2 ngón tay)
+
+final class ManHinhXemAnhToanManHinh: UIViewController, UIScrollViewDelegate {
+    private let thongTinAnh: ThongTinAnhXuongCan
+    private let tieuDeAnh: String
+    private let cuonZoom = UIScrollView()
+    private let khungAnh = UIImageView()
+
+    init(thongTinAnh: ThongTinAnhXuongCan, tieuDe: String) {
+        self.thongTinAnh = thongTinAnh
+        self.tieuDeAnh = tieuDe
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("Khong ho tro coder")
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .black
+        title = tieuDeAnh
+        navigationItem.leftBarButtonItem = UIBarButtonItem(title: "Đóng", style: .done, target: self, action: #selector(dong))
+        navigationItem.rightBarButtonItem = UIBarButtonItem(
+            image: UIImage(systemName: "square.and.arrow.up"),
+            style: .plain,
+            target: self,
+            action: #selector(chiaSeAnh)
+        )
+
+        cuonZoom.delegate = self
+        cuonZoom.minimumZoomScale = 1.0
+        cuonZoom.maximumZoomScale = 5.0
+        cuonZoom.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(cuonZoom)
+
+        khungAnh.contentMode = .scaleAspectFit
+        khungAnh.translatesAutoresizingMaskIntoConstraints = false
+        cuonZoom.addSubview(khungAnh)
+
+        NSLayoutConstraint.activate([
+            cuonZoom.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            cuonZoom.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            cuonZoom.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            cuonZoom.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+
+            khungAnh.widthAnchor.constraint(equalTo: cuonZoom.frameLayoutGuide.widthAnchor),
+            khungAnh.heightAnchor.constraint(equalTo: cuonZoom.frameLayoutGuide.heightAnchor),
+            khungAnh.centerXAnchor.constraint(equalTo: cuonZoom.contentLayoutGuide.centerXAnchor),
+            khungAnh.centerYAnchor.constraint(equalTo: cuonZoom.contentLayoutGuide.centerYAnchor)
+        ])
+
+        BoNhoDemAnh.dungChung.taiAnh(thongTin: thongTinAnh) { [weak self] img in
+            self?.khungAnh.image = img
+        }
+    }
+
+    func viewForZooming(in scrollView: UIScrollView) -> UIView? {
+        khungAnh
+    }
+
+    @objc private func dong() {
+        dismiss(animated: true)
+    }
+
+    @objc private func chiaSeAnh() {
+        guard let img = khungAnh.image else { return }
+        let ac = UIActivityViewController(activityItems: [img], applicationActivities: nil)
+        present(ac, animated: true)
+    }
+}
+
+// MARK: - Màn hình Cấu Hình Google Drive & Hướng Dẫn Lấy Key Chi Tiết
+
+final class ManHinhCauHinhDriveXuongCan: UIViewController {
+    private let oDriveKey = UITextField()
+    private let oFolderId = UITextField()
+    private let oScriptUrl = UITextField()
+    private let oClientId = UITextField()
+    private let oClientSecret = UITextField()
+    private let oRefreshToken = UITextField()
+
+    static let maGoogleAppsScriptMau = """
+    // Dán đoạn mã này vào https://script.google.com -> Bấm Deploy -> New deployment -> Web app (Anyone)
+    function doPost(e) {
+      try {
+        var data = JSON.parse(e.postData.contents);
+        if (data.action === "upload_drive") {
+          var folder = data.folderId ? DriveApp.getFolderById(data.folderId) : DriveApp.getRootFolder();
+          var bytes = Utilities.base64Decode(data.base64);
+          var blob = Utilities.newBlob(bytes, data.mimeType || "image/jpeg", data.filename || "xuong_can.jpg");
+          var file = folder.createFile(blob);
+          file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+          var fileId = file.getId();
+          return ContentService.createTextOutput(JSON.stringify({
+            result: "success",
+            fileId: fileId,
+            url: "https://drive.google.com/uc?export=view&id=" + fileId
+          })).setMimeType(ContentService.MimeType.JSON);
+        }
+      } catch (err) {
+        return ContentService.createTextOutput(JSON.stringify({
+          result: "error",
+          error: err.toString()
+        })).setMimeType(ContentService.MimeType.JSON);
+      }
+    }
+    """
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        let mau = KhoDuLieu.dungChung.mauSac
+        view.backgroundColor = mau.bg
+        title = "Cấu hình Drive & Supabase"
+
+        navigationItem.leftBarButtonItem = UIBarButtonItem(title: "Đóng", style: .plain, target: self, action: #selector(dong))
+        navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Lưu", style: .done, target: self, action: #selector(luu))
+
+        let cd = KhoDuLieu.dungChung.caiDat
+        oDriveKey.text = cd.driveKey
+        oFolderId.text = cd.driveFolderId
+        oScriptUrl.text = cd.driveScriptUrl
+        oClientId.text = cd.driveClientId
+        oClientSecret.text = cd.driveClientSecret
+        oRefreshToken.text = cd.driveRefreshToken
+
+        let cuon = UIScrollView()
+        cuon.keyboardDismissMode = .interactive
+        cuon.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(cuon)
+
+        let ngan = UIStackView()
+        ngan.axis = .vertical
+        ngan.spacing = 14
+        ngan.translatesAutoresizingMaskIntoConstraints = false
+        cuon.addSubview(ngan)
+
+        let hopLuuY = UILabel()
+        hopLuuY.numberOfLines = 0
+        hopLuuY.font = .systemFont(ofSize: 13)
+        hopLuuY.textColor = mau.text
+        hopLuuY.text = """
+        💡 LƯU Ý VỀ KEY DRIVE CỦA BẠN:
+        Key `AQ.Ab8RN6IGGziGDdVjRVKCwe06oAOX8OldcVLm3fLdoRu3ZpwEsg` đã được nạp sẵn bên dưới. Tuy nhiên, Google Drive API không cho phép ghi/tải file lên bằng API Key đơn thuần (chỉ cho phép đọc), mà yêu cầu quyền ghi qua 1 trong 2 cách cực dễ sau:
+
+        • CÁCH 1 (Khuyên dùng - Dễ nhất & Không bao giờ hết hạn): Dùng Cầu nối Google Apps Script (giống hệt tab Sheets của bạn). Chỉ cần bấm nút 'Copy mã Google Apps Script' bên dưới, dán vào script.google.com, bấm Deploy -> Web App rồi dán Link vào ô 'Link Google Apps Script Drive'.
+        • CÁCH 2 (Chuẩn OAuth2 Google Drive API v3): Lấy Client ID, Client Secret và Refresh Token từ Google Cloud Console + OAuth Playground (scope: https://www.googleapis.com/auth/drive.file) rồi điền vào bên dưới.
+        """
+
+        let nutCopyScript = UIButton(type: .system)
+        var chScript = UIButton.Configuration.filled()
+        chScript.title = "📋 Copy mã Google Apps Script lưu ảnh Drive"
+        chScript.baseBackgroundColor = mau.primary
+        nutCopyScript.configuration = chScript
+        nutCopyScript.addAction(UIAction { [weak self] _ in
+            UIPasteboard.general.string = Self.maGoogleAppsScriptMau
+            self?.hienDaCopy("Đã copy mã Google Apps Script! Hãy dán vào script.google.com và Deploy ra Web App URL.")
+        }, for: .touchUpInside)
+
+        let nutCopySQL = UIButton(type: .system)
+        var chSQL = UIButton.Configuration.tinted()
+        chSQL.title = "📋 Copy mã SQL tạo bảng xuong_can_bang (Supabase)"
+        nutCopySQL.configuration = chSQL
+        nutCopySQL.addAction(UIAction { [weak self] _ in
+            UIPasteboard.general.string = DichVuSupabase.sqlTaoBangXuongCan
+            self?.hienDaCopy("Đã copy mã SQL! Hãy mở Supabase -> SQL Editor -> Dán và bấm Run.")
+        }, for: .touchUpInside)
+
+        [
+            hopLuuY,
+            nutCopyScript,
+            nutCopySQL,
+            taoNhomONhap("Link Google Apps Script Drive (Khuyên dùng):", oScriptUrl, goiY: "https://script.google.com/macros/s/.../exec"),
+            taoNhomONhap("Google Drive Folder ID (Để trống sẽ lưu thư mục gốc):", oFolderId, goiY: "VD: 1A2b3C4d5E6f7G8h9I0j..."),
+            taoNhomONhap("Google Drive Key / Access Token:", oDriveKey, goiY: "AQ.Ab8RN6... hoặc ya29..."),
+            taoNhomONhap("OAuth2 Client ID (Tùy chọn Cách 2):", oClientId, goiY: "...apps.googleusercontent.com"),
+            taoNhomONhap("OAuth2 Client Secret (Tùy chọn Cách 2):", oClientSecret, goiY: "GOCSPX-..."),
+            taoNhomONhap("OAuth2 Refresh Token (Tùy chọn Cách 2):", oRefreshToken, goiY: "1//04...")
+        ].forEach { ngan.addArrangedSubview($0) }
+
+        NSLayoutConstraint.activate([
+            cuon.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            cuon.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            cuon.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            cuon.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+
+            ngan.topAnchor.constraint(equalTo: cuon.contentLayoutGuide.topAnchor, constant: 16),
+            ngan.bottomAnchor.constraint(equalTo: cuon.contentLayoutGuide.bottomAnchor, constant: -30),
+            ngan.leadingAnchor.constraint(equalTo: cuon.frameLayoutGuide.leadingAnchor, constant: 16),
+            ngan.trailingAnchor.constraint(equalTo: cuon.frameLayoutGuide.trailingAnchor, constant: -16)
+        ])
+    }
+
+    private func taoNhomONhap(_ tieuDe: String, _ tf: UITextField, goiY: String) -> UIStackView {
+        let mau = KhoDuLieu.dungChung.mauSac
+        let lb = UILabel()
+        lb.text = tieuDe
+        lb.font = .systemFont(ofSize: 13, weight: .semibold)
+        lb.textColor = mau.subText
+
+        tf.borderStyle = .roundedRect
+        tf.backgroundColor = mau.card
+        tf.textColor = mau.text
+        tf.placeholder = goiY
+        tf.autocapitalizationType = .none
+        tf.autocorrectionType = .no
+
+        let st = UIStackView(arrangedSubviews: [lb, tf])
+        st.axis = .vertical
+        st.spacing = 6
+        return st
+    }
+
+    private func hienDaCopy(_ thongDiep: String) {
+        let alert = UIAlertController(title: "Đã sao chép", message: thongDiep, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Đóng", style: .default))
+        present(alert, animated: true)
+    }
+
+    @objc private func dong() {
+        dismiss(animated: true)
+    }
+
+    @objc private func luu() {
+        view.endEditing(true)
+        var cd = KhoDuLieu.dungChung.caiDat
+        cd.driveKey = oDriveKey.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        cd.driveFolderId = oFolderId.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        cd.driveScriptUrl = oScriptUrl.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        cd.driveClientId = oClientId.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        cd.driveClientSecret = oClientSecret.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        cd.driveRefreshToken = oRefreshToken.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        KhoDuLieu.dungChung.luuCaiDat(cd)
+        dismiss(animated: true)
+    }
+}
