@@ -1,0 +1,132 @@
+name: Tao IPA va Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  tao-ipa-va-release:
+    runs-on: macos-15
+
+    steps:
+      - name: Tai ma nguon
+        uses: actions/checkout@v4
+
+      - name: Cai XcodeGen
+        run: brew install xcodegen
+
+      - name: Chuan hoa icon ung dung
+        shell: bash
+        run: |
+          set -e
+          ICON_DIR="TaiNguyen/Assets.xcassets/AppIcon.appiconset"
+          SOURCE_ICON="$ICON_DIR/icon.png"
+
+          if [ ! -f "$SOURCE_ICON" ]; then
+            echo "Khong tim thay $SOURCE_ICON"
+            exit 1
+          fi
+
+          WIDTH=$(sips -g pixelWidth "$SOURCE_ICON" | awk '/pixelWidth/ {print $2}')
+          HEIGHT=$(sips -g pixelHeight "$SOURCE_ICON" | awk '/pixelHeight/ {print $2}')
+
+          if [ "$WIDTH" != "$HEIGHT" ]; then
+            echo "icon.png phai la anh vuong. Hien tai: ${WIDTH}x${HEIGHT}"
+            exit 1
+          fi
+
+          cp "$SOURCE_ICON" "$ICON_DIR/icon-source.png"
+          sips -z 1024 1024 "$ICON_DIR/icon-source.png" --out "$ICON_DIR/AppIcon-1024.png" >/dev/null
+
+          python3 - <<'PYICON'
+          import json
+          from pathlib import Path
+
+          icon_dir = Path("TaiNguyen/Assets.xcassets/AppIcon.appiconset")
+          contents = {
+              "images": [
+                  {
+                      "filename": "AppIcon-1024.png",
+                      "idiom": "universal",
+                      "platform": "ios",
+                      "size": "1024x1024"
+                  }
+              ],
+              "info": {
+                  "author": "xcode",
+                  "version": 1
+              }
+          }
+          (icon_dir / "Contents.json").write_text(
+              json.dumps(contents, ensure_ascii=False, indent=2),
+              encoding="utf-8"
+          )
+          PYICON
+
+          sips -g pixelWidth -g pixelHeight "$ICON_DIR/AppIcon-1024.png"
+
+      - name: Tao Xcode project
+        run: xcodegen generate
+
+      - name: Build ung dung
+        run: |
+          set -e
+          xcodebuild \
+            -project GhiChu.xcodeproj \
+            -scheme GhiChu \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+
+      - name: Dong goi IPA
+        run: |
+          set -e
+          APP_PATH="DerivedData/Build/Products/Release-iphoneos/GhiChu.app"
+          IPA_PATH="GhiChu-unsigned.ipa"
+          test -d "$APP_PATH"
+          rm -rf Payload "$IPA_PATH"
+          mkdir -p Payload
+          cp -R "$APP_PATH" Payload/
+          zip -qry "$IPA_PATH" Payload
+          test -f "$IPA_PATH"
+          ls -lh "$IPA_PATH"
+
+      - name: Tao thong tin phien ban
+        id: version
+        shell: bash
+        run: |
+          TAG="v$(date +'%Y.%m.%d')-${GITHUB_RUN_NUMBER}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Luu IPA vao Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GhiChu-unsigned
+          path: GhiChu-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Tao Release va tai IPA len
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: Ghi Chu & Xuong Can (Swift) ${{ steps.version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          body: |
+            Bản IPA chưa ký (Swift UIKit thuần) dành cho iPhone/iPad.
+            Tích hợp đầy đủ: Lịch ca làm việc & Âm lịch, Xưởng Cán (bảng động, cột chữ/ảnh chụp, lưu Google Drive + Bộ nhớ đệm Cache + Đồng bộ Supabase), Ghi chú nhanh, Sheets, Media AI (Gemini), Nhắc nhở đọc giọng nói, và Cài đặt.
+
+            Tải file GhiChu-unsigned.ipa trong phần Assets và ký bằng ESign hoặc Scarlet.
+          files: GhiChu-unsigned.ipa
+          fail_on_unmatched_files: true
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
