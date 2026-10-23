@@ -1,26 +1,119 @@
 import UIKit
 import UserNotifications
 
-// MARK: - 1. Mô hình Lịch & Ghi chú nhanh & Nhắc nhở
+// MARK: - 1. Mô hình Lịch & Ghi chú nhanh & Nhắc nhở (Tương thích 100% dữ liệu cũ từ React Native / Supabase)
 
 struct GhiChuNgay: Codable, Hashable {
-    var type: String // "ngay", "dem", "nghi", hoặc ""
+    var type: String
     var noteLines: [String]
+
+    init(type: String = "", noteLines: [String] = []) {
+        self.type = type
+        self.noteLines = noteLines
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case type, noteLines
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.type = (try? c.decodeIfPresent(String.self, forKey: .type)) ?? ""
+        self.noteLines = (try? c.decodeIfPresent([String].self, forKey: .noteLines)) ?? []
+    }
 }
 
 struct GhiChuNhanh: Codable, Hashable, Identifiable {
-    var id: String = UUID().uuidString
+    var id: String
     var title: String
     var content: String
     var date: String
-    var isPinned: Bool = false
+    var isPinned: Bool
+
+    init(
+        id: String = UUID().uuidString,
+        title: String,
+        content: String,
+        date: String,
+        isPinned: Bool = false
+    ) {
+        self.id = id
+        self.title = title
+        self.content = content
+        self.date = date
+        self.isPinned = isPinned
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, content, date, isPinned
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        if let strId = try? c.decodeIfPresent(String.self, forKey: .id), !strId.isEmpty {
+            self.id = strId
+        } else if let intId = try? c.decodeIfPresent(Int64.self, forKey: .id) {
+            self.id = String(intId)
+        } else if let dblId = try? c.decodeIfPresent(Double.self, forKey: .id) {
+            self.id = String(Int64(dblId))
+        } else {
+            self.id = UUID().uuidString
+        }
+        self.title = (try? c.decodeIfPresent(String.self, forKey: .title)) ?? ""
+        self.content = (try? c.decodeIfPresent(String.self, forKey: .content)) ?? ""
+        self.date = (try? c.decodeIfPresent(String.self, forKey: .date)) ?? ""
+        if let b = try? c.decodeIfPresent(Bool.self, forKey: .isPinned) {
+            self.isPinned = b
+        } else if let i = try? c.decodeIfPresent(Int.self, forKey: .isPinned) {
+            self.isPinned = (i != 0)
+        } else {
+            self.isPinned = false
+        }
+    }
 }
 
 struct SuKienNhacNho: Codable, Hashable, Identifiable {
-    var id: String = UUID().uuidString
+    var id: String
     var title: String
     var content: String
     var dateTime: Date
+
+    init(
+        id: String = UUID().uuidString,
+        title: String,
+        content: String,
+        dateTime: Date
+    ) {
+        self.id = id
+        self.title = title
+        self.content = content
+        self.dateTime = dateTime
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, content, dateTime
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        if let strId = try? c.decodeIfPresent(String.self, forKey: .id), !strId.isEmpty {
+            self.id = strId
+        } else if let intId = try? c.decodeIfPresent(Int64.self, forKey: .id) {
+            self.id = String(intId)
+        } else {
+            self.id = UUID().uuidString
+        }
+        self.title = (try? c.decodeIfPresent(String.self, forKey: .title)) ?? ""
+        self.content = (try? c.decodeIfPresent(String.self, forKey: .content)) ?? ""
+        if let d = try? c.decodeIfPresent(Date.self, forKey: .dateTime) {
+            self.dateTime = d
+        } else if let s = try? c.decodeIfPresent(String.self, forKey: .dateTime),
+                  let parsed = TienIchLich.docNgayISO(s) {
+            self.dateTime = parsed
+        } else {
+            self.dateTime = Date()
+        }
+    }
 }
 
 struct MucChuSheet: Codable, Hashable, Identifiable {
@@ -36,7 +129,7 @@ struct MucAnhSheet: Codable, Hashable, Identifiable {
     var base64: String? = nil
 }
 
-// MARK: - 2. Mô hình Xưởng Cán (Bảng động, Cột Chữ/Ảnh, Cache & Đồng bộ Supabase + Drive)
+// MARK: - 2. Mô hình Xưởng Cán (Chỉ lưu siêu dữ liệu & ID ảnh Google Drive lên Supabase, KHÔNG lưu dữ liệu ảnh lên Supabase)
 
 enum LoaiCotXuongCan: String, Codable, CaseIterable {
     case chu = "text"
@@ -65,12 +158,15 @@ struct CotXuongCan: Codable, Hashable, Identifiable {
 }
 
 struct ThongTinAnhXuongCan: Codable, Hashable {
-    var maAnh: String // Khóa lưu trong Bộ nhớ đệm (RAM + Disk Cache)
-    var driveFileId: String?
-    var driveUrl: String?
-    var thumbnailBase64: String? // Ảnh thu nhỏ đồng bộ kèm vào Supabase để mở tức thì trên mọi máy
+    var maAnh: String // Khóa lưu trong Bộ nhớ đệm của ứng dụng (RAM + Disk Cache)
+    var driveFileId: String? // ID file ảnh trên Google Drive
+    var driveUrl: String? // Đường dẫn xem/tải ảnh từ Google Drive
     var capNhatLuc: Date = Date()
     var daTaiLenDrive: Bool = false
+
+    enum CodingKeys: String, CodingKey {
+        case maAnh, driveFileId, driveUrl, capNhatLuc, daTaiLenDrive
+    }
 }
 
 struct GiaTriOXuongCan: Codable, Hashable {
@@ -96,8 +192,8 @@ struct BangXuongCan: Codable, Hashable, Identifiable {
 // MARK: - 3. Cấu hình & Cài đặt Ứng dụng
 
 struct TrangThaiTab: Codable, Hashable {
-    var calendar: Bool = true
     var xuongCan: Bool = true
+    var calendar: Bool = true
     var notes: Bool = true
     var sheets: Bool = true
     var media: Bool = true
@@ -127,7 +223,7 @@ struct CaiDatUngDung: Codable {
     var driveRefreshToken: String = ""
 }
 
-// MARK: - 4. Bảng màu Giao diện (Slate Light / Dark giống ThemeContext.tsx)
+// MARK: - 4. Bảng màu Giao diện
 
 struct BangMauChuDe {
     let laToi: Bool
@@ -150,7 +246,7 @@ extension Notification.Name {
     static let trangThaiDongBoThayDoi = Notification.Name("TrangThaiDongBoThayDoi")
 }
 
-// MARK: - 5. Kho Lưu Trữ Cục Bộ (Documents/DuLieuGhiChu)
+// MARK: - 5. Kho Lưu Trữ Cục Bộ & Tự Động Di Chuyển Dữ Liệu Cũ Từ React Native (AsyncStorage)
 
 final class ThuMucDuLieu {
     static let dungChung = ThuMucDuLieu()
@@ -172,7 +268,14 @@ final class ThuMucDuLieu {
 
     private let giaiMa: JSONDecoder = {
         let bo = JSONDecoder()
-        bo.dateDecodingStrategy = .iso8601
+        bo.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let str = try container.decode(String.self)
+            if let d = TienIchLich.docNgayISO(str) {
+                return d
+            }
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid date: \(str)")
+        }
         return bo
     }()
 
@@ -188,11 +291,14 @@ final class ThuMucDuLieu {
 
         try? FileManager.default.createDirectory(at: thuMuc, withIntermediateDirectories: true)
         try? FileManager.default.createDirectory(at: thuMucAnhCache, withIntermediateDirectories: true)
-        taoHuongDanNeuCan()
     }
 
     func doc<T: Decodable>(_ loai: T.Type, tu tep: URL) -> T? {
         guard let data = try? Data(contentsOf: tep) else { return nil }
+        return try? giaiMa.decode(loai, from: data)
+    }
+
+    func giaiMaDuLieu<T: Decodable>(_ loai: T.Type, tu data: Data) -> T? {
         return try? giaiMa.decode(loai, from: data)
     }
 
@@ -206,18 +312,6 @@ final class ThuMucDuLieu {
             print("Lỗi ghi tệp \(tep.lastPathComponent): \(error.localizedDescription)")
             return false
         }
-    }
-
-    private func taoHuongDanNeuCan() {
-        let tep = thuMuc.appendingPathComponent("HUONG-DAN.txt")
-        guard !FileManager.default.fileExists(atPath: tep.path) else { return }
-        let noiDung = """
-        DỮ LIỆU GHI CHÚ & XƯỞNG CÁN
-        - Thư mục DuLieuGhiChu lưu toàn bộ dữ liệu Lịch, Ghi chú nhanh, Nhắc nhở, Cài đặt và các bảng Xưởng Cán.
-        - Thư mục AnhCacheXuongCan lưu bộ nhớ đệm (cache) hình ảnh của Xưởng Cán để mở nhanh tức thì không cần tải lại.
-        - Toàn bộ dữ liệu cũng được đồng bộ tự động lên Supabase và Google Drive.
-        """
-        try? noiDung.write(to: tep, atomically: true, encoding: .utf8)
     }
 }
 
@@ -236,6 +330,7 @@ final class KhoDuLieu {
 
     private init() {
         napTatCa()
+        khoiPhucTuAsyncStorageNeuCan()
     }
 
     func napTatCa() {
@@ -260,7 +355,6 @@ final class KhoDuLieu {
         if let d = tm.doc([BangXuongCan].self, tu: tm.tepXuongCan), !d.isEmpty {
             danhSachBangXuongCan = d
         } else {
-            // Tạo bảng mẫu mặc định cho Xưởng Cán khi mở lần đầu
             let cot1 = CotXuongCan(tenCot: "Mã lô / Phôi", loai: .chu, thuTu: 0)
             let cot2 = CotXuongCan(tenCot: "Thông số cán", loai: .chu, thuTu: 1)
             let cot3 = CotXuongCan(tenCot: "Ảnh chụp kiểm tra", loai: .anh, thuTu: 2)
@@ -278,6 +372,51 @@ final class KhoDuLieu {
             )
             danhSachBangXuongCan = [bangMau]
             tm.ghi(danhSachBangXuongCan, vao: tm.tepXuongCan)
+        }
+    }
+
+    /// Tự động đọc dữ liệu cũ từ AsyncStorage của bản React Native (nếu cài đè lên ứng dụng cũ trên iPhone)
+    private func khoiPhucTuAsyncStorageNeuCan() {
+        let fm = FileManager.default
+        var cacThuMucUngVien: [URL] = []
+        if let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+            cacThuMucUngVien.append(appSupport.appendingPathComponent("RCTAsyncLocalStorage_V1"))
+            if let bundleId = Bundle.main.bundleIdentifier {
+                cacThuMucUngVien.append(appSupport.appendingPathComponent(bundleId).appendingPathComponent("RCTAsyncLocalStorage_V1"))
+            }
+        }
+        if let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first {
+            cacThuMucUngVien.append(docs.appendingPathComponent("RCTAsyncLocalStorage_V1"))
+        }
+
+        for thuMuc in cacThuMucUngVien {
+            let manifestURL = thuMuc.appendingPathComponent("manifest.json")
+            guard let data = try? Data(contentsOf: manifestURL),
+                  let manifest = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
+
+            if ghiChuNhanh.isEmpty,
+               let rawNotes = manifest["QUICK_NOTES"] as? String,
+               let dNotes = rawNotes.data(using: .utf8),
+               let list = ThuMucDuLieu.dungChung.giaiMaDuLieu([GhiChuNhanh].self, tu: dNotes),
+               !list.isEmpty {
+                luuGhiChuNhanh(list)
+            }
+
+            if ghiChuLich.isEmpty,
+               let rawCal = manifest["CALENDAR_NOTES"] as? String,
+               let dCal = rawCal.data(using: .utf8),
+               let dict = ThuMucDuLieu.dungChung.giaiMaDuLieu([String: GhiChuNgay].self, tu: dCal),
+               !dict.isEmpty {
+                luuGhiChuLich(dict)
+            }
+
+            if nhacNho.isEmpty,
+               let rawRem = manifest["USER_REMINDERS"] as? String,
+               let dRem = rawRem.data(using: .utf8),
+               let list = ThuMucDuLieu.dungChung.giaiMaDuLieu([SuKienNhacNho].self, tu: dRem),
+               !list.isEmpty {
+                luuNhacNho(list)
+            }
         }
     }
 
@@ -340,7 +479,7 @@ enum TienIchLich {
         var cal = Calendar(identifier: .gregorian)
         cal.locale = Locale(identifier: "vi_VN")
         cal.timeZone = .current
-        cal.firstWeekday = 2 // Thứ 2 đầu tuần giống index.tsx
+        cal.firstWeekday = 2
         return cal
     }
 
@@ -368,6 +507,25 @@ enum TienIchLich {
         return df
     }()
 
+    private static let isoCoPhanThapPhan: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    private static let isoChuan: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
+    static func docNgayISO(_ chuoi: String) -> Date? {
+        if let d = isoCoPhanThapPhan.date(from: chuoi) { return d }
+        if let d = isoChuan.date(from: chuoi) { return d }
+        if let d = dinhDangKhoaNgay.date(from: chuoi) { return d }
+        return nil
+    }
+
     static func taoGio(gio: Int, phut: Int) -> Date {
         lich.date(bySettingHour: gio, minute: phut, second: 0, of: Date()) ?? Date()
     }
@@ -382,12 +540,10 @@ enum TienIchLich {
               let cuoiThang = lich.date(byAdding: .day, value: phamVi.count - 1, to: dThang) else {
             return []
         }
-        // Tìm Thứ 2 đầu tuần của ngày đầu tháng
-        let weekdayDau = lich.component(.weekday, from: dThang) // CN=1, T2=2...T7=7
+        let weekdayDau = lich.component(.weekday, from: dThang)
         let luiNgay = (weekdayDau + 5) % 7
         let batDauLuoi = lich.date(byAdding: .day, value: -luiNgay, to: dThang)!
 
-        // Tìm Chủ nhật cuối tuần của ngày cuối tháng
         let weekdayCuoi = lich.component(.weekday, from: cuoiThang)
         let tienNgay = (8 - weekdayCuoi) % 7
         let ketThucLuoi = lich.date(byAdding: .day, value: tienNgay, to: cuoiThang)!

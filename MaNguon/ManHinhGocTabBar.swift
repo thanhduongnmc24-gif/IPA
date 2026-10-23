@@ -29,19 +29,6 @@ final class ManHinhGocTabBar: UITabBarController {
         NotificationCenter.default.removeObserver(self)
     }
 
-    func chuyenSangXuongCan() {
-        if let ds = viewControllers,
-           let viTri = ds.firstIndex(where: { ($0 as? UINavigationController)?.viewControllers.first is ManHinhXuongCan }) {
-            selectedIndex = viTri
-        } else {
-            // Nếu tab Xưởng Cán đang bị ẩn trong Quản lý Tab, mở trực tiếp màn hình Xưởng Cán toàn màn hình
-            let xc = ManHinhXuongCan(hienNutDongModal: true)
-            let nav = UINavigationController(rootViewController: xc)
-            nav.modalPresentationStyle = .fullScreen
-            present(nav, animated: true)
-        }
-    }
-
     @objc private func khiCaiDatThayDoi() {
         capNhatGiaoDien()
         capNhatDanhSachTab()
@@ -70,52 +57,58 @@ final class ManHinhGocTabBar: UITabBarController {
         let tt = KhoDuLieu.dungChung.caiDat.trangThaiTab
         var danhSach: [UIViewController] = []
 
-        if tt.calendar {
-            let vc = UINavigationController(rootViewController: ManHinhLich())
-            vc.tabBarItem = UITabBarItem(title: "Lịch", image: UIImage(systemName: "calendar"), tag: 0)
-            danhSach.append(vc)
-        }
-
+        // 1. Tab Xưởng Cán đặt ở vị trí ĐẦU TIÊN
         if tt.xuongCan {
             let vc = UINavigationController(rootViewController: ManHinhXuongCan())
-            vc.tabBarItem = UITabBarItem(title: "Xưởng Cán", image: UIImage(systemName: "tablecells.badge.ellipsis"), tag: 1)
+            vc.tabBarItem = UITabBarItem(title: "Xưởng Cán", image: UIImage(systemName: "tablecells"), tag: 0)
             danhSach.append(vc)
         }
 
+        // 2. Tab Lịch
+        if tt.calendar {
+            let vc = UINavigationController(rootViewController: ManHinhLich())
+            vc.tabBarItem = UITabBarItem(title: "Lịch", image: UIImage(systemName: "calendar"), tag: 1)
+            danhSach.append(vc)
+        }
+
+        // 3. Tab Ghi chú
         if tt.notes {
             let vc = UINavigationController(rootViewController: ManHinhGhiChu())
-            vc.tabBarItem = UITabBarItem(title: "Ghi chú", image: UIImage(systemName: "doc.text.fill"), tag: 2)
+            vc.tabBarItem = UITabBarItem(title: "Ghi chú", image: UIImage(systemName: "doc.text"), tag: 2)
             danhSach.append(vc)
         }
 
+        // 4. Tab Sheets
         if tt.sheets {
             let vc = UINavigationController(rootViewController: ManHinhSheets())
-            vc.tabBarItem = UITabBarItem(title: "Sheets", image: UIImage(systemName: "square.grid.2x2.fill"), tag: 3)
+            vc.tabBarItem = UITabBarItem(title: "Sheets", image: UIImage(systemName: "square.grid.2x2"), tag: 3)
             danhSach.append(vc)
         }
 
+        // 5. Tab Media
         if tt.media {
             let vc = UINavigationController(rootViewController: ManHinhMedia())
-            vc.tabBarItem = UITabBarItem(title: "Media", image: UIImage(systemName: "sparkles.tv.fill"), tag: 4)
+            vc.tabBarItem = UITabBarItem(title: "Media", image: UIImage(systemName: "sparkles.tv"), tag: 4)
             danhSach.append(vc)
         }
 
+        // 6. Tab Nhắc nhở
         if tt.reminders {
             let vc = UINavigationController(rootViewController: ManHinhNhacNho())
-            vc.tabBarItem = UITabBarItem(title: "Nhắc nhở", image: UIImage(systemName: "alarm.fill"), tag: 5)
+            vc.tabBarItem = UITabBarItem(title: "Nhắc nhở", image: UIImage(systemName: "alarm"), tag: 5)
             danhSach.append(vc)
         }
 
-        // Tab Cài đặt luôn hiển thị
+        // 7. Tab Cài đặt luôn hiển thị ở cuối
         let caiDatVC = UINavigationController(rootViewController: ManHinhCaiDat())
-        caiDatVC.tabBarItem = UITabBarItem(title: "Cài đặt", image: UIImage(systemName: "gearshape.fill"), tag: 6)
+        caiDatVC.tabBarItem = UITabBarItem(title: "Cài đặt", image: UIImage(systemName: "gearshape"), tag: 6)
         danhSach.append(caiDatVC)
 
         setViewControllers(danhSach, animated: false)
     }
 
     private func taoHuyHieuDongBo() {
-        huyHieuDongBo.layer.cornerRadius = 16
+        huyHieuDongBo.layer.cornerRadius = 14
         huyHieuDongBo.layer.borderWidth = 1
         huyHieuDongBo.isHidden = true
         huyHieuDongBo.translatesAutoresizingMaskIntoConstraints = false
@@ -128,7 +121,7 @@ final class ManHinhGocTabBar: UITabBarController {
 
         let hang = UIStackView(arrangedSubviews: [bieuTuongDongBo, nhanDongBo])
         hang.axis = .horizontal
-        hang.spacing = 6
+        hang.spacing = 5
         hang.alignment = .center
         hang.translatesAutoresizingMaskIntoConstraints = false
 
@@ -136,12 +129,12 @@ final class ManHinhGocTabBar: UITabBarController {
         view.addSubview(huyHieuDongBo)
 
         NSLayoutConstraint.activate([
-            bieuTuongDongBo.widthAnchor.constraint(equalToConstant: 16),
-            bieuTuongDongBo.heightAnchor.constraint(equalToConstant: 16),
-            hang.topAnchor.constraint(equalTo: huyHieuDongBo.topAnchor, constant: 6),
-            hang.bottomAnchor.constraint(equalTo: huyHieuDongBo.bottomAnchor, constant: -6),
-            hang.leadingAnchor.constraint(equalTo: huyHieuDongBo.leadingAnchor, constant: 10),
-            hang.trailingAnchor.constraint(equalTo: huyHieuDongBo.trailingAnchor, constant: -10),
+            bieuTuongDongBo.widthAnchor.constraint(equalToConstant: 14),
+            bieuTuongDongBo.heightAnchor.constraint(equalToConstant: 14),
+            hang.topAnchor.constraint(equalTo: huyHieuDongBo.topAnchor, constant: 5),
+            hang.bottomAnchor.constraint(equalTo: huyHieuDongBo.bottomAnchor, constant: -5),
+            hang.leadingAnchor.constraint(equalTo: huyHieuDongBo.leadingAnchor, constant: 8),
+            hang.trailingAnchor.constraint(equalTo: huyHieuDongBo.trailingAnchor, constant: -8),
             huyHieuDongBo.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 6),
             huyHieuDongBo.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -14)
         ])
@@ -180,32 +173,5 @@ final class ManHinhGocTabBar: UITabBarController {
             bieuTuongDongBo.tintColor = mau.error
             nhanDongBo.text = "Lưu cục bộ"
         }
-    }
-}
-
-extension UIViewController {
-    /// Tạo nút chuyển nhanh sang "Xưởng Cán" trên thanh điều hướng
-    func taoNutChuyenSangXuongCan() -> UIBarButtonItem {
-        let nut = UIButton(type: .system)
-        var cauHinh = UIButton.Configuration.filled()
-        cauHinh.title = "Xưởng Cán"
-        cauHinh.image = UIImage(systemName: "building.2.crop.circle.fill")
-        cauHinh.imagePadding = 5
-        cauHinh.cornerStyle = .capsule
-        cauHinh.baseBackgroundColor = KhoDuLieu.dungChung.mauSac.xuongCanAccent
-        cauHinh.baseForegroundColor = .white
-        cauHinh.contentInsets = NSDirectionalEdgeInsets(top: 5, leading: 10, bottom: 5, trailing: 10)
-        nut.configuration = cauHinh
-        nut.addAction(UIAction { [weak self] _ in
-            if let tab = self?.tabBarController as? ManHinhGocTabBar {
-                tab.chuyenSangXuongCan()
-            } else {
-                let xc = ManHinhXuongCan(hienNutDongModal: true)
-                let nav = UINavigationController(rootViewController: xc)
-                nav.modalPresentationStyle = .fullScreen
-                self?.present(nav, animated: true)
-            }
-        }, for: .touchUpInside)
-        return UIBarButtonItem(customView: nut)
     }
 }

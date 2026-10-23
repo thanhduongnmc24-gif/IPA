@@ -17,8 +17,7 @@ final class ManHinhGhiChu: UIViewController, UITableViewDataSource, UITableViewD
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Ghi Chú 📝"
-        navigationItem.leftBarButtonItem = taoNutChuyenSangXuongCan()
+        navigationItem.title = "Ghi Chú"
         navigationItem.rightBarButtonItem = UIBarButtonItem(
             image: UIImage(systemName: "plus.circle.fill"),
             style: .plain,
@@ -228,7 +227,7 @@ final class ManHinhSoanGhiChuNhanh: UIViewController {
         super.viewDidLoad()
         let mau = KhoDuLieu.dungChung.mauSac
         view.backgroundColor = mau.card
-        title = ghiChuCu == nil ? "Ghi chú mới" : "Sửa ghi chú"
+        navigationItem.title = ghiChuCu == nil ? "Ghi chú mới" : "Sửa ghi chú"
 
         navigationItem.leftBarButtonItem = UIBarButtonItem(title: "Đóng", style: .plain, target: self, action: #selector(dong))
         navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Lưu lại", style: .done, target: self, action: #selector(luu))

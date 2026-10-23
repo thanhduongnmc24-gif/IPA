@@ -6,8 +6,7 @@ final class ManHinhCaiDat: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Cài Đặt ⚙️"
-        navigationItem.leftBarButtonItem = taoNutChuyenSangXuongCan()
+        navigationItem.title = "Cài Đặt"
 
         cuon.keyboardDismissMode = .interactive
         cuon.alwaysBounceVertical = true
@@ -55,19 +54,6 @@ final class ManHinhCaiDat: UIViewController {
             $0.removeFromSuperview()
         }
 
-        // 0. Nút mở nhanh Xưởng Cán
-        let nutMoXuongCan = UIButton(type: .system)
-        var chXC = UIButton.Configuration.filled()
-        chXC.title = "🏭 Mở Xưởng Cán (Quản lý Bảng, Ảnh Drive & Supabase)"
-        chXC.baseBackgroundColor = mau.xuongCanAccent
-        chXC.cornerStyle = .medium
-        nutMoXuongCan.configuration = chXC
-        nutMoXuongCan.heightAnchor.constraint(equalToConstant: 44).isActive = true
-        nutMoXuongCan.addAction(UIAction { [weak self] _ in
-            (self?.tabBarController as? ManHinhGocTabBar)?.chuyenSangXuongCan()
-        }, for: .touchUpInside)
-        nganChinh.addArrangedSubview(nutMoXuongCan)
-
         // 1. Tài khoản & Đồng bộ Supabase
         nganChinh.addArrangedSubview(taoTieuDeMuc("☁️ TÀI KHOẢN & ĐỒNG BỘ SUPABASE"))
         let theDongBo = taoThe()
@@ -79,12 +65,12 @@ final class ManHinhCaiDat: UIViewController {
             lbEmail.font = .systemFont(ofSize: 14, weight: .bold)
             lbEmail.textColor = mau.success
 
-            let nutSaoLuu = taoNutHanhDong("☁️ Sao lưu ngay (Đẩy toàn bộ & Xưởng Cán lên mây)", mau: mau.primary) { [weak self] in
+            let nutSaoLuu = taoNutHanhDong("☁️ Sao lưu ngay (Đẩy lên mây)", mau: mau.primary) { [weak self] in
                 DichVuSupabase.dungChung.saoLuuTatCaLenMay { ok, msg in
                     self?.hienThongBao(ok ? "Thành công" : "Lỗi", msg)
                 }
             }
-            let nutKhoiPhuc = taoNutHanhDong("📥 Khôi phục dữ liệu (Tải từ Supabase về máy)", mau: mau.success) { [weak self] in
+            let nutKhoiPhuc = taoNutHanhDong("📥 Khôi phục dữ liệu (Tải Ghi chú, Lịch, Xưởng Cán về máy)", mau: mau.success) { [weak self] in
                 DichVuSupabase.dungChung.khoiPhucTuMay { ok, msg in
                     self?.hienThongBao(ok ? "Thành công" : "Lỗi", msg)
                 }
@@ -96,7 +82,7 @@ final class ManHinhCaiDat: UIViewController {
             [lbEmail, nutSaoLuu, nutKhoiPhuc, nutDangXuat].forEach { nganDongBo.addArrangedSubview($0) }
         } else {
             let lbChuaDN = UILabel()
-            lbChuaDN.text = "Đăng nhập Supabase để sao lưu Lịch, Ghi chú và Xưởng Cán."
+            lbChuaDN.text = "Đăng nhập tài khoản Supabase để sao lưu hoặc khôi phục lại toàn bộ Ghi chú, Lịch và Xưởng Cán."
             lbChuaDN.font = .systemFont(ofSize: 13)
             lbChuaDN.textColor = mau.subText
             lbChuaDN.numberOfLines = 0
@@ -113,18 +99,19 @@ final class ManHinhCaiDat: UIViewController {
         let theDrive = taoThe()
         let nganDrive = taoNganBenTrong(theDrive)
 
+        let trangThaiScript = cd.driveScriptUrl.isEmpty ? "Chưa dán Link Script" : "Đã cấu hình Script"
         let lbCache = UILabel()
-        lbCache.text = "Dung lượng bộ nhớ đệm ảnh hiện tại: \(BoNhoDemAnh.dungChung.dungLuongBoNhoDemChuoi())\nKey Drive hiện tại: \(cd.driveKey.prefix(18))..."
+        lbCache.text = "Bộ nhớ đệm ảnh: \(BoNhoDemAnh.dungChung.dungLuongBoNhoDemChuoi()) • \(trangThaiScript)"
         lbCache.font = .systemFont(ofSize: 13)
         lbCache.textColor = mau.text
         lbCache.numberOfLines = 0
 
-        let nutCauHinhDrive = taoNutHanhDong("⚙️ Cấu hình Key Google Drive & Xem hướng dẫn lấy Key", mau: mau.primary) { [weak self] in
+        let nutCauHinhDrive = taoNutHanhDong("⚙️ Cấu hình Google Apps Script lưu ảnh Drive & Test thử", mau: mau.primary) { [weak self] in
             let vc = ManHinhCauHinhDriveXuongCan()
             self?.present(UINavigationController(rootViewController: vc), animated: true)
         }
 
-        let nutXoaCache = taoNutHanhDong("🧹 Dọn bộ nhớ đệm ảnh (Giữ nguyên ảnh trên Drive)", mau: mau.error) { [weak self] in
+        let nutXoaCache = taoNutHanhDong("🧹 Dọn bộ nhớ đệm ảnh trên máy", mau: mau.error) { [weak self] in
             BoNhoDemAnh.dungChung.xoaBoNhoDem()
             self?.veGiaoDien()
             self?.hienThongBao("Đã dọn bộ nhớ đệm", "Bộ nhớ đệm ảnh trên máy đã được làm sạch.")
@@ -143,15 +130,15 @@ final class ManHinhCaiDat: UIViewController {
         })
         nganChinh.addArrangedSubview(theGiaoDien)
 
-        // 4. Quản lý Tab
+        // 4. Quản lý Tab (Xưởng Cán ở đầu tiên)
         nganChinh.addArrangedSubview(taoTieuDeMuc("👁️ QUẢN LÝ TAB HIỂN THỊ"))
         let theTab = taoThe()
         let nganTab = taoNganBenTrong(theTab)
+        nganTab.addArrangedSubview(taoHangCongTac(ten: "Xưởng Cán (Tab đầu tiên)", dangBat: cd.trangThaiTab.xuongCan) { bat in
+            var moi = KhoDuLieu.dungChung.caiDat; moi.trangThaiTab.xuongCan = bat; KhoDuLieu.dungChung.luuCaiDat(moi)
+        })
         nganTab.addArrangedSubview(taoHangCongTac(ten: "Lịch làm việc", dangBat: cd.trangThaiTab.calendar) { bat in
             var moi = KhoDuLieu.dungChung.caiDat; moi.trangThaiTab.calendar = bat; KhoDuLieu.dungChung.luuCaiDat(moi)
-        })
-        nganTab.addArrangedSubview(taoHangCongTac(ten: "Xưởng Cán 🏭", dangBat: cd.trangThaiTab.xuongCan) { bat in
-            var moi = KhoDuLieu.dungChung.caiDat; moi.trangThaiTab.xuongCan = bat; KhoDuLieu.dungChung.luuCaiDat(moi)
         })
         nganTab.addArrangedSubview(taoHangCongTac(ten: "Ghi chú", dangBat: cd.trangThaiTab.notes) { bat in
             var moi = KhoDuLieu.dungChung.caiDat; moi.trangThaiTab.notes = bat; KhoDuLieu.dungChung.luuCaiDat(moi)
@@ -236,7 +223,6 @@ final class ManHinhCaiDat: UIViewController {
         hangXoaReset.spacing = 6
         nganChuKy.addArrangedSubview(hangXoaReset)
 
-        // Ngày bắt đầu Bước 1
         let chonNgayBD = UIDatePicker()
         chonNgayBD.datePickerMode = .date
         chonNgayBD.preferredDatePickerStyle = .compact
@@ -367,7 +353,7 @@ final class ManHinhCaiDat: UIViewController {
     }
 
     private func hienHopThoaiDangNhap() {
-        let alert = UIAlertController(title: "Tài khoản Supabase", message: "Nhập Email và Mật khẩu để đăng nhập hoặc đăng ký tài khoản đồng bộ", preferredStyle: .alert)
+        let alert = UIAlertController(title: "Tài khoản Supabase", message: "Nhập Email và Mật khẩu để đăng nhập (tự động khôi phục Ghi chú & Lịch ngay sau khi đăng nhập)", preferredStyle: .alert)
         alert.addTextField { tf in
             tf.placeholder = "email@example.com"
             tf.keyboardType = .emailAddress
@@ -386,7 +372,7 @@ final class ManHinhCaiDat: UIViewController {
                 switch kq {
                 case .success:
                     self?.veGiaoDien()
-                    self?.hienThongBao("Thành công", "Đã đăng nhập tài khoản \(email)!")
+                    self?.hienThongBao("Thành công", "Đã đăng nhập và khôi phục dữ liệu từ tài khoản \(email)!")
                 case .failure(let err):
                     self?.hienThongBao("Lỗi đăng nhập", err.localizedDescription)
                 }

@@ -15,8 +15,7 @@ final class ManHinhSheets: UIViewController, UIImagePickerControllerDelegate, UI
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Sheets 📊"
-        navigationItem.leftBarButtonItem = taoNutChuyenSangXuongCan()
+        navigationItem.title = "Sheets"
         navigationItem.rightBarButtonItem = UIBarButtonItem(
             image: UIImage(systemName: "gearshape.fill"),
             style: .plain,
@@ -324,7 +323,7 @@ final class ManHinhSheets: UIViewController, UIImagePickerControllerDelegate, UI
         ]
         req.httpBody = try? JSONSerialization.data(withJSONObject: body)
 
-        URLSession.shared.dataTask(with: req) { [weak self] data, _, error in
+        URLSession.shared.dataTask(with: req) { [weak self] _, _, error in
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.nutGui.isEnabled = true

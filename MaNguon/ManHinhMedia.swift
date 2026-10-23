@@ -34,8 +34,7 @@ final class ManHinhMedia: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Media Creator 🎬"
-        navigationItem.leftBarButtonItem = taoNutChuyenSangXuongCan()
+        navigationItem.title = "Media AI"
         navigationItem.rightBarButtonItem = UIBarButtonItem(
             image: UIImage(systemName: "trash"),
             style: .plain,

@@ -7,8 +7,7 @@ final class ManHinhNhacNho: UIViewController, UITableViewDataSource, UITableView
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Nhắc Nhở 🔔"
-        navigationItem.leftBarButtonItem = taoNutChuyenSangXuongCan()
+        navigationItem.title = "Nhắc Nhở"
         navigationItem.rightBarButtonItem = UIBarButtonItem(
             image: UIImage(systemName: "plus.circle.fill"),
             style: .plain,
@@ -147,7 +146,7 @@ final class ManHinhSoanNhacNho: UIViewController {
         super.viewDidLoad()
         let mau = KhoDuLieu.dungChung.mauSac
         view.backgroundColor = mau.card
-        title = suKienCu == nil ? "Tạo nhắc nhở" : "Sửa nhắc nhở"
+        navigationItem.title = suKienCu == nil ? "Tạo nhắc nhở" : "Sửa nhắc nhở"
 
         navigationItem.leftBarButtonItem = UIBarButtonItem(title: "Hủy", style: .plain, target: self, action: #selector(dong))
         navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Lưu & Hẹn giờ", style: .done, target: self, action: #selector(luu))

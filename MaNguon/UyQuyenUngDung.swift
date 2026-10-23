@@ -20,8 +20,9 @@ final class UyQuyenUngDung: UIResponder, UIApplicationDelegate, UNUserNotificati
         w.makeKeyAndVisible()
         cuaSo = w
 
-        // Tự động tải đồng bộ dữ liệu Xưởng Cán từ Supabase khi mở ứng dụng
+        // Tự động tải đồng bộ dữ liệu Xưởng Cán và khôi phục Ghi chú từ Supabase khi mở ứng dụng
         DichVuSupabase.dungChung.taiXuongCanTuSupabase { _, _ in }
+        DichVuSupabase.dungChung.tuDongKhoiPhucGhiChuNeuCan()
 
         return true
     }

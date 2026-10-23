@@ -1,28 +1,48 @@
 /**
  * CẦU NỐI LƯU ẢNH XƯỞNG CÁN LÊN GOOGLE DRIVE (KHÔNG BAO GIỜ HẾT HẠN TOKEN)
  *
- * HƯỚNG DẪN CÀI ĐẶT TRONG 1 PHÚT:
- * 1. Truy cập https://script.google.com và bấm "Dự án mới" (New project).
- * 2. Xóa đoạn mã mặc định và dán toàn bộ đoạn mã dưới đây vào.
- * 3. Bấm nút "Triển khai" (Deploy) ở góc trên bên phải -> "Tùy chọn triển khai mới" (New deployment).
- * 4. Ở mục "Chọn loại" (Select type - biểu tượng bánh răng), chọn "Ứng dụng web" (Web app).
- * 5. Cấu hình:
- *    - Thực thi dưới dạng (Execute as): "Tôi" (Me)
- *    - Ai có quyền truy cập (Who has access): "Bất kỳ ai" (Anyone)
- * 6. Bấm "Triển khai" (Deploy), cấp quyền truy cập Google Drive cho tài khoản của bạn.
- * 7. Copy đường dẫn "URL ứng dụng web" (https://script.google.com/macros/s/.../exec)
- *    và dán vào mục "Cấu hình Drive & Supabase" trong ứng dụng iOS!
+ * HƯỚNG DẪN CÀI ĐẶT CHUẨN 100% LÊN ẢNH DRIVE:
+ * 1. Truy cập https://script.google.com và mở dự án của bạn (hoặc tạo Dự án mới).
+ * 2. Xóa toàn bộ mã cũ và dán toàn bộ đoạn mã dưới đây vào.
+ * 3. [QUAN TRỌNG NHẤT] Trên thanh công cụ phía trên của trang Script, chọn hàm "capQuyenDrive"
+ *    rồi bấm nút "Run (Chạy)". Một bảng yêu cầu cấp quyền sẽ hiện ra:
+ *    - Bấm "Review permissions (Xem lại quyền)" -> Chọn tài khoản Google của bạn.
+ *    - Bấm "Advanced (Nâng cao)" -> Bấm "Go to ... (unsafe)" -> Bấm "Allow (Cho phép)".
+ * 4. Bấm nút "Triển khai (Deploy)" ở góc trên bên phải -> "Tùy chọn triển khai mới (New deployment)".
+ *    - Loại: "Ứng dụng web (Web app)"
+ *    - Thực thi dưới dạng (Execute as): "Tôi (Me)"
+ *    - Ai có quyền truy cập (Who has access): "Bất kỳ ai (Anyone)"
+ * 5. Copy đường dẫn "URL ứng dụng web" (https://script.google.com/macros/s/.../exec)
+ *    dán vào màn hình "Cấu hình Google Drive" trong app iOS và bấm nút "Test thử tải ảnh lên Drive"!
  */
+
+function capQuyenDrive() {
+  var root = DriveApp.getRootFolder();
+  Logger.log("Đã cấp quyền Google Drive thành công! Thư mục gốc: " + root.getName());
+}
+
+function tachFolderId(input) {
+  if (!input) return "";
+  var s = input.toString().trim();
+  var m = s.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+  if (m && m[1]) return m[1];
+  return s;
+}
+
+function doGet(e) {
+  return ContentService.createTextOutput(JSON.stringify({
+    result: "success",
+    message: "Cau noi Google Drive Xuong Can dang hoat dong!"
+  })).setMimeType(ContentService.MimeType.JSON);
+}
 
 function doPost(e) {
   try {
     var data = JSON.parse(e.postData.contents);
 
-    // 1. Nhánh tải ảnh từ Xưởng Cán lên Google Drive
     if (data.action === "upload_drive") {
-      var folder = (data.folderId && data.folderId.trim() !== "")
-        ? DriveApp.getFolderById(data.folderId.trim())
-        : DriveApp.getRootFolder();
+      var fid = tachFolderId(data.folderId);
+      var folder = fid ? DriveApp.getFolderById(fid) : DriveApp.getRootFolder();
 
       var bytes = Utilities.base64Decode(data.base64);
       var blob = Utilities.newBlob(
@@ -42,7 +62,6 @@ function doPost(e) {
       })).setMimeType(ContentService.MimeType.JSON);
     }
 
-    // 2. Nhánh gửi dữ liệu sang Google Sheets (tương thích tab Sheets)
     return ContentService.createTextOutput(JSON.stringify({
       result: "success"
     })).setMimeType(ContentService.MimeType.JSON);

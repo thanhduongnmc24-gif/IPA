@@ -1,6 +1,6 @@
 import UIKit
 
-// MARK: - 1. Bộ Nhớ Đệm Ảnh 2 Tầng (RAM NSCache + Disk Cache)
+// MARK: - 1. Bộ Nhớ Đệm Ảnh 2 Tầng (RAM NSCache + Disk Cache) — Không lưu ảnh lên Supabase
 
 final class BoNhoDemAnh {
     static let dungChung = BoNhoDemAnh()
@@ -10,7 +10,7 @@ final class BoNhoDemAnh {
 
     private init() {
         boNhoRAM.countLimit = 200
-        boNhoRAM.totalCostLimit = 120 * 1024 * 1024 // 120 MB RAM cache
+        boNhoRAM.totalCostLimit = 120 * 1024 * 1024
     }
 
     private func duongDanTep(maAnh: String) -> URL {
@@ -31,19 +31,6 @@ final class BoNhoDemAnh {
         }
     }
 
-    /// Tạo chuỗi Base64 thu nhỏ để đồng bộ kèm vào bảng Supabase (giúp hiển thị ngay cả khi mở trên thiết bị mới)
-    func taoThumbnailBase64(tu anh: UIImage, kichThuocToiDa: CGFloat = 480) -> String? {
-        let tyLe = min(kichThuocToiDa / max(anh.size.width, 1), kichThuocToiDa / max(anh.size.height, 1), 1.0)
-        let kichThuocMoi = CGSize(width: anh.size.width * tyLe, height: anh.size.height * tyLe)
-        let dinhDang = UIGraphicsImageRendererFormat()
-        dinhDang.scale = 1.0
-        let boVe = UIGraphicsImageRenderer(size: kichThuocMoi, format: dinhDang)
-        let anhNho = boVe.image { _ in
-            anh.draw(in: CGRect(origin: .zero, size: kichThuocMoi))
-        }
-        return anhNho.jpegData(compressionQuality: 0.65)?.base64EncodedString()
-    }
-
     /// Lấy ảnh ngay lập tức nếu có trong RAM hoặc Disk Cache
     func layAnhTucThi(maAnh: String) -> UIImage? {
         let khoa = maAnh as NSString
@@ -58,7 +45,7 @@ final class BoNhoDemAnh {
         return nil
     }
 
-    /// Lấy ảnh từ Bộ nhớ đệm (RAM -> Disk -> Thumbnail Supabase -> Tải từ Google Drive và lưu vào Cache)
+    /// Lấy ảnh từ Bộ nhớ đệm của ứng dụng (RAM -> Disk), nếu chưa có mới tải từ Google Drive về lưu vào Cache
     func taiAnh(thongTin: ThongTinAnhXuongCan, hoanThanh: @escaping (UIImage?) -> Void) {
         // 1. Kiểm tra RAM & Disk Cache theo maAnh
         if let anhCoSan = layAnhTucThi(maAnh: thongTin.maAnh) {
@@ -72,19 +59,9 @@ final class BoNhoDemAnh {
             return
         }
 
-        // 3. Nếu có ảnh thumbnail đồng bộ từ Supabase, hiển thị trước ngay lập tức
-        var daTraVeTam = false
-        if let thumbB64 = thongTin.thumbnailBase64,
-           let data = Data(base64Encoded: thumbB64),
-           let anhThumb = UIImage(data: data) {
-            boNhoRAM.setObject(anhThumb, forKey: thongTin.maAnh as NSString)
-            hoanThanh(anhThumb)
-            daTraVeTam = true
-        }
-
-        // 4. Tải ảnh gốc chất lượng cao từ Google Drive về lưu vào bộ nhớ đệm
+        // 3. Tải ảnh từ Google Drive về và lưu vào bộ nhớ đệm cho các lần mở sau
         guard let fileId = thongTin.driveFileId, !fileId.isEmpty else {
-            if !daTraVeTam { hoanThanh(nil) }
+            hoanThanh(nil)
             return
         }
 
@@ -93,13 +70,9 @@ final class BoNhoDemAnh {
             if let anhTaiVe {
                 self.luuAnh(anhTaiVe, maAnh: thongTin.maAnh)
                 self.luuAnh(anhTaiVe, maAnh: fileId)
-                DispatchQueue.main.async {
-                    hoanThanh(anhTaiVe)
-                }
-            } else if !daTraVeTam {
-                DispatchQueue.main.async {
-                    hoanThanh(nil)
-                }
+            }
+            DispatchQueue.main.async {
+                hoanThanh(anhTaiVe)
             }
         }
     }
@@ -138,23 +111,51 @@ final class DichVuGoogleDrive {
     static let dungChung = DichVuGoogleDrive()
     private init() {}
 
-    /// Tải ảnh lên Google Drive (hỗ trợ Google Apps Script Bridge, OAuth2 Refresh Token, hoặc Access Token/Key)
+    /// Tự động tách lấy Folder ID chuẩn nếu người dùng dán nguyên đường link thư mục Google Drive
+    static func chuanHoaFolderId(_ chuoi: String) -> String {
+        let raw = chuoi.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty else { return "" }
+        if let range = raw.range(of: "/folders/") {
+            let sauFolders = String(raw[range.upperBound...])
+            let id = sauFolders.components(separatedBy: CharacterSet(charactersIn: "?/#&")).first ?? sauFolders
+            return id.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        if let url = URLComponents(string: raw),
+           let idParam = url.queryItems?.first(where: { $0.name == "id" })?.value {
+            return idParam.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return raw
+    }
+
+    /// Tải ảnh lên Google Drive
     func taiAnhLenDrive(
         anh: UIImage,
         tenTep: String,
         hoanThanh: @escaping (_ fileId: String?, _ driveUrl: String?, _ thongBaoLoi: String?) -> Void
     ) {
-        guard let jpegData = anh.jpegData(compressionQuality: 0.78) else {
-            hoanThanh(nil, nil, "Không thể nén dữ liệu ảnh JPEG.")
+        // Nén ảnh hợp lý (kích thước tối đa 1600px, JPEG 0.78) để gửi qua Google Apps Script nhanh và không bị quá tải
+        let anhNen = thuNhoAnhNeuCan(anh, kichThuocToiDa: 1600)
+        guard let jpegData = anhNen.jpegData(compressionQuality: 0.78) else {
+            hoanThanh(nil, nil, "Không thể tạo dữ liệu JPEG từ ảnh.")
             return
         }
 
         let cd = KhoDuLieu.dungChung.caiDat
+        let folderId = Self.chuanHoaFolderId(cd.driveFolderId)
 
-        // Ưu tiên 1: Nếu người dùng đã cấu hình Google Apps Script URL cho Drive
-        if !cd.driveScriptUrl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-           let scriptURL = URL(string: cd.driveScriptUrl.trimmingCharacters(in: .whitespacesAndNewlines)) {
-            taiLenQuaAppsScript(url: scriptURL, jpegData: jpegData, tenTep: tenTep, folderId: cd.driveFolderId, hoanThanh: hoanThanh)
+        // Ưu tiên 1: Nếu người dùng đã nhập Link Google Apps Script ở ô driveScriptUrl hoặc ô driveKey
+        let scriptStr = !cd.driveScriptUrl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? cd.driveScriptUrl.trimmingCharacters(in: .whitespacesAndNewlines)
+            : (cd.driveKey.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("https://script.google.com")
+                ? cd.driveKey.trimmingCharacters(in: .whitespacesAndNewlines)
+                : "")
+
+        if !scriptStr.isEmpty {
+            guard let scriptURL = URL(string: scriptStr) else {
+                hoanThanh(nil, nil, "Đường dẫn Google Apps Script không hợp lệ: \(scriptStr)")
+                return
+            }
+            taiLenQuaAppsScript(url: scriptURL, jpegData: jpegData, tenTep: tenTep, folderId: folderId, hoanThanh: hoanThanh)
             return
         }
 
@@ -169,7 +170,7 @@ final class DichVuGoogleDrive {
             ) { [weak self] token, loi in
                 guard let self else { return }
                 if let token {
-                    self.taiLenQuaDriveREST(jpegData: jpegData, tenTep: tenTep, folderId: cd.driveFolderId, bearerToken: token, apiKey: nil, hoanThanh: hoanThanh)
+                    self.taiLenQuaDriveREST(jpegData: jpegData, tenTep: tenTep, folderId: folderId, bearerToken: token, apiKey: nil, hoanThanh: hoanThanh)
                 } else {
                     hoanThanh(nil, nil, loi ?? "Không lấy được Access Token từ Refresh Token.")
                 }
@@ -177,21 +178,24 @@ final class DichVuGoogleDrive {
             return
         }
 
-        // Ưu tiên 3: Sử dụng Drive Key được cung cấp (ví dụ AQ.Ab8RN6... hoặc ya29...)
-        let key = cd.driveKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !key.isEmpty {
-            if key.hasPrefix("https://script.google.com") {
-                if let url = URL(string: key) {
-                    taiLenQuaAppsScript(url: url, jpegData: jpegData, tenTep: tenTep, folderId: cd.driveFolderId, hoanThanh: hoanThanh)
-                    return
-                }
-            }
-            // Thử gửi với Bearer token trước, nếu lỗi thử query ?key=
-            taiLenQuaDriveREST(jpegData: jpegData, tenTep: tenTep, folderId: cd.driveFolderId, bearerToken: key, apiKey: key, hoanThanh: hoanThanh)
-            return
-        }
+        // Ưu tiên 3: Nếu chỉ có Key mặc định mà chưa dán Link Google Apps Script
+        hoanThanh(
+            nil,
+            nil,
+            "Chưa có Link Web App Google Apps Script! Hãy bấm biểu tượng Ổ đĩa ở góc trái trên màn hình Xưởng Cán -> dán Link https://script.google.com/macros/s/.../exec vào ô đầu tiên và bấm Lưu."
+        )
+    }
 
-        hoanThanh(nil, nil, "Chưa cấu hình Google Drive Key hoặc Link Apps Script.")
+    private func thuNhoAnhNeuCan(_ anh: UIImage, kichThuocToiDa: CGFloat) -> UIImage {
+        let maxCanh = max(anh.size.width, anh.size.height)
+        guard maxCanh > kichThuocToiDa else { return anh }
+        let tyLe = kichThuocToiDa / maxCanh
+        let kichThuocMoi = CGSize(width: floor(anh.size.width * tyLe), height: floor(anh.size.height * tyLe))
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1.0
+        return UIGraphicsImageRenderer(size: kichThuocMoi, format: format).image { _ in
+            anh.draw(in: CGRect(origin: .zero, size: kichThuocMoi))
+        }
     }
 
     private func taiLenQuaAppsScript(
@@ -204,7 +208,7 @@ final class DichVuGoogleDrive {
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("text/plain;charset=utf-8", forHTTPHeaderField: "Content-Type")
-        req.timeoutInterval = 45
+        req.timeoutInterval = 60
 
         let payload: [String: Any] = [
             "action": "upload_drive",
@@ -215,22 +219,48 @@ final class DichVuGoogleDrive {
         ]
         req.httpBody = try? JSONSerialization.data(withJSONObject: payload)
 
-        URLSession.shared.dataTask(with: req) { data, _, error in
+        URLSession.shared.dataTask(with: req) { data, response, error in
             if let error {
-                DispatchQueue.main.async { hoanThanh(nil, nil, error.localizedDescription) }
+                DispatchQueue.main.async {
+                    hoanThanh(nil, nil, "Lỗi kết nối mạng tới Script: \(error.localizedDescription)")
+                }
                 return
             }
-            guard let data,
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                DispatchQueue.main.async { hoanThanh(nil, nil, "Phản hồi từ Apps Script không hợp lệ.") }
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+            guard let data, !data.isEmpty else {
+                DispatchQueue.main.async {
+                    hoanThanh(nil, nil, "Google Apps Script trả về dữ liệu rỗng (HTTP \(statusCode)).")
+                }
                 return
             }
-            if let fileId = json["fileId"] as? String, !fileId.isEmpty {
-                let viewUrl = (json["url"] as? String) ?? "https://drive.google.com/uc?export=view&id=\(fileId)"
-                DispatchQueue.main.async { hoanThanh(fileId, viewUrl, nil) }
+
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                if let fileId = json["fileId"] as? String, !fileId.isEmpty {
+                    let viewUrl = (json["url"] as? String) ?? "https://drive.google.com/uc?export=view&id=\(fileId)"
+                    DispatchQueue.main.async { hoanThanh(fileId, viewUrl, nil) }
+                    return
+                }
+                if let err = json["error"] as? String {
+                    DispatchQueue.main.async {
+                        hoanThanh(nil, nil, "Lỗi từ Google Apps Script: \(err)\n\n(Gợi ý: Nếu báo lỗi quyền DriveApp, hãy mở script.google.com -> chọn hàm capQuyenDrive trên thanh công cụ -> bấm Run/Chạy để cấp quyền truy cập Drive, sau đó chọn Deploy -> Manage deployments -> Edit -> New version -> Deploy).")
+                    }
+                    return
+                }
+            }
+
+            let rawText = String(data: data, encoding: .utf8) ?? ""
+            if rawText.contains("<!DOCTYPE html>") || rawText.contains("<html") {
+                DispatchQueue.main.async {
+                    hoanThanh(
+                        nil,
+                        nil,
+                        "Script trả về trang HTML thay vì JSON (HTTP \(statusCode)). Nguyên nhân thường gặp:\n1. Khi Deploy Web App, mục 'Who has access (Ai có quyền truy cập)' chưa chọn là 'Anyone (Bất kỳ ai)'.\n2. Hoặc bạn chưa bấm nút 'Run (Chạy)' hàm capQuyenDrive trong script.google.com để cấp quyền tạo file trên Google Drive."
+                    )
+                }
             } else {
-                let err = (json["error"] as? String) ?? "Apps Script chưa trả về fileId."
-                DispatchQueue.main.async { hoanThanh(nil, nil, err) }
+                DispatchQueue.main.async {
+                    hoanThanh(nil, nil, "Phản hồi không đúng định dạng từ Script: \(rawText.prefix(160))")
+                }
             }
         }.resume()
     }
@@ -266,7 +296,7 @@ final class DichVuGoogleDrive {
             guard let data,
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let accessToken = json["access_token"] as? String else {
-                hoanThanh(nil, "Không thể đổi Refresh Token lấy Access Token. Kiểm tra lại Client ID/Secret/Refresh Token.")
+                hoanThanh(nil, "Không thể đổi Refresh Token lấy Access Token.")
                 return
             }
             hoanThanh(accessToken, nil)
@@ -281,11 +311,7 @@ final class DichVuGoogleDrive {
         apiKey: String?,
         hoanThanh: @escaping (String?, String?, String?) -> Void
     ) {
-        var urlStr = "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink,webContentLink"
-        if let apiKey, !apiKey.isEmpty, (bearerToken == nil || apiKey.hasPrefix("AIza") || apiKey.hasPrefix("AQ.")) {
-            let encoded = apiKey.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? apiKey
-            urlStr += "&key=\(encoded)"
-        }
+        let urlStr = "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink,webContentLink"
         guard let url = URL(string: urlStr) else {
             hoanThanh(nil, nil, "URL Google Drive API không hợp lệ.")
             return
@@ -303,9 +329,8 @@ final class DichVuGoogleDrive {
             "name": tenTep,
             "mimeType": "image/jpeg"
         ]
-        let cleanFolder = folderId.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !cleanFolder.isEmpty {
-            metaDict["parents"] = [cleanFolder]
+        if !folderId.isEmpty {
+            metaDict["parents"] = [folderId]
         }
         let metaData = (try? JSONSerialization.data(withJSONObject: metaDict)) ?? Data("{}".utf8)
 
@@ -332,31 +357,21 @@ final class DichVuGoogleDrive {
                 let driveUrl = "https://drive.google.com/uc?export=view&id=\(fileId)"
                 DispatchQueue.main.async { hoanThanh(fileId, driveUrl, nil) }
             } else {
-                let msg = "Key hiện tại (\(apiKey?.prefix(10) ?? "trống")...) không có quyền ghi (POST) trực tiếp vào Google Drive API v3 (HTTP \(statusCode)). Ảnh đã được lưu an toàn vào Bộ nhớ đệm & đồng bộ Supabase! Xem mục Hướng dẫn Key Drive trong Cài đặt để kết nối Google Apps Script hoặc OAuth2."
-                DispatchQueue.main.async { hoanThanh(nil, nil, msg) }
+                DispatchQueue.main.async {
+                    hoanThanh(nil, nil, "Lỗi tải lên Google Drive REST API (HTTP \(statusCode)).")
+                }
             }
         }.resume()
     }
 
     func taiAnhTuDrive(fileId: String, driveUrl: String?, hoanThanh: @escaping (UIImage?) -> Void) {
-        let cd = KhoDuLieu.dungChung.caiDat
-        let urlStr: String
-        if let driveUrl, driveUrl.hasPrefix("http") {
-            urlStr = driveUrl
-        } else if !cd.driveKey.isEmpty && cd.driveKey.hasPrefix("AIza") {
-            urlStr = "https://www.googleapis.com/drive/v3/files/\(fileId)?alt=media&key=\(cd.driveKey)"
-        } else {
-            urlStr = "https://drive.google.com/uc?export=download&id=\(fileId)"
-        }
+        let urlStr = "https://drive.google.com/uc?export=download&id=\(fileId)"
         guard let url = URL(string: urlStr) else {
             hoanThanh(nil)
             return
         }
         var req = URLRequest(url: url)
         req.timeoutInterval = 30
-        if cd.driveKey.hasPrefix("ya29.") {
-            req.setValue("Bearer \(cd.driveKey)", forHTTPHeaderField: "Authorization")
-        }
         URLSession.shared.dataTask(with: req) { data, _, _ in
             guard let data, let img = UIImage(data: data) else {
                 hoanThanh(nil)
@@ -367,7 +382,7 @@ final class DichVuGoogleDrive {
     }
 }
 
-// MARK: - 3. Dịch Vụ Đồng Bộ Supabase (Auth + Backup/Restore + Đồng bộ Bảng Xưởng Cán)
+// MARK: - 3. Dịch Vụ Đồng Bộ Supabase (Không lưu dữ liệu ảnh lên Supabase, chỉ lưu cấu trúc bảng, chữ & ID ảnh Drive)
 
 enum TrangThaiDongBo: String {
     case ranh = "idle"
@@ -380,7 +395,6 @@ enum TrangThaiDongBo: String {
 final class DichVuSupabase {
     static let dungChung = DichVuSupabase()
 
-    // Giữ nguyên cấu hình Supabase từ supabaseConfig.ts của dự án ipa-main
     let supabaseUrl = "https://mrgsyxgucwochzhbzbrt.supabase.co"
     let supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1yZ3N5eGd1Y3dvY2h6aGJ6YnJ0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQyMjk3MTUsImV4cCI6MjA3OTgwNTcxNX0.nPuAqdbjXoZ-upuU_LQrv6IVNR_2NMeioquRap-BYcE"
 
@@ -433,7 +447,7 @@ final class DichVuSupabase {
         ganHeaderChuan(&req, dungTokenNguoiDung: false)
         req.httpBody = try? JSONSerialization.data(withJSONObject: ["email": email, "password": matKhau])
 
-        URLSession.shared.dataTask(with: req) { [weak self] data, response, error in
+        URLSession.shared.dataTask(with: req) { [weak self] data, _, error in
             if let error {
                 DispatchQueue.main.async { hoanThanh(.failure(error)) }
                 return
@@ -451,7 +465,10 @@ final class DichVuSupabase {
                 self?.accessToken = token
                 self?.userId = uid
                 self?.emailNguoiDung = (userObj["email"] as? String) ?? email
-                DispatchQueue.main.async { hoanThanh(.success(email)) }
+                // Tự động khôi phục ngay dữ liệu Ghi chú, Lịch, Nhắc nhở sau khi đăng nhập
+                self?.khoiPhucTuMay { _, _ in
+                    DispatchQueue.main.async { hoanThanh(.success(email)) }
+                }
             } else {
                 let msg = (json["error_description"] as? String) ?? (json["msg"] as? String) ?? "Sai email hoặc mật khẩu."
                 DispatchQueue.main.async {
@@ -504,7 +521,7 @@ final class DichVuSupabase {
         accessToken = nil
     }
 
-    // MARK: Đồng bộ Xưởng Cán lên Supabase (Bảng xuong_can_bang + user_sync dự phòng)
+    // MARK: Đồng bộ Xưởng Cán lên Supabase (Chỉ lưu cấu trúc bảng, chữ và ID ảnh Google Drive)
     func dongBoXuongCanTuDong(hoanThanh: ((Bool, String) -> Void)? = nil) {
         trangThai = .dangDongBo
         let danhSachBang = KhoDuLieu.dungChung.danhSachBangXuongCan
@@ -518,7 +535,6 @@ final class DichVuSupabase {
             return
         }
 
-        // 1. Đồng bộ vào bảng chuyên dụng `xuong_can_bang` trên Supabase (POST upsert)
         guard let url = URL(string: "\(supabaseUrl)/rest/v1/xuong_can_bang?on_conflict=id") else { return }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
@@ -541,13 +557,12 @@ final class DichVuSupabase {
             let code = (response as? HTTPURLResponse)?.statusCode ?? 0
             let bangChuyenDungOK = (200...299).contains(code)
 
-            // 2. Nếu đã đăng nhập, đồng bộ luôn vào `user_sync` để đảm bảo 100% có bản lưu trên Supabase
             if self.daDangNhap {
                 self.saoLuuTatCaLenMay { ok, msg in
                     self.trangThai = (ok || bangChuyenDungOK) ? .thanhCong : .loi
                     self.henTatTrangThai()
                     DispatchQueue.main.async {
-                        hoanThanh?(ok || bangChuyenDungOK, (ok || bangChuyenDungOK) ? "Đã đồng bộ Xưởng Cán lên Supabase ☁️" : msg)
+                        hoanThanh?(ok || bangChuyenDungOK, (ok || bangChuyenDungOK) ? "Đã đồng bộ bảng Xưởng Cán lên Supabase ☁️" : msg)
                     }
                 }
             } else {
@@ -564,7 +579,6 @@ final class DichVuSupabase {
         }.resume()
     }
 
-    /// Tải dữ liệu các bảng Xưởng Cán từ Supabase về máy
     func taiXuongCanTuSupabase(hoanThanh: @escaping (Bool, String) -> Void) {
         trangThai = .dangTaiVe
         guard let url = URL(string: "\(supabaseUrl)/rest/v1/xuong_can_bang?select=du_lieu&order=updated_at.desc") else {
@@ -584,29 +598,24 @@ final class DichVuSupabase {
                let rows = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
                !rows.isEmpty {
                 let duLieuMang = rows.compactMap { $0["du_lieu"] }
-                if let jsonData = try? JSONSerialization.data(withJSONObject: duLieuMang) {
-                    let decoder = JSONDecoder()
-                    decoder.dateDecodingStrategy = .iso8601
-                    if let cacBang = try? decoder.decode([BangXuongCan].self, from: jsonData), !cacBang.isEmpty {
-                        DispatchQueue.main.async {
-                            KhoDuLieu.dungChung.luuBangXuongCan(cacBang, dongBoSupabase: false)
-                            self.trangThai = .thanhCong
-                            self.henTatTrangThai()
-                            hoanThanh(true, "Đã tải \(cacBang.count) bảng Xưởng Cán từ Supabase!")
-                        }
-                        return
+                if let jsonData = try? JSONSerialization.data(withJSONObject: duLieuMang),
+                   let cacBang = ThuMucDuLieu.dungChung.giaiMaDuLieu([BangXuongCan].self, tu: jsonData),
+                   !cacBang.isEmpty {
+                    DispatchQueue.main.async {
+                        KhoDuLieu.dungChung.luuBangXuongCan(cacBang, dongBoSupabase: false)
+                        self.trangThai = .thanhCong
+                        self.henTatTrangThai()
+                        hoanThanh(true, "Đã tải \(cacBang.count) bảng Xưởng Cán từ Supabase!")
                     }
+                    return
                 }
             }
 
-            // Nếu bảng `xuong_can_bang` trống hoặc chưa tạo, thử khôi phục từ `user_sync`
             if self.daDangNhap {
                 self.khoiPhucTuMay { ok, msg in
                     self.trangThai = ok ? .thanhCong : .ranh
                     self.henTatTrangThai()
-                    DispatchQueue.main.async {
-                        hoanThanh(ok, msg)
-                    }
+                    DispatchQueue.main.async { hoanThanh(ok, msg) }
                 }
             } else {
                 self.trangThai = .ranh
@@ -617,7 +626,31 @@ final class DichVuSupabase {
         }.resume()
     }
 
-    // MARK: Sao lưu & Khôi phục toàn bộ ứng dụng qua bảng `user_sync` (tương thích ngược 100% với ipa-main)
+    /// Tự động kiểm tra và khôi phục Ghi chú / Lịch / Nhắc nhở từ Supabase khi mở app
+    func tuDongKhoiPhucGhiChuNeuCan() {
+        if daDangNhap {
+            khoiPhucTuMay { _, _ in }
+            return
+        }
+        // Nếu chưa đăng nhập nhưng bảng user_sync cho phép đọc bản sao lưu gần nhất và máy đang trống ghi chú:
+        guard KhoDuLieu.dungChung.ghiChuNhanh.isEmpty,
+              let url = URL(string: "\(supabaseUrl)/rest/v1/user_sync?select=backup_data&order=updated_at.desc&limit=1") else { return }
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        ganHeaderChuan(&req, dungTokenNguoiDung: false)
+        URLSession.shared.dataTask(with: req) { [weak self] data, response, _ in
+            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+            guard (200...299).contains(code),
+                  let data,
+                  let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
+                  let backup = arr.first?["backup_data"] as? [String: Any] else { return }
+            DispatchQueue.main.async {
+                self?.apDungDuLieuBackup(backup)
+            }
+        }.resume()
+    }
+
+    // MARK: Sao lưu & Khôi phục toàn bộ ứng dụng qua bảng `user_sync`
     func saoLuuTatCaLenMay(hoanThanh: @escaping (Bool, String) -> Void) {
         guard let uid = userId, !uid.isEmpty else {
             hoanThanh(false, "Vui lòng đăng nhập tài khoản trước khi sao lưu.")
@@ -671,7 +704,7 @@ final class DichVuSupabase {
             if (200...299).contains(code) {
                 self?.trangThai = .thanhCong
                 self?.henTatTrangThai()
-                DispatchQueue.main.async { hoanThanh(true, "Đã lưu toàn bộ dữ liệu (bao gồm Xưởng Cán) lên đám mây Supabase ☁️") }
+                DispatchQueue.main.async { hoanThanh(true, "Đã lưu dữ liệu lên đám mây Supabase ☁️") }
             } else {
                 let errText = data.flatMap { String(data: $0, encoding: .utf8) } ?? "HTTP \(code)"
                 self?.trangThai = .loi
@@ -692,7 +725,7 @@ final class DichVuSupabase {
         req.httpMethod = "GET"
         ganHeaderChuan(&req)
 
-        URLSession.shared.dataTask(with: req) { [weak self] data, response, error in
+        URLSession.shared.dataTask(with: req) { [weak self] data, _, error in
             if let error {
                 self?.trangThai = .loi
                 self?.henTatTrangThai()
@@ -708,63 +741,75 @@ final class DichVuSupabase {
                 return
             }
 
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            let kho = KhoDuLieu.dungChung
-
             DispatchQueue.main.async {
-                if let qn = backup["QUICK_NOTES"],
-                   let d = try? JSONSerialization.data(withJSONObject: qn),
-                   let list = try? decoder.decode([GhiChuNhanh].self, from: d) {
-                    kho.luuGhiChuNhanh(list)
-                }
-                if let cn = backup["CALENDAR_NOTES"],
-                   let d = try? JSONSerialization.data(withJSONObject: cn),
-                   let dict = try? decoder.decode([String: GhiChuNgay].self, from: d) {
-                    kho.luuGhiChuLich(dict)
-                }
-                if let rem = backup["USER_REMINDERS"],
-                   let d = try? JSONSerialization.data(withJSONObject: rem),
-                   let list = try? decoder.decode([SuKienNhacNho].self, from: d) {
-                    kho.luuNhacNho(list)
-                }
-                if let xc = backup["XUONG_CAN_TABLES"],
-                   let d = try? JSONSerialization.data(withJSONObject: xc),
-                   let list = try? decoder.decode([BangXuongCan].self, from: d), !list.isEmpty {
-                    kho.luuBangXuongCan(list, dongBoSupabase: false)
-                }
-
-                var cd = kho.caiDat
-                if let sDate = backup["CYCLE_START_DATE"] as? String,
-                   let d = ISO8601DateFormatter().date(from: sDate) {
-                    cd.ngayBatDauChuKy = d
-                }
-                if let notif = backup["NOTIF_ENABLED"] as? Bool {
-                    cd.batThongBao = notif
-                }
-                if let gKey = backup["GEMINI_API_KEY"] as? String, !gKey.isEmpty {
-                    cd.geminiApiKey = gKey
-                }
-                if let pat = backup["WORK_CYCLE_PATTERN"] as? [String], !pat.isEmpty {
-                    cd.chuKyLamViec = pat
-                }
-                if let dKey = backup["DRIVE_KEY"] as? String, !dKey.isEmpty {
-                    cd.driveKey = dKey
-                }
-                if let dFolder = backup["DRIVE_FOLDER_ID"] as? String {
-                    cd.driveFolderId = dFolder
-                }
-                if let dScript = backup["DRIVE_SCRIPT_URL"] as? String {
-                    cd.driveScriptUrl = dScript
-                }
-                kho.luuCaiDat(cd)
-
+                self?.apDungDuLieuBackup(backup)
                 self?.trangThai = .thanhCong
                 self?.henTatTrangThai()
-                NotificationCenter.default.post(name: .duLieuDongBoXong, object: nil)
-                hoanThanh(true, "Đã khôi phục toàn bộ dữ liệu về máy thành công!")
+                hoanThanh(true, "Đã khôi phục toàn bộ dữ liệu (Ghi chú, Lịch, Nhắc nhở, Xưởng Cán) về máy!")
             }
         }.resume()
+    }
+
+    /// Giải mã linh hoạt cả dạng Mảng JSON lẫn chuỗi JSON (Stringified JSON) từ bản React Native cũ
+    private func layDataJSON(tu giaTri: Any?) -> Data? {
+        guard let giaTri else { return nil }
+        if let str = giaTri as? String {
+            return str.data(using: .utf8)
+        }
+        return try? JSONSerialization.data(withJSONObject: giaTri)
+    }
+
+    private func apDungDuLieuBackup(_ backup: [String: Any]) {
+        let tm = ThuMucDuLieu.dungChung
+        let kho = KhoDuLieu.dungChung
+
+        if let d = layDataJSON(tu: backup["QUICK_NOTES"]),
+           let list = tm.giaiMaDuLieu([GhiChuNhanh].self, tu: d) {
+            kho.luuGhiChuNhanh(list)
+        }
+        if let d = layDataJSON(tu: backup["CALENDAR_NOTES"]),
+           let dict = tm.giaiMaDuLieu([String: GhiChuNgay].self, tu: d) {
+            kho.luuGhiChuLich(dict)
+        }
+        if let d = layDataJSON(tu: backup["USER_REMINDERS"]),
+           let list = tm.giaiMaDuLieu([SuKienNhacNho].self, tu: d) {
+            kho.luuNhacNho(list)
+        }
+        if let d = layDataJSON(tu: backup["XUONG_CAN_TABLES"]),
+           let list = tm.giaiMaDuLieu([BangXuongCan].self, tu: d), !list.isEmpty {
+            kho.luuBangXuongCan(list, dongBoSupabase: false)
+        }
+
+        var cd = kho.caiDat
+        if let sDate = backup["CYCLE_START_DATE"] as? String,
+           let d = TienIchLich.docNgayISO(sDate) {
+            cd.ngayBatDauChuKy = d
+        }
+        if let notif = backup["NOTIF_ENABLED"] as? Bool {
+            cd.batThongBao = notif
+        } else if let notifStr = backup["NOTIF_ENABLED"] as? String {
+            cd.batThongBao = (notifStr == "true")
+        }
+        if let gKey = backup["GEMINI_API_KEY"] as? String, !gKey.isEmpty {
+            cd.geminiApiKey = gKey
+        }
+        if let pat = backup["WORK_CYCLE_PATTERN"] as? [String], !pat.isEmpty {
+            cd.chuKyLamViec = pat
+        } else if let dPat = layDataJSON(tu: backup["WORK_CYCLE_PATTERN"]),
+                  let pat = tm.giaiMaDuLieu([String].self, tu: dPat), !pat.isEmpty {
+            cd.chuKyLamViec = pat
+        }
+        if let dKey = backup["DRIVE_KEY"] as? String, !dKey.isEmpty {
+            cd.driveKey = dKey
+        }
+        if let dFolder = backup["DRIVE_FOLDER_ID"] as? String, !dFolder.isEmpty {
+            cd.driveFolderId = dFolder
+        }
+        if let dScript = backup["DRIVE_SCRIPT_URL"] as? String, !dScript.isEmpty {
+            cd.driveScriptUrl = dScript
+        }
+        kho.luuCaiDat(cd)
+        NotificationCenter.default.post(name: .duLieuDongBoXong, object: nil)
     }
 
     private func henTatTrangThai() {
@@ -784,6 +829,8 @@ final class DichVuSupabase {
     );
 
     alter table public.xuong_can_bang enable row level security;
+
+    drop policy if exists "Cho phep doc ghi xuong_can_bang" on public.xuong_can_bang;
 
     create policy "Cho phep doc ghi xuong_can_bang"
       on public.xuong_can_bang

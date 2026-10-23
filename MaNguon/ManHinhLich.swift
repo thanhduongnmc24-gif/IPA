@@ -144,8 +144,7 @@ final class ManHinhLich: UIViewController, UICollectionViewDataSource, UICollect
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Lịch làm việc"
-        navigationItem.leftBarButtonItem = taoNutChuyenSangXuongCan()
+        navigationController?.setNavigationBarHidden(true, animated: false)
         taoGiaoDien()
         napDuLieu()
 
@@ -155,6 +154,7 @@ final class ManHinhLich: UIViewController, UICollectionViewDataSource, UICollect
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        navigationController?.setNavigationBarHidden(true, animated: false)
         napDuLieu()
     }
 
@@ -171,21 +171,6 @@ final class ManHinhLich: UIViewController, UICollectionViewDataSource, UICollect
         noiDung.spacing = 12
         noiDung.translatesAutoresizingMaskIntoConstraints = false
         cuon.addSubview(noiDung)
-
-        // Nút chuyển nhanh sang Xưởng Cán nổi bật ở đầu màn hình
-        let nutXuongCan = UIButton(type: .system)
-        var cauHinhXC = UIButton.Configuration.filled()
-        cauHinhXC.title = "Mở Xưởng Cán (Bảng & Ảnh đồng bộ Drive / Supabase)"
-        cauHinhXC.image = UIImage(systemName: "tablecells.fill.badge.ellipsis")
-        cauHinhXC.imagePadding = 8
-        cauHinhXC.cornerStyle = .medium
-        cauHinhXC.baseBackgroundColor = KhoDuLieu.dungChung.mauSac.xuongCanAccent
-        cauHinhXC.baseForegroundColor = .white
-        cauHinhXC.contentInsets = NSDirectionalEdgeInsets(top: 12, leading: 14, bottom: 12, trailing: 14)
-        nutXuongCan.configuration = cauHinhXC
-        nutXuongCan.addAction(UIAction { [weak self] _ in
-            (self?.tabBarController as? ManHinhGocTabBar)?.chuyenSangXuongCan()
-        }, for: .touchUpInside)
 
         // Thanh điều hướng tháng
         let nutTruoc = UIButton(type: .system)
@@ -235,7 +220,7 @@ final class ManHinhLich: UIViewController, UICollectionViewDataSource, UICollect
         danhSachTongHop.axis = .vertical
         danhSachTongHop.spacing = 8
 
-        [nutXuongCan, hangThang, hangThu, luoiLich, hangCongCu, danhSachTongHop].forEach {
+        [hangThang, hangThu, luoiLich, hangCongCu, danhSachTongHop].forEach {
             noiDung.addArrangedSubview($0)
         }
 
@@ -245,7 +230,7 @@ final class ManHinhLich: UIViewController, UICollectionViewDataSource, UICollect
             cuon.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             cuon.trailingAnchor.constraint(equalTo: view.trailingAnchor),
 
-            noiDung.topAnchor.constraint(equalTo: cuon.contentLayoutGuide.topAnchor, constant: 10),
+            noiDung.topAnchor.constraint(equalTo: cuon.contentLayoutGuide.topAnchor, constant: 8),
             noiDung.bottomAnchor.constraint(equalTo: cuon.contentLayoutGuide.bottomAnchor, constant: -30),
             noiDung.leadingAnchor.constraint(equalTo: cuon.frameLayoutGuide.leadingAnchor, constant: 10),
             noiDung.trailingAnchor.constraint(equalTo: cuon.frameLayoutGuide.trailingAnchor, constant: -10)
@@ -262,7 +247,7 @@ final class ManHinhLich: UIViewController, UICollectionViewDataSource, UICollect
         df.dateFormat = "'Tháng' MM yyyy"
         tieuDeThang.text = df.string(from: thangHienTai)
 
-        if let hangThu = noiDung.arrangedSubviews.dropFirst(2).first as? UIStackView {
+        if let hangThu = noiDung.arrangedSubviews.dropFirst(1).first as? UIStackView {
             for (idx, v) in hangThu.arrangedSubviews.enumerated() {
                 guard let lb = v as? UILabel else { continue }
                 let laCN = (idx == 6)
@@ -442,7 +427,6 @@ final class ManHinhLich: UIViewController, UICollectionViewDataSource, UICollect
         danhSachTongHop.addArrangedSubview(lb)
     }
 
-    // MARK: CollectionView DataSource & Delegate
     func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
         cacNgayLuoi.count
     }
@@ -480,8 +464,6 @@ final class ManHinhLich: UIViewController, UICollectionViewDataSource, UICollect
     }
 }
 
-// MARK: - Modal Chi Tiết Ngày Lịch
-
 final class ManHinhChiTietNgayLich: UIViewController {
     private let ngay: Date
     private let khiLuu: () -> Void
@@ -503,7 +485,7 @@ final class ManHinhChiTietNgayLich: UIViewController {
         super.viewDidLoad()
         let mau = KhoDuLieu.dungChung.mauSac
         view.backgroundColor = mau.card
-        title = TienIchLich.dinhDangNgayViet.string(from: ngay)
+        navigationItem.title = TienIchLich.dinhDangNgayViet.string(from: ngay)
 
         navigationItem.leftBarButtonItem = UIBarButtonItem(title: "Đóng", style: .plain, target: self, action: #selector(dong))
         navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Lưu Ghi Chú", style: .done, target: self, action: #selector(luu))
