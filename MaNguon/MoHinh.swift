@@ -1,7 +1,15 @@
 import UIKit
 import UserNotifications
 
-// MARK: - 1. Mô hình Lịch & Ghi chú nhanh & Nhắc nhở (Tương thích 100% dữ liệu cũ từ React Native / Supabase)
+// MARK: - Hằng số OAuth 2.0 Google Drive mặc định của người dùng
+
+enum HangSoDriveMacDinh {
+    static let clientId = ""
+    static let clientSecret = ""
+    static let refreshToken = ""
+}
+
+// MARK: - 1. Mô hình Lịch & Ghi chú nhanh & Nhắc nhở
 
 struct GhiChuNgay: Codable, Hashable {
     var type: String
@@ -214,13 +222,46 @@ struct CaiDatUngDung: Codable {
     var geminiApiKey: String = ""
     var sheetWebhookUrl: String = "https://script.google.com/macros/s/AKfycbwmGmcshrvrCsfmqXmj1qlyERulh0CtawveADAMK8rwR4g-Oa5h4NMEo73EiSrIiNcK/exec"
 
-    // Cấu hình Google Drive OAuth 2.0 cho Xưởng Cán
-    var driveKey: String = "AQ.Ab8RN6IGGziGDdVjRVKCwe06oAOX8OldcVLm3fLdoRu3ZpwEsg"
+    // Cấu hình Google Drive OAuth 2.0 cho Xưởng Cán (Luôn có sẵn key mặc định của bạn)
+    var driveKey: String = ""
     var driveFolderId: String = ""
     var driveScriptUrl: String = ""
-    var driveClientId: String = ""
-    var driveClientSecret: String = ""
-    var driveRefreshToken: String = ""
+    var driveClientId: String = HangSoDriveMacDinh.clientId
+    var driveClientSecret: String = HangSoDriveMacDinh.clientSecret
+    var driveRefreshToken: String = HangSoDriveMacDinh.refreshToken
+
+    mutating func chuanHoaKeyDrive() {
+        let ud = UserDefaults.standard
+        if driveClientId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            driveClientId = ud.string(forKey: "DRIVE_OAUTH_CLIENT_ID") ?? HangSoDriveMacDinh.clientId
+        }
+        if driveClientId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            driveClientId = HangSoDriveMacDinh.clientId
+        }
+
+        if driveClientSecret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            driveClientSecret = ud.string(forKey: "DRIVE_OAUTH_CLIENT_SECRET") ?? HangSoDriveMacDinh.clientSecret
+        }
+        if driveClientSecret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            driveClientSecret = HangSoDriveMacDinh.clientSecret
+        }
+
+        if driveRefreshToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            driveRefreshToken = ud.string(forKey: "DRIVE_OAUTH_REFRESH_TOKEN") ?? HangSoDriveMacDinh.refreshToken
+        }
+        if driveRefreshToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            driveRefreshToken = HangSoDriveMacDinh.refreshToken
+        }
+
+        // Nếu driveFolderId chứa khoảng trắng (như "Anh app ghi chu" là tên thư mục chứ không phải ID), tự động xóa để tránh lỗi 404 File not found
+        let fId = driveFolderId.trimmingCharacters(in: .whitespacesAndNewlines)
+        if fId.contains(" ") {
+            driveFolderId = ""
+        } else {
+            driveFolderId = fId
+        }
+        driveScriptUrl = ""
+    }
 }
 
 // MARK: - 4. Bảng màu Giao diện
@@ -246,7 +287,7 @@ extension Notification.Name {
     static let trangThaiDongBoThayDoi = Notification.Name("TrangThaiDongBoThayDoi")
 }
 
-// MARK: - 5. Kho Lưu Trữ Cục Bộ & Tự Động Di Chuyển Dữ Liệu Cũ Từ React Native
+// MARK: - 5. Kho Lưu Trữ Cục Bộ & Tự Động Di Chuyển Dữ Liệu Cũ
 
 final class ThuMucDuLieu {
     static let dungChung = ThuMucDuLieu()
@@ -344,11 +385,15 @@ final class KhoDuLieu {
         if let d = tm.doc([SuKienNhacNho].self, tu: tm.tepNhacNho) {
             nhacNho = d
         }
-        if let d = tm.doc(CaiDatUngDung.self, tu: tm.tepCaiDat) {
+        if var d = tm.doc(CaiDatUngDung.self, tu: tm.tepCaiDat) {
+            d.chuanHoaKeyDrive()
             caiDat = d
+            tm.ghi(caiDat, vao: tm.tepCaiDat)
         } else {
+            caiDat.chuanHoaKeyDrive()
             tm.ghi(caiDat, vao: tm.tepCaiDat)
         }
+
         if let d = tm.doc([BangXuongCan].self, tu: tm.tepXuongCan), !d.isEmpty {
             danhSachBangXuongCan = d
         } else {
@@ -441,8 +486,17 @@ final class KhoDuLieu {
     }
 
     func luuCaiDat(_ moi: CaiDatUngDung, thongBao: Bool = true) {
-        caiDat = moi
-        ThuMucDuLieu.dungChung.ghi(moi, vao: ThuMucDuLieu.dungChung.tepCaiDat)
+        var banChuan = moi
+        banChuan.chuanHoaKeyDrive()
+        caiDat = banChuan
+
+        let ud = UserDefaults.standard
+        ud.setValue(banChuan.driveClientId, forKey: "DRIVE_OAUTH_CLIENT_ID")
+        ud.setValue(banChuan.driveClientSecret, forKey: "DRIVE_OAUTH_CLIENT_SECRET")
+        ud.setValue(banChuan.driveRefreshToken, forKey: "DRIVE_OAUTH_REFRESH_TOKEN")
+        ud.setValue(banChuan.driveFolderId, forKey: "DRIVE_OAUTH_FOLDER_ID")
+
+        ThuMucDuLieu.dungChung.ghi(banChuan, vao: ThuMucDuLieu.dungChung.tepCaiDat)
         if thongBao {
             NotificationCenter.default.post(name: .caiDatThayDoi, object: nil)
         }

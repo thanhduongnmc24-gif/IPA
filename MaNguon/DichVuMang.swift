@@ -107,6 +107,8 @@ final class DichVuGoogleDrive {
     static func chuanHoaFolderId(_ chuoi: String) -> String {
         let raw = chuoi.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !raw.isEmpty else { return "" }
+        // Nếu người dùng nhập tên thư mục có dấu cách (VD: "Anh app ghi chu") thay vì mã ID, trả về rỗng để lưu vào thư mục gốc
+        if raw.contains(" ") { return "" }
         if let range = raw.range(of: "/folders/") {
             let sauFolders = String(raw[range.upperBound...])
             let id = sauFolders.components(separatedBy: CharacterSet(charactersIn: "?/#&")).first ?? sauFolders
@@ -119,7 +121,6 @@ final class DichVuGoogleDrive {
         return raw
     }
 
-    /// Tải ảnh trực tiếp lên Google Drive REST API v3 bằng OAuth 2.0 (Client ID + Client Secret + Refresh Token) hoặc Access Token
     func taiAnhLenDrive(
         anh: UIImage,
         tenTep: String,
@@ -133,48 +134,34 @@ final class DichVuGoogleDrive {
 
         let cd = KhoDuLieu.dungChung.caiDat
         let folderId = Self.chuanHoaFolderId(cd.driveFolderId)
-        let clientId = cd.driveClientId.trimmingCharacters(in: .whitespacesAndNewlines)
-        let clientSecret = cd.driveClientSecret.trimmingCharacters(in: .whitespacesAndNewlines)
-        let refreshToken = cd.driveRefreshToken.trimmingCharacters(in: .whitespacesAndNewlines)
-        let keyHoacToken = cd.driveKey.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        // Cách 1 (Khuyên dùng & Bền vững nhất): OAuth 2.0 Refresh Token + Client ID + Client Secret gọi thẳng Google Drive API v3
-        if !refreshToken.isEmpty && !clientId.isEmpty && !clientSecret.isEmpty {
-            layAccessTokenTuRefreshToken(clientId: clientId, clientSecret: clientSecret, refreshToken: refreshToken) { [weak self] token, loi in
-                guard let self else { return }
-                if let token {
-                    self.taiLenQuaDriveREST(jpegData: jpegData, tenTep: tenTep, folderId: folderId, bearerToken: token, hoanThanh: hoanThanh)
-                } else {
-                    DispatchQueue.main.async {
-                        hoanThanh(nil, nil, loi ?? "Không lấy được Access Token từ Refresh Token.")
-                    }
+        let clientId = cd.driveClientId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? HangSoDriveMacDinh.clientId
+            : cd.driveClientId.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let clientSecret = cd.driveClientSecret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? HangSoDriveMacDinh.clientSecret
+            : cd.driveClientSecret.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let refreshToken = cd.driveRefreshToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? HangSoDriveMacDinh.refreshToken
+            : cd.driveRefreshToken.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if refreshToken.hasPrefix("ya29.") {
+            taiLenQuaDriveREST(jpegData: jpegData, tenTep: tenTep, folderId: folderId, bearerToken: refreshToken, daThuLaiRoot: false, hoanThanh: hoanThanh)
+            return
+        }
+
+        layAccessTokenTuRefreshToken(clientId: clientId, clientSecret: clientSecret, refreshToken: refreshToken) { [weak self] token, loi in
+            guard let self else { return }
+            if let token {
+                self.taiLenQuaDriveREST(jpegData: jpegData, tenTep: tenTep, folderId: folderId, bearerToken: token, daThuLaiRoot: false, hoanThanh: hoanThanh)
+            } else {
+                DispatchQueue.main.async {
+                    hoanThanh(nil, nil, loi ?? "Không lấy được Access Token từ Refresh Token.")
                 }
             }
-            return
         }
-
-        // Cách 2: Nếu người dùng dán trực tiếp OAuth2 Access Token (bắt đầu bằng ya29.) vào ô Refresh Token hoặc ô Access Token
-        if refreshToken.hasPrefix("ya29.") {
-            taiLenQuaDriveREST(jpegData: jpegData, tenTep: tenTep, folderId: folderId, bearerToken: refreshToken, hoanThanh: hoanThanh)
-            return
-        }
-        if keyHoacToken.hasPrefix("ya29.") {
-            taiLenQuaDriveREST(jpegData: jpegData, tenTep: tenTep, folderId: folderId, bearerToken: keyHoacToken, hoanThanh: hoanThanh)
-            return
-        }
-
-        // Cách 3 (Tùy chọn dự phòng nếu vẫn còn lưu link Script cũ)
-        let scriptStr = cd.driveScriptUrl.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !scriptStr.isEmpty, let scriptURL = URL(string: scriptStr) {
-            taiLenQuaAppsScript(url: scriptURL, jpegData: jpegData, tenTep: tenTep, folderId: folderId, hoanThanh: hoanThanh)
-            return
-        }
-
-        hoanThanh(
-            nil,
-            nil,
-            "Chưa kết nối OAuth 2.0 Google Drive! Hãy bấm biểu tượng Ổ đĩa ở góc trên trái màn hình Xưởng Cán để điền Client ID, Client Secret và Refresh Token (hoặc Access Token ya29...)."
-        )
     }
 
     private func thuNhoAnhNeuCan(_ anh: UIImage, kichThuocToiDa: CGFloat) -> UIImage {
@@ -236,6 +223,7 @@ final class DichVuGoogleDrive {
         tenTep: String,
         folderId: String,
         bearerToken: String,
+        daThuLaiRoot: Bool,
         hoanThanh: @escaping (String?, String?, String?) -> Void
     ) {
         let urlStr = "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink,webContentLink"
@@ -254,7 +242,7 @@ final class DichVuGoogleDrive {
             "name": tenTep,
             "mimeType": "image/jpeg"
         ]
-        if !folderId.isEmpty {
+        if !folderId.isEmpty && !folderId.contains(" ") {
             metaDict["parents"] = [folderId]
         }
         let metaData = (try? JSONSerialization.data(withJSONObject: metaDict)) ?? Data("{}".utf8)
@@ -280,9 +268,18 @@ final class DichVuGoogleDrive {
                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let fileId = json["id"] as? String {
                 let driveUrl = "https://drive.google.com/uc?export=view&id=\(fileId)"
-                // Mở quyền xem ảnh để các máy khác có thể tải về Cache
                 self?.moQuyenXemFileDrive(fileId: fileId, bearerToken: bearerToken)
                 DispatchQueue.main.async { hoanThanh(fileId, driveUrl, nil) }
+            } else if statusCode == 404 && !folderId.isEmpty && !daThuLaiRoot {
+                // Nếu Folder ID không tồn tại hoặc không có quyền truy cập, tự động tải thẳng vào thư mục gốc Google Drive!
+                self?.taiLenQuaDriveREST(
+                    jpegData: jpegData,
+                    tenTep: tenTep,
+                    folderId: "",
+                    bearerToken: bearerToken,
+                    daThuLaiRoot: true,
+                    hoanThanh: hoanThanh
+                )
             } else {
                 var chiTietLoi = "HTTP \(statusCode)"
                 if let data,
@@ -308,73 +305,28 @@ final class DichVuGoogleDrive {
         URLSession.shared.dataTask(with: req).resume()
     }
 
-    private func taiLenQuaAppsScript(
-        url: URL,
-        jpegData: Data,
-        tenTep: String,
-        folderId: String,
-        hoanThanh: @escaping (String?, String?, String?) -> Void
-    ) {
-        var req = URLRequest(url: url)
-        req.httpMethod = "POST"
-        req.setValue("text/plain;charset=utf-8", forHTTPHeaderField: "Content-Type")
-        req.timeoutInterval = 60
-
-        let payload: [String: Any] = [
-            "action": "upload_drive",
-            "filename": tenTep,
-            "mimeType": "image/jpeg",
-            "folderId": folderId,
-            "base64": jpegData.base64EncodedString()
-        ]
-        req.httpBody = try? JSONSerialization.data(withJSONObject: payload)
-
-        URLSession.shared.dataTask(with: req) { data, response, error in
-            if let error {
-                DispatchQueue.main.async { hoanThanh(nil, nil, error.localizedDescription) }
-                return
-            }
-            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
-            if let data,
-               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let fileId = json["fileId"] as? String, !fileId.isEmpty {
-                let viewUrl = (json["url"] as? String) ?? "https://drive.google.com/uc?export=view&id=\(fileId)"
-                DispatchQueue.main.async { hoanThanh(fileId, viewUrl, nil) }
-            } else {
-                DispatchQueue.main.async {
-                    hoanThanh(nil, nil, "Lỗi kết nối Drive (HTTP \(statusCode)). Hãy chuyển sang dùng OAuth 2.0 (Client ID / Secret / Refresh Token) trong mục Cấu hình Drive.")
-                }
-            }
-        }.resume()
-    }
-
     func taiAnhTuDrive(fileId: String, driveUrl: String?, hoanThanh: @escaping (UIImage?) -> Void) {
         let cd = KhoDuLieu.dungChung.caiDat
-        let clientId = cd.driveClientId.trimmingCharacters(in: .whitespacesAndNewlines)
-        let clientSecret = cd.driveClientSecret.trimmingCharacters(in: .whitespacesAndNewlines)
-        let refreshToken = cd.driveRefreshToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        let clientId = cd.driveClientId.isEmpty ? HangSoDriveMacDinh.clientId : cd.driveClientId
+        let clientSecret = cd.driveClientSecret.isEmpty ? HangSoDriveMacDinh.clientSecret : cd.driveClientSecret
+        let refreshToken = cd.driveRefreshToken.isEmpty ? HangSoDriveMacDinh.refreshToken : cd.driveRefreshToken
 
-        // Nếu có OAuth2 Refresh Token, tải trực tiếp qua Drive API v3 alt=media
-        if !refreshToken.isEmpty && !clientId.isEmpty && !clientSecret.isEmpty {
-            layAccessTokenTuRefreshToken(clientId: clientId, clientSecret: clientSecret, refreshToken: refreshToken) { token, _ in
-                guard let token,
-                      let url = URL(string: "https://www.googleapis.com/drive/v3/files/\(fileId)?alt=media") else {
-                    self.taiCongKhaiTuDrive(fileId: fileId, hoanThanh: hoanThanh)
-                    return
-                }
-                var req = URLRequest(url: url)
-                req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-                URLSession.shared.dataTask(with: req) { data, _, _ in
-                    if let data, let img = UIImage(data: data) {
-                        hoanThanh(img)
-                    } else {
-                        self.taiCongKhaiTuDrive(fileId: fileId, hoanThanh: hoanThanh)
-                    }
-                }.resume()
+        layAccessTokenTuRefreshToken(clientId: clientId, clientSecret: clientSecret, refreshToken: refreshToken) { token, _ in
+            guard let token,
+                  let url = URL(string: "https://www.googleapis.com/drive/v3/files/\(fileId)?alt=media") else {
+                self.taiCongKhaiTuDrive(fileId: fileId, hoanThanh: hoanThanh)
+                return
             }
-            return
+            var req = URLRequest(url: url)
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            URLSession.shared.dataTask(with: req) { data, _, _ in
+                if let data, let img = UIImage(data: data) {
+                    hoanThanh(img)
+                } else {
+                    self.taiCongKhaiTuDrive(fileId: fileId, hoanThanh: hoanThanh)
+                }
+            }.resume()
         }
-        taiCongKhaiTuDrive(fileId: fileId, hoanThanh: hoanThanh)
     }
 
     private func taiCongKhaiTuDrive(fileId: String, hoanThanh: @escaping (UIImage?) -> Void) {
@@ -392,7 +344,7 @@ final class DichVuGoogleDrive {
     }
 }
 
-// MARK: - 3. Dịch Vụ Đồng Bộ Supabase Tự Động (Tự động tạo & lưu bảng Xưởng Cán vào user_sync, không cần tạo bảng SQL thủ công)
+// MARK: - 3. Dịch Vụ Đồng Bộ Supabase Tự Động (Tự động làm mới JWT khi hết hạn PGRST303)
 
 enum TrangThaiDongBo: String {
     case ranh = "idle"
@@ -411,6 +363,8 @@ final class DichVuSupabase {
     private let kEmail = "SUPABASE_USER_EMAIL"
     private let kUserId = "SUPABASE_USER_ID"
     private let kAccessToken = "SUPABASE_ACCESS_TOKEN"
+    private let kRefreshToken = "SUPABASE_REFRESH_TOKEN"
+    private let kSavedPassword = "SUPABASE_SAVED_PASSWORD"
 
     var emailNguoiDung: String? {
         get { UserDefaults.standard.string(forKey: kEmail) }
@@ -427,9 +381,19 @@ final class DichVuSupabase {
         set { UserDefaults.standard.setValue(newValue, forKey: kAccessToken) }
     }
 
+    var refreshToken: String? {
+        get { UserDefaults.standard.string(forKey: kRefreshToken) }
+        set { UserDefaults.standard.setValue(newValue, forKey: kRefreshToken) }
+    }
+
+    private var matKhauLuuTam: String? {
+        get { UserDefaults.standard.string(forKey: kSavedPassword) }
+        set { UserDefaults.standard.setValue(newValue, forKey: kSavedPassword) }
+    }
+
     var daDangNhap: Bool {
-        guard let uid = userId, let token = accessToken else { return false }
-        return !uid.isEmpty && !token.isEmpty
+        guard let uid = userId else { return false }
+        return !uid.isEmpty
     }
 
     private(set) var trangThai: TrangThaiDongBo = .ranh {
@@ -442,18 +406,96 @@ final class DichVuSupabase {
 
     private init() {}
 
-    private func ganHeaderChuan(_ req: inout URLRequest, dungTokenNguoiDung: Bool = true) {
-        req.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
-        let bearer = (dungTokenNguoiDung ? accessToken : nil) ?? supabaseAnonKey
-        req.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization")
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    /// Kiểm tra xem chuỗi JWT có bị hết hạn (hoặc sắp hết hạn trong 2 phút tới) hay không
+    private func tokenDaHetHan(_ token: String?) -> Bool {
+        guard let token, !token.isEmpty else { return true }
+        let parts = token.components(separatedBy: ".")
+        guard parts.count == 3 else { return true }
+        var base64 = parts[1]
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        while base64.count % 4 != 0 {
+            base64.append("=")
+        }
+        guard let data = Data(base64Encoded: base64),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let exp = json["exp"] as? TimeInterval else {
+            return false
+        }
+        return Date().timeIntervalSince1970 + 120 >= exp
     }
 
-    func dangNhap(email: String, matKhau: String, hoanThanh: @escaping (Result<String, Error>) -> Void) {
+    /// Tự động lấy Bearer Token hợp lệ (tự động Refresh nếu JWT hết hạn để không bao giờ bị lỗi PGRST303 JWT expired)
+    private func layTokenHopLe(hoanThanh: @escaping (String?) -> Void) {
+        if let token = accessToken, !tokenDaHetHan(token) {
+            hoanThanh(token)
+            return
+        }
+
+        // 1. Thử làm mới bằng refresh_token
+        if let rf = refreshToken, !rf.isEmpty {
+            lamMoiToken(refreshToken: rf) { [weak self] tokenMoi in
+                if let tokenMoi {
+                    hoanThanh(tokenMoi)
+                } else {
+                    self?.thuDangNhapNgamHoacFallback(hoanThanh: hoanThanh)
+                }
+            }
+            return
+        }
+
+        // 2. Nếu phiên cũ từ bản trước chưa có refresh_token, thử đăng nhập ngầm hoặc dùng anonKey
+        thuDangNhapNgamHoacFallback(hoanThanh: hoanThanh)
+    }
+
+    private func lamMoiToken(refreshToken: String, hoanThanh: @escaping (String?) -> Void) {
+        guard let url = URL(string: "\(supabaseUrl)/auth/v1/token?grant_type=refresh_token") else {
+            hoanThanh(nil)
+            return
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
+        req.setValue("Bearer \(supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: ["refresh_token": refreshToken])
+
+        URLSession.shared.dataTask(with: req) { [weak self] data, response, _ in
+            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+            guard (200...299).contains(code),
+                  let data,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let newAccess = json["access_token"] as? String else {
+                hoanThanh(nil)
+                return
+            }
+            self?.accessToken = newAccess
+            if let newRefresh = json["refresh_token"] as? String {
+                self?.refreshToken = newRefresh
+            }
+            hoanThanh(newAccess)
+        }.resume()
+    }
+
+    private func thuDangNhapNgamHoacFallback(hoanThanh: @escaping (String?) -> Void) {
+        if let email = emailNguoiDung, !email.isEmpty,
+           let pass = matKhauLuuTam, !pass.isEmpty {
+            dangNhap(email: email, matKhau: pass, tuDongKhoiPhuc: false) { [weak self] _ in
+                hoanThanh(self?.accessToken ?? self?.supabaseAnonKey)
+            }
+        } else {
+            // Nếu token cũ đã hết hạn mà chưa lưu mật khẩu từ bản cũ, dùng supabaseAnonKey
+            hoanThanh(supabaseAnonKey)
+        }
+    }
+
+    func dangNhap(email: String, matKhau: String, tuDongKhoiPhuc: Bool = true, hoanThanh: @escaping (Result<String, Error>) -> Void) {
         guard let url = URL(string: "\(supabaseUrl)/auth/v1/token?grant_type=password") else { return }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
-        ganHeaderChuan(&req, dungTokenNguoiDung: false)
+        req.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
+        req.setValue("Bearer \(supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try? JSONSerialization.data(withJSONObject: ["email": email, "password": matKhau])
 
         URLSession.shared.dataTask(with: req) { [weak self] data, _, error in
@@ -472,9 +514,15 @@ final class DichVuSupabase {
                let userObj = json["user"] as? [String: Any],
                let uid = userObj["id"] as? String {
                 self?.accessToken = token
+                self?.refreshToken = json["refresh_token"] as? String
                 self?.userId = uid
                 self?.emailNguoiDung = (userObj["email"] as? String) ?? email
-                self?.khoiPhucTuMay { _, _ in
+                self?.matKhauLuuTam = matKhau
+                if tuDongKhoiPhuc {
+                    self?.khoiPhucTuMay { _, _ in
+                        DispatchQueue.main.async { hoanThanh(.success(email)) }
+                    }
+                } else {
                     DispatchQueue.main.async { hoanThanh(.success(email)) }
                 }
             } else {
@@ -490,7 +538,9 @@ final class DichVuSupabase {
         guard let url = URL(string: "\(supabaseUrl)/auth/v1/signup") else { return }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
-        ganHeaderChuan(&req, dungTokenNguoiDung: false)
+        req.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
+        req.setValue("Bearer \(supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try? JSONSerialization.data(withJSONObject: ["email": email, "password": matKhau])
 
         URLSession.shared.dataTask(with: req) { [weak self] data, _, error in
@@ -509,8 +559,10 @@ final class DichVuSupabase {
                let userObj = json["user"] as? [String: Any],
                let uid = userObj["id"] as? String {
                 self?.accessToken = token
+                self?.refreshToken = json["refresh_token"] as? String
                 self?.userId = uid
                 self?.emailNguoiDung = email
+                self?.matKhauLuuTam = matKhau
                 DispatchQueue.main.async { hoanThanh(.success("Đã đăng ký và đăng nhập thành công!")) }
             } else if json["id"] != nil || json["user"] != nil {
                 DispatchQueue.main.async { hoanThanh(.success("Đã tạo tài khoản! Hãy kiểm tra email để xác nhận.")) }
@@ -527,16 +579,17 @@ final class DichVuSupabase {
         emailNguoiDung = nil
         userId = nil
         accessToken = nil
+        refreshToken = nil
+        matKhauLuuTam = nil
     }
 
-    /// Tự động lưu các bảng Xưởng Cán được tạo trong App thẳng lên Supabase (qua user_sync sẵn có) mà không cần tạo bảng thủ công trên Supabase
     func dongBoXuongCanTuDong(hoanThanh: ((Bool, String) -> Void)? = nil) {
         if daDangNhap {
             saoLuuTatCaLenMay { ok, msg in
                 hoanThanh?(ok, ok ? "Đã tự động đồng bộ các bảng Xưởng Cán lên Supabase ☁️" : msg)
             }
         } else {
-            hoanThanh?(false, "Đã lưu bảng trên máy. Hãy đăng nhập tài khoản ở tab Cài đặt để tự động đồng bộ lên Supabase.")
+            hoanThanh?(false, "Đã lưu bảng trên máy. Hãy đăng nhập tài khoản ở tab Cài đặt để đồng bộ lên Supabase.")
         }
     }
 
@@ -558,7 +611,9 @@ final class DichVuSupabase {
               let url = URL(string: "\(supabaseUrl)/rest/v1/user_sync?select=backup_data&order=updated_at.desc&limit=1") else { return }
         var req = URLRequest(url: url)
         req.httpMethod = "GET"
-        ganHeaderChuan(&req, dungTokenNguoiDung: false)
+        req.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
+        req.setValue("Bearer \(supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         URLSession.shared.dataTask(with: req) { [weak self] data, response, _ in
             let code = (response as? HTTPURLResponse)?.statusCode ?? 0
             guard (200...299).contains(code),
@@ -577,6 +632,19 @@ final class DichVuSupabase {
             return
         }
         trangThai = .dangDongBo
+
+        layTokenHopLe { [weak self] bearer in
+            guard let self else { return }
+            self.thucHienSaoLuu(uid: uid, bearer: bearer ?? self.supabaseAnonKey, daThuLamMoi: false, hoanThanh: hoanThanh)
+        }
+    }
+
+    private func thucHienSaoLuu(
+        uid: String,
+        bearer: String,
+        daThuLamMoi: Bool,
+        hoanThanh: @escaping (Bool, String) -> Void
+    ) {
         let kho = KhoDuLieu.dungChung
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
@@ -595,7 +663,6 @@ final class DichVuSupabase {
             "GEMINI_API_KEY": kho.caiDat.geminiApiKey,
             "WORK_CYCLE_PATTERN": kho.caiDat.chuKyLamViec,
             "XUONG_CAN_TABLES": xuongCanArr,
-            "DRIVE_KEY": kho.caiDat.driveKey,
             "DRIVE_FOLDER_ID": kho.caiDat.driveFolderId,
             "DRIVE_CLIENT_ID": kho.caiDat.driveClientId,
             "DRIVE_CLIENT_SECRET": kho.caiDat.driveClientSecret,
@@ -611,27 +678,51 @@ final class DichVuSupabase {
         guard let url = URL(string: "\(supabaseUrl)/rest/v1/user_sync?on_conflict=user_id") else { return }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
-        ganHeaderChuan(&req)
+        req.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
+        req.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("resolution=merge-duplicates,return=minimal", forHTTPHeaderField: "Prefer")
         req.httpBody = try? JSONSerialization.data(withJSONObject: bodyObj)
 
         URLSession.shared.dataTask(with: req) { [weak self] data, response, error in
+            guard let self else { return }
             if let error {
-                self?.trangThai = .loi
-                self?.henTatTrangThai()
+                self.trangThai = .loi
+                self.henTatTrangThai()
                 DispatchQueue.main.async { hoanThanh(false, error.localizedDescription) }
                 return
             }
             let code = (response as? HTTPURLResponse)?.statusCode ?? 0
             if (200...299).contains(code) {
-                self?.trangThai = .thanhCong
-                self?.henTatTrangThai()
+                self.trangThai = .thanhCong
+                self.henTatTrangThai()
                 DispatchQueue.main.async { hoanThanh(true, "Đã tự động đồng bộ toàn bộ bảng Xưởng Cán & Ghi chú lên Supabase ☁️") }
-            } else {
-                let errText = data.flatMap { String(data: $0, encoding: .utf8) } ?? "HTTP \(code)"
-                self?.trangThai = .loi
-                self?.henTatTrangThai()
-                DispatchQueue.main.async { hoanThanh(false, "Lỗi sao lưu: \(errText)") }
+                return
+            }
+
+            let errText = data.flatMap { String(data: $0, encoding: .utf8) } ?? "HTTP \(code)"
+            if (code == 401 || errText.contains("PGRST303") || errText.contains("JWT expired")) && !daThuLamMoi {
+                // Xóa token cũ đã hết hạn và thử lại bằng anonKey hoặc làm mới phiên
+                self.accessToken = nil
+                self.layTokenHopLe { tokenMoi in
+                    self.thucHienSaoLuu(
+                        uid: uid,
+                        bearer: tokenMoi ?? self.supabaseAnonKey,
+                        daThuLamMoi: true,
+                        hoanThanh: hoanThanh
+                    )
+                }
+                return
+            }
+
+            self.trangThai = .loi
+            self.henTatTrangThai()
+            DispatchQueue.main.async {
+                if errText.contains("PGRST303") || errText.contains("JWT expired") || code == 401 {
+                    hoanThanh(false, "Phiên đăng nhập từ bản cũ đã hết hạn. Bạn hãy vào tab Cài đặt -> bấm Đăng xuất rồi Đăng nhập lại 1 lần để ứng dụng tự động gia hạn vĩnh viễn nhé!")
+                } else {
+                    hoanThanh(false, "Lỗi sao lưu: \(errText)")
+                }
             }
         }.resume()
     }
@@ -642,31 +733,69 @@ final class DichVuSupabase {
             return
         }
         trangThai = .dangTaiVe
+        layTokenHopLe { [weak self] bearer in
+            guard let self else { return }
+            self.thucHienKhoiPhuc(uid: uid, bearer: bearer ?? self.supabaseAnonKey, daThuLamMoi: false, hoanThanh: hoanThanh)
+        }
+    }
+
+    private func thucHienKhoiPhuc(
+        uid: String,
+        bearer: String,
+        daThuLamMoi: Bool,
+        hoanThanh: @escaping (Bool, String) -> Void
+    ) {
         guard let url = URL(string: "\(supabaseUrl)/rest/v1/user_sync?user_id=eq.\(uid)&select=backup_data") else { return }
         var req = URLRequest(url: url)
         req.httpMethod = "GET"
-        ganHeaderChuan(&req)
+        req.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
+        req.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        URLSession.shared.dataTask(with: req) { [weak self] data, _, error in
+        URLSession.shared.dataTask(with: req) { [weak self] data, response, error in
+            guard let self else { return }
             if let error {
-                self?.trangThai = .loi
-                self?.henTatTrangThai()
+                self.trangThai = .loi
+                self.henTatTrangThai()
                 DispatchQueue.main.async { hoanThanh(false, error.localizedDescription) }
                 return
             }
-            guard let data,
+            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+            let rawText = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+
+            if (code == 401 || rawText.contains("PGRST303") || rawText.contains("JWT expired")) && !daThuLamMoi {
+                self.accessToken = nil
+                self.layTokenHopLe { tokenMoi in
+                    self.thucHienKhoiPhuc(
+                        uid: uid,
+                        bearer: tokenMoi ?? self.supabaseAnonKey,
+                        daThuLamMoi: true,
+                        hoanThanh: hoanThanh
+                    )
+                }
+                return
+            }
+
+            guard (200...299).contains(code),
+                  let data,
                   let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
                   let first = arr.first,
                   let backup = first["backup_data"] as? [String: Any] else {
-                self?.trangThai = .ranh
-                DispatchQueue.main.async { hoanThanh(false, "Không tìm thấy bản sao lưu nào trên đám mây.") }
+                self.trangThai = .ranh
+                DispatchQueue.main.async {
+                    if rawText.contains("PGRST303") || rawText.contains("JWT expired") || code == 401 {
+                        hoanThanh(false, "Phiên đăng nhập từ bản cũ đã hết hạn. Bạn hãy vào tab Cài đặt -> bấm Đăng xuất rồi Đăng nhập lại 1 lần để tự động gia hạn vĩnh viễn nhé!")
+                    } else {
+                        hoanThanh(false, "Không tìm thấy bản sao lưu nào trên đám mây.")
+                    }
+                }
                 return
             }
 
             DispatchQueue.main.async {
-                self?.apDungDuLieuBackup(backup)
-                self?.trangThai = .thanhCong
-                self?.henTatTrangThai()
+                self.apDungDuLieuBackup(backup)
+                self.trangThai = .thanhCong
+                self.henTatTrangThai()
                 hoanThanh(true, "Đã khôi phục toàn bộ dữ liệu (Ghi chú, Lịch, Nhắc nhở, Xưởng Cán) về máy!")
             }
         }.resume()
@@ -720,10 +849,7 @@ final class DichVuSupabase {
                   let pat = tm.giaiMaDuLieu([String].self, tu: dPat), !pat.isEmpty {
             cd.chuKyLamViec = pat
         }
-        if let dKey = backup["DRIVE_KEY"] as? String, !dKey.isEmpty {
-            cd.driveKey = dKey
-        }
-        if let dFolder = backup["DRIVE_FOLDER_ID"] as? String, !dFolder.isEmpty {
+        if let dFolder = backup["DRIVE_FOLDER_ID"] as? String, !dFolder.isEmpty, !dFolder.contains(" ") {
             cd.driveFolderId = dFolder
         }
         if let dClientId = backup["DRIVE_CLIENT_ID"] as? String, !dClientId.isEmpty {
@@ -735,6 +861,7 @@ final class DichVuSupabase {
         if let dRefresh = backup["DRIVE_REFRESH_TOKEN"] as? String, !dRefresh.isEmpty {
             cd.driveRefreshToken = dRefresh
         }
+        cd.chuanHoaKeyDrive()
         kho.luuCaiDat(cd, thongBao: false)
         NotificationCenter.default.post(name: .duLieuDongBoXong, object: nil)
     }

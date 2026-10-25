@@ -979,7 +979,8 @@ final class ManHinhCauHinhDriveXuongCan: UIViewController {
         navigationItem.leftBarButtonItem = UIBarButtonItem(title: "Đóng", style: .plain, target: self, action: #selector(dong))
         navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Lưu", style: .done, target: self, action: #selector(luu))
 
-        let cd = KhoDuLieu.dungChung.caiDat
+        var cd = KhoDuLieu.dungChung.caiDat
+        cd.chuanHoaKeyDrive()
         oClientId.text = cd.driveClientId
         oClientSecret.text = cd.driveClientSecret
         oRefreshToken.text = cd.driveRefreshToken
@@ -1062,10 +1063,16 @@ final class ManHinhCauHinhDriveXuongCan: UIViewController {
 
     private func luuTamVaoKho() {
         var cd = KhoDuLieu.dungChung.caiDat
-        cd.driveClientId = oClientId.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        cd.driveClientSecret = oClientSecret.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        cd.driveRefreshToken = oRefreshToken.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let cid = oClientId.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let csec = oClientSecret.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let rtok = oRefreshToken.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        cd.driveClientId = cid.isEmpty ? HangSoDriveMacDinh.clientId : cid
+        cd.driveClientSecret = csec.isEmpty ? HangSoDriveMacDinh.clientSecret : csec
+        cd.driveRefreshToken = rtok.isEmpty ? HangSoDriveMacDinh.refreshToken : rtok
         cd.driveFolderId = DichVuGoogleDrive.chuanHoaFolderId(oFolderId.text ?? "")
+        oClientId.text = cd.driveClientId
+        oClientSecret.text = cd.driveClientSecret
+        oRefreshToken.text = cd.driveRefreshToken
         oFolderId.text = cd.driveFolderId
         KhoDuLieu.dungChung.luuCaiDat(cd, thongBao: false)
     }
