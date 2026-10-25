@@ -26,7 +26,7 @@ final class ManHinhXuongCan: UIViewController, UIImagePickerControllerDelegate, 
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        navigationItem.title = "Xưởng Cán"
+        navigationItem.title = nil
 
         if hienNutDongModal {
             navigationItem.leftBarButtonItem = UIBarButtonItem(
@@ -36,19 +36,13 @@ final class ManHinhXuongCan: UIViewController, UIImagePickerControllerDelegate, 
                 action: #selector(dongModal)
             )
         } else {
-            let nutDrive = UIBarButtonItem(
-                image: UIImage(systemName: "externaldrive.badge.icloud"),
-                style: .plain,
-                target: self,
-                action: #selector(moCauHinhDrive)
-            )
             let nutDongBo = UIBarButtonItem(
                 image: UIImage(systemName: "arrow.triangle.2.circlepath"),
                 style: .plain,
                 target: self,
                 action: #selector(dongBoThuCong)
             )
-            navigationItem.leftBarButtonItems = [nutDrive, nutDongBo]
+            navigationItem.leftBarButtonItem = nutDongBo
         }
 
         let nutMenu = UIBarButtonItem(
@@ -541,6 +535,20 @@ final class ManHinhXuongCan: UIViewController, UIImagePickerControllerDelegate, 
         sheet.addAction(UIAlertAction(title: "Đổi tên cột", style: .default) { [weak self] _ in
             self?.doiTenCot(bang: bang, cot: cot)
         })
+        let cacCotDaSapXep = bang.cot.sorted { $0.thuTu < $1.thuTu }
+        if let viTri = cacCotDaSapXep.firstIndex(where: { $0.id == cot.id }) {
+            if viTri > 0 {
+                sheet.addAction(UIAlertAction(title: "⬅️ Đưa cột lên trước", style: .default) { _ in
+                    self.diChuyenCot(bang: bang, idCot: cot.id, buoc: -1)
+                })
+            }
+            if viTri < cacCotDaSapXep.count - 1 {
+                sheet.addAction(UIAlertAction(title: "➡️ Đưa cột về sau", style: .default) { _ in
+                    self.diChuyenCot(bang: bang, idCot: cot.id, buoc: 1)
+                })
+            }
+        }
+
         let loaiKhac: LoaiCotXuongCan = (cot.loai == .chu) ? .anh : .chu
         sheet.addAction(UIAlertAction(title: "Đổi sang \(loaiKhac.tenHienThi)", style: .default) { _ in
             var bangMoi = bang
@@ -564,6 +572,24 @@ final class ManHinhXuongCan: UIViewController, UIImagePickerControllerDelegate, 
             pop.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 1, height: 1)
         }
         present(sheet, animated: true)
+    }
+
+    private func diChuyenCot(bang: BangXuongCan, idCot: String, buoc: Int) {
+        var bangMoi = bang
+        var cacCot = bangMoi.cot.sorted { $0.thuTu < $1.thuTu }
+        guard let viTriCu = cacCot.firstIndex(where: { $0.id == idCot }) else { return }
+
+        let viTriMoi = viTriCu + buoc
+        guard cacCot.indices.contains(viTriMoi) else { return }
+
+        cacCot.swapAt(viTriCu, viTriMoi)
+        for index in cacCot.indices {
+            cacCot[index].thuTu = index
+        }
+
+        bangMoi.cot = cacCot
+        bangMoi.capNhatLuc = Date()
+        KhoDuLieu.dungChung.capNhatMotBangXuongCan(bangMoi)
     }
 
     private func doiTenCot(bang: BangXuongCan, cot: CotXuongCan) {
@@ -611,9 +637,6 @@ final class ManHinhXuongCan: UIViewController, UIImagePickerControllerDelegate, 
             DichVuSupabase.dungChung.taiXuongCanTuSupabase { ok, msg in
                 self?.hienThongBao(tieuDe: ok ? "Thành công" : "Thông báo", noiDung: msg)
             }
-        })
-        sheet.addAction(UIAlertAction(title: "Kết nối Google Drive (OAuth 2.0)", style: .default) { [weak self] _ in
-            self?.moCauHinhDrive()
         })
         if KhoDuLieu.dungChung.danhSachBangXuongCan.count > 1 {
             sheet.addAction(UIAlertAction(title: "Xóa bảng '\(bang.tenBang)'", style: .destructive) { [weak self] _ in
