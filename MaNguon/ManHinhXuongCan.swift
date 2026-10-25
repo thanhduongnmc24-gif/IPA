@@ -945,6 +945,10 @@ final class ManHinhXemAnhToanManHinh: UIViewController, UIScrollViewDelegate {
         cuonZoom.delegate = self
         cuonZoom.minimumZoomScale = 1.0
         cuonZoom.maximumZoomScale = 5.0
+        cuonZoom.bouncesZoom = true
+        cuonZoom.alwaysBounceHorizontal = false
+        cuonZoom.alwaysBounceVertical = false
+        cuonZoom.backgroundColor = .black
         cuonZoom.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(cuonZoom)
 
@@ -954,14 +958,16 @@ final class ManHinhXemAnhToanManHinh: UIViewController, UIScrollViewDelegate {
 
         NSLayoutConstraint.activate([
             cuonZoom.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            cuonZoom.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            cuonZoom.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
             cuonZoom.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             cuonZoom.trailingAnchor.constraint(equalTo: view.trailingAnchor),
 
+            khungAnh.leadingAnchor.constraint(equalTo: cuonZoom.contentLayoutGuide.leadingAnchor),
+            khungAnh.trailingAnchor.constraint(equalTo: cuonZoom.contentLayoutGuide.trailingAnchor),
+            khungAnh.topAnchor.constraint(equalTo: cuonZoom.contentLayoutGuide.topAnchor),
+            khungAnh.bottomAnchor.constraint(equalTo: cuonZoom.contentLayoutGuide.bottomAnchor),
             khungAnh.widthAnchor.constraint(equalTo: cuonZoom.frameLayoutGuide.widthAnchor),
-            khungAnh.heightAnchor.constraint(equalTo: cuonZoom.frameLayoutGuide.heightAnchor),
-            khungAnh.centerXAnchor.constraint(equalTo: cuonZoom.contentLayoutGuide.centerXAnchor),
-            khungAnh.centerYAnchor.constraint(equalTo: cuonZoom.contentLayoutGuide.centerYAnchor)
+            khungAnh.heightAnchor.constraint(equalTo: cuonZoom.frameLayoutGuide.heightAnchor)
         ])
 
         BoNhoDemAnh.dungChung.taiAnh(thongTin: thongTinAnh) { [weak self] img in
