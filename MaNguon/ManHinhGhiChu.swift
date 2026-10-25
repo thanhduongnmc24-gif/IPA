@@ -37,6 +37,10 @@ final class ManHinhGhiChu: UIViewController, UITableViewDataSource, UITableViewD
         bang.keyboardDismissMode = .onDrag
         bang.translatesAutoresizingMaskIntoConstraints = false
 
+        let nhanGiu = UILongPressGestureRecognizer(target: self, action: #selector(xuLyNhanGiuGhiChu(_:)))
+        nhanGiu.minimumPressDuration = 0.6
+        bang.addGestureRecognizer(nhanGiu)
+
         view.addSubview(thanhTimKiem)
         view.addSubview(bang)
 
@@ -176,6 +180,33 @@ final class ManHinhGhiChu: UIViewController, UITableViewDataSource, UITableViewD
         ])
 
         return cell
+    }
+
+    @objc private func xuLyNhanGiuGhiChu(_ gesture: UILongPressGestureRecognizer) {
+        guard gesture.state == .began else { return }
+
+        let viTri = gesture.location(in: bang)
+        guard let indexPath = bang.indexPathForRow(at: viTri),
+              danhSachLoc.indices.contains(indexPath.row) else { return }
+
+        let noiDung = danhSachLoc[indexPath.row].content
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !noiDung.isEmpty else {
+            hienThongBaoSaoChep("Ghi chú chưa có nội dung")
+            return
+        }
+
+        UIPasteboard.general.string = noiDung
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        hienThongBaoSaoChep("Đã sao chép nội dung ghi chú")
+    }
+
+    private func hienThongBaoSaoChep(_ noiDung: String) {
+        let thongBao = UIAlertController(title: nil, message: noiDung, preferredStyle: .alert)
+        present(thongBao, animated: true)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak thongBao] in
+            thongBao?.dismiss(animated: true)
+        }
     }
 
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {

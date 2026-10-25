@@ -57,8 +57,23 @@ final class ManHinhCaiDat: UIViewController {
         veGiaoDien()
     }
 
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        // Cập nhật lại các trường Drive từ kho chung để không bao giờ ghi đè mất Key Drive vừa nhập
+        let hienTai = KhoDuLieu.dungChung.caiDat
+        banNhap.driveClientId = hienTai.driveClientId
+        banNhap.driveClientSecret = hienTai.driveClientSecret
+        banNhap.driveRefreshToken = hienTai.driveRefreshToken
+        banNhap.driveFolderId = hienTai.driveFolderId
+    }
+
     @objc private func bamLuuCaiDat() {
         view.endEditing(true)
+        let hienTai = KhoDuLieu.dungChung.caiDat
+        banNhap.driveClientId = hienTai.driveClientId
+        banNhap.driveClientSecret = hienTai.driveClientSecret
+        banNhap.driveRefreshToken = hienTai.driveRefreshToken
+        banNhap.driveFolderId = hienTai.driveFolderId
         banNhap.geminiApiKey = oGemini.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         KhoDuLieu.dungChung.luuCaiDat(banNhap, thongBao: true)
         veGiaoDien()
