@@ -440,7 +440,7 @@ final class KhoDuLieu {
                let dNotes = rawNotes.data(using: .utf8),
                let list = ThuMucDuLieu.dungChung.giaiMaDuLieu([GhiChuNhanh].self, tu: dNotes),
                !list.isEmpty {
-                luuGhiChuNhanh(list)
+                luuGhiChuNhanh(list, dongBoSupabase: false)
             }
 
             if ghiChuLich.isEmpty,
@@ -448,7 +448,7 @@ final class KhoDuLieu {
                let dCal = rawCal.data(using: .utf8),
                let dict = ThuMucDuLieu.dungChung.giaiMaDuLieu([String: GhiChuNgay].self, tu: dCal),
                !dict.isEmpty {
-                luuGhiChuLich(dict)
+                luuGhiChuLich(dict, dongBoSupabase: false)
             }
 
             if nhacNho.isEmpty,
@@ -461,9 +461,12 @@ final class KhoDuLieu {
         }
     }
 
-    func luuGhiChuLich(_ moi: [String: GhiChuNgay]) {
+    func luuGhiChuLich(_ moi: [String: GhiChuNgay], dongBoSupabase: Bool = true) {
         ghiChuLich = moi
         ThuMucDuLieu.dungChung.ghi(moi, vao: ThuMucDuLieu.dungChung.tepLich)
+        if dongBoSupabase {
+            DichVuSupabase.dungChung.dongBoDuLieuTuDong()
+        }
     }
 
     func sapXepGhiChuNhanh(_ ds: [GhiChuNhanh]) -> [GhiChuNhanh] {
@@ -474,10 +477,13 @@ final class KhoDuLieu {
         }
     }
 
-    func luuGhiChuNhanh(_ moi: [GhiChuNhanh]) {
+    func luuGhiChuNhanh(_ moi: [GhiChuNhanh], dongBoSupabase: Bool = true) {
         let daSapXep = sapXepGhiChuNhanh(moi)
         ghiChuNhanh = daSapXep
         ThuMucDuLieu.dungChung.ghi(daSapXep, vao: ThuMucDuLieu.dungChung.tepGhiChuNhanh)
+        if dongBoSupabase {
+            DichVuSupabase.dungChung.dongBoDuLieuTuDong()
+        }
     }
 
     func luuNhacNho(_ moi: [SuKienNhacNho]) {

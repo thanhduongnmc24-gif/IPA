@@ -365,6 +365,7 @@ final class DichVuSupabase {
     private let kAccessToken = "SUPABASE_ACCESS_TOKEN"
     private let kRefreshToken = "SUPABASE_REFRESH_TOKEN"
     private let kSavedPassword = "SUPABASE_SAVED_PASSWORD"
+    private var tacVuDongBoCho: DispatchWorkItem?
 
     var emailNguoiDung: String? {
         get { UserDefaults.standard.string(forKey: kEmail) }
@@ -581,6 +582,18 @@ final class DichVuSupabase {
         accessToken = nil
         refreshToken = nil
         matKhauLuuTam = nil
+    }
+
+    func dongBoDuLieuTuDong() {
+        guard daDangNhap else { return }
+
+        tacVuDongBoCho?.cancel()
+        let tacVu = DispatchWorkItem { [weak self] in
+            guard let self, self.daDangNhap else { return }
+            self.saoLuuTatCaLenMay { _, _ in }
+        }
+        tacVuDongBoCho = tacVu
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2, execute: tacVu)
     }
 
     func dongBoXuongCanTuDong(hoanThanh: ((Bool, String) -> Void)? = nil) {
@@ -815,11 +828,11 @@ final class DichVuSupabase {
 
         if let d = layDataJSON(tu: backup["QUICK_NOTES"]),
            let list = tm.giaiMaDuLieu([GhiChuNhanh].self, tu: d) {
-            kho.luuGhiChuNhanh(list)
+            kho.luuGhiChuNhanh(list, dongBoSupabase: false)
         }
         if let d = layDataJSON(tu: backup["CALENDAR_NOTES"]),
            let dict = tm.giaiMaDuLieu([String: GhiChuNgay].self, tu: d) {
-            kho.luuGhiChuLich(dict)
+            kho.luuGhiChuLich(dict, dongBoSupabase: false)
         }
         if let d = layDataJSON(tu: backup["USER_REMINDERS"]),
            let list = tm.giaiMaDuLieu([SuKienNhacNho].self, tu: d) {
