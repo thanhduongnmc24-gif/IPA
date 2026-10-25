@@ -5,7 +5,6 @@ final class ManHinhSheets: UIViewController, UIImagePickerControllerDelegate, UI
     private var danhSachAnh: [MucAnhSheet] = [MucAnhSheet()]
     private var hinhAnhTam: [String: UIImage] = [:]
     private var idAnhDangChon: String?
-    private var dangGui = false
 
     private let cuon = UIScrollView()
     private let nganChinh = UIStackView()
@@ -50,12 +49,12 @@ final class ManHinhSheets: UIViewController, UIImagePickerControllerDelegate, UI
         chGui.imagePadding = 8
         chGui.cornerStyle = .medium
         nutGui.configuration = chGui
-        nutGui.heightAnchor.constraint(equalToConstant: 46).isActive = true
+        nutGui.heightAnchor.constraint(equalToConstant: 44).isActive = true
         nutGui.addTarget(self, action: #selector(guiDuLieu), for: .touchUpInside)
 
         let lbChu = UILabel()
         lbChu.text = "📝 NỘI DUNG CHỮ"
-        lbChu.font = .systemFont(ofSize: 14, weight: .bold)
+        lbChu.font = .systemFont(ofSize: 13, weight: .bold)
 
         nganChu.axis = .vertical
         nganChu.spacing = 10
@@ -68,7 +67,7 @@ final class ManHinhSheets: UIViewController, UIImagePickerControllerDelegate, UI
 
         let lbAnh = UILabel()
         lbAnh.text = "📸 HÌNH ẢNH"
-        lbAnh.font = .systemFont(ofSize: 14, weight: .bold)
+        lbAnh.font = .systemFont(ofSize: 13, weight: .bold)
 
         nganAnh.axis = .vertical
         nganAnh.spacing = 10
@@ -293,7 +292,7 @@ final class ManHinhSheets: UIViewController, UIImagePickerControllerDelegate, UI
         alert.addAction(UIAlertAction(title: "Lưu", style: .default) { _ in
             var cd = KhoDuLieu.dungChung.caiDat
             cd.sheetWebhookUrl = alert.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            KhoDuLieu.dungChung.luuCaiDat(cd)
+            KhoDuLieu.dungChung.luuCaiDat(cd, thongBao: false)
         })
         present(alert, animated: true)
     }

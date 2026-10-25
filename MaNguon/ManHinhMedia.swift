@@ -5,16 +5,11 @@ final class ManHinhMedia: UIViewController {
     private let cuon = UIScrollView()
     private let nganNoiDung = UIStackView()
 
-    // State Video
     private let oMaxNV = UITextField()
     private let oMaxVideo = UITextField()
     private let oCotTruyen = UITextView()
-
-    // State Ảnh & Tiêu đề
     private let oNhapChung = UITextView()
     private let chonNenTangTieuDe = UISegmentedControl(items: ["Video Dài", "Shorts"])
-
-    // State Nhạc
     private let oYTuongNhac = UITextView()
     private var chuDeNhacHienTai: (title: String, genre: String, prompt: String, chord: String)?
     private var tenBaiHatHienTai: String = ""
@@ -126,7 +121,7 @@ final class ManHinhMedia: UIViewController {
         nganNoiDung.addArrangedSubview(chonCheDo)
 
         switch chonCheDo.selectedSegmentIndex {
-        case 0: // Video VEO3
+        case 0:
             let hangMax = UIStackView(arrangedSubviews: [
                 taoCapNhan("Max ký tự NV:", oMaxNV),
                 taoCapNhan("Max ký tự Video:", oMaxVideo)
@@ -138,25 +133,25 @@ final class ManHinhMedia: UIViewController {
             nganNoiDung.addArrangedSubview(oCotTruyen)
             nganNoiDung.addArrangedSubview(taoNutChinh("✨ Phân tích & Tạo Prompt VEO3", hanhDong: #selector(taoPromptVideo)))
 
-        case 1: // Ảnh
+        case 1:
             nganNoiDung.addArrangedSubview(taoNhan("Ý tưởng ảnh:"))
             nganNoiDung.addArrangedSubview(oNhapChung)
             nganNoiDung.addArrangedSubview(taoNutChinh("✨ Tạo Prompt Ảnh", hanhDong: #selector(taoPromptAnh)))
 
-        case 2: // Tiêu đề
+        case 2:
             nganNoiDung.addArrangedSubview(taoNhan("Nội dung video:"))
             nganNoiDung.addArrangedSubview(oNhapChung)
             nganNoiDung.addArrangedSubview(chonNenTangTieuDe)
             nganNoiDung.addArrangedSubview(taoNutChinh("✨ Tạo 5 Tiêu Đề YouTube", hanhDong: #selector(taoTieuDe)))
 
-        default: // Nhạc & Studio AI
+        default:
             let hangNgauNhien = UIStackView(arrangedSubviews: [
                 taoNutChinh("🎲 Chủ đề ngẫu nhiên", hanhDong: #selector(chonChuDeNgauNhien)),
                 taoNutChinh("✨ Tạo chủ đề từ ý tưởng", hanhDong: #selector(taoChuDeTuYTuong))
             ])
             hangNgauNhien.distribution = .fillEqually
             hangNgauNhien.spacing = 8
-            nganNoiDung.addArrangedSubview(taoNhan("Ý tưởng bài hát (hoặc bấm Chủ đề ngẫu nhiên):"))
+            nganNoiDung.addArrangedSubview(taoNhan("Ý tưởng bài hát:"))
             nganNoiDung.addArrangedSubview(oYTuongNhac)
             nganNoiDung.addArrangedSubview(hangNgauNhien)
             nganNoiDung.addArrangedSubview(taoNutChinh("🎵 Viết Nhạc, Lời & Hợp Âm (AI)", hanhDong: #selector(vietNhacDayDu)))
@@ -192,7 +187,7 @@ final class ManHinhMedia: UIViewController {
         ch.baseBackgroundColor = KhoDuLieu.dungChung.mauSac.primary
         ch.cornerStyle = .medium
         nut.configuration = ch
-        nut.heightAnchor.constraint(equalToConstant: 42).isActive = true
+        nut.heightAnchor.constraint(equalToConstant: 40).isActive = true
         nut.addTarget(self, action: hanhDong, for: .touchUpInside)
         return nut
     }

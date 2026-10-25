@@ -176,7 +176,7 @@ struct GiaTriOXuongCan: Codable, Hashable {
 
 struct DongXuongCan: Codable, Hashable, Identifiable {
     var id: String = UUID().uuidString
-    var giaTri: [String: GiaTriOXuongCan] = [:] // Key = CotXuongCan.id
+    var giaTri: [String: GiaTriOXuongCan] = [:]
     var capNhatLuc: Date = Date()
 }
 
@@ -214,7 +214,7 @@ struct CaiDatUngDung: Codable {
     var geminiApiKey: String = ""
     var sheetWebhookUrl: String = "https://script.google.com/macros/s/AKfycbwmGmcshrvrCsfmqXmj1qlyERulh0CtawveADAMK8rwR4g-Oa5h4NMEo73EiSrIiNcK/exec"
 
-    // Cấu hình Google Drive cho Xưởng Cán
+    // Cấu hình Google Drive OAuth 2.0 cho Xưởng Cán
     var driveKey: String = "AQ.Ab8RN6IGGziGDdVjRVKCwe06oAOX8OldcVLm3fLdoRu3ZpwEsg"
     var driveFolderId: String = ""
     var driveScriptUrl: String = ""
@@ -246,7 +246,7 @@ extension Notification.Name {
     static let trangThaiDongBoThayDoi = Notification.Name("TrangThaiDongBoThayDoi")
 }
 
-// MARK: - 5. Kho Lưu Trữ Cục Bộ & Tự Động Di Chuyển Dữ Liệu Cũ Từ React Native (AsyncStorage)
+// MARK: - 5. Kho Lưu Trữ Cục Bộ & Tự Động Di Chuyển Dữ Liệu Cũ Từ React Native
 
 final class ThuMucDuLieu {
     static let dungChung = ThuMucDuLieu()
@@ -346,9 +346,6 @@ final class KhoDuLieu {
         }
         if let d = tm.doc(CaiDatUngDung.self, tu: tm.tepCaiDat) {
             caiDat = d
-            if caiDat.driveKey.isEmpty {
-                caiDat.driveKey = "AQ.Ab8RN6IGGziGDdVjRVKCwe06oAOX8OldcVLm3fLdoRu3ZpwEsg"
-            }
         } else {
             tm.ghi(caiDat, vao: tm.tepCaiDat)
         }
@@ -365,8 +362,8 @@ final class KhoDuLieu {
                 cot4.id: GiaTriOXuongCan(vanBan: "Ca sáng", anh: nil)
             ])
             let bangMau = BangXuongCan(
-                tenBang: "Bảng Cán Thép Ca 1",
-                moTa: "Bảng theo dõi thông số và hình ảnh thực tế tại Xưởng Cán",
+                tenBang: "Bảng Cán",
+                moTa: "",
                 cot: [cot1, cot2, cot3, cot4],
                 dong: [dongMau]
             )
@@ -375,7 +372,6 @@ final class KhoDuLieu {
         }
     }
 
-    /// Tự động đọc dữ liệu cũ từ AsyncStorage của bản React Native (nếu cài đè lên ứng dụng cũ trên iPhone)
     private func khoiPhucTuAsyncStorageNeuCan() {
         let fm = FileManager.default
         var cacThuMucUngVien: [URL] = []

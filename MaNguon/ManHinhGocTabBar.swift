@@ -8,7 +8,7 @@ final class ManHinhGocTabBar: UITabBarController {
     override func viewDidLoad() {
         super.viewDidLoad()
         taoHuyHieuDongBo()
-        capNhatDanhSachTab()
+        capNhatDanhSachTab(giuTabCaiDat: false)
         capNhatGiaoDien()
 
         NotificationCenter.default.addObserver(
@@ -30,8 +30,9 @@ final class ManHinhGocTabBar: UITabBarController {
     }
 
     @objc private func khiCaiDatThayDoi() {
+        let dangOCaiDat = (selectedViewController as? UINavigationController)?.viewControllers.first is ManHinhCaiDat
         capNhatGiaoDien()
-        capNhatDanhSachTab()
+        capNhatDanhSachTab(giuTabCaiDat: dangOCaiDat)
     }
 
     private func capNhatGiaoDien() {
@@ -53,11 +54,15 @@ final class ManHinhGocTabBar: UITabBarController {
         nhanDongBo.textColor = mau.text
     }
 
-    private func capNhatDanhSachTab() {
+    private func capNhatDanhSachTab(giuTabCaiDat: Bool) {
         let tt = KhoDuLieu.dungChung.caiDat.trangThaiTab
         var danhSach: [UIViewController] = []
 
-        // 1. Tab Xưởng Cán đặt ở vị trí ĐẦU TIÊN
+        // Giữ lại instance ManHinhCaiDat hiện tại nếu đang đứng ở tab Cài đặt để không bị giật/mất trạng thái
+        let caiDatHienTai = viewControllers?.compactMap { $0 as? UINavigationController }
+            .first(where: { $0.viewControllers.first is ManHinhCaiDat })
+
+        // 1. Tab Xưởng Cán ở vị trí đầu tiên
         if tt.xuongCan {
             let vc = UINavigationController(rootViewController: ManHinhXuongCan())
             vc.tabBarItem = UITabBarItem(title: "Xưởng Cán", image: UIImage(systemName: "tablecells"), tag: 0)
@@ -100,15 +105,18 @@ final class ManHinhGocTabBar: UITabBarController {
         }
 
         // 7. Tab Cài đặt luôn hiển thị ở cuối
-        let caiDatVC = UINavigationController(rootViewController: ManHinhCaiDat())
+        let caiDatVC = caiDatHienTai ?? UINavigationController(rootViewController: ManHinhCaiDat())
         caiDatVC.tabBarItem = UITabBarItem(title: "Cài đặt", image: UIImage(systemName: "gearshape"), tag: 6)
         danhSach.append(caiDatVC)
 
         setViewControllers(danhSach, animated: false)
+        if giuTabCaiDat {
+            selectedIndex = danhSach.count - 1
+        }
     }
 
     private func taoHuyHieuDongBo() {
-        huyHieuDongBo.layer.cornerRadius = 14
+        huyHieuDongBo.layer.cornerRadius = 12
         huyHieuDongBo.layer.borderWidth = 1
         huyHieuDongBo.isHidden = true
         huyHieuDongBo.translatesAutoresizingMaskIntoConstraints = false
@@ -116,12 +124,12 @@ final class ManHinhGocTabBar: UITabBarController {
         bieuTuongDongBo.contentMode = .scaleAspectFit
         bieuTuongDongBo.translatesAutoresizingMaskIntoConstraints = false
 
-        nhanDongBo.font = .systemFont(ofSize: 11, weight: .semibold)
+        nhanDongBo.font = .systemFont(ofSize: 10, weight: .semibold)
         nhanDongBo.translatesAutoresizingMaskIntoConstraints = false
 
         let hang = UIStackView(arrangedSubviews: [bieuTuongDongBo, nhanDongBo])
         hang.axis = .horizontal
-        hang.spacing = 5
+        hang.spacing = 4
         hang.alignment = .center
         hang.translatesAutoresizingMaskIntoConstraints = false
 
@@ -129,14 +137,14 @@ final class ManHinhGocTabBar: UITabBarController {
         view.addSubview(huyHieuDongBo)
 
         NSLayoutConstraint.activate([
-            bieuTuongDongBo.widthAnchor.constraint(equalToConstant: 14),
-            bieuTuongDongBo.heightAnchor.constraint(equalToConstant: 14),
-            hang.topAnchor.constraint(equalTo: huyHieuDongBo.topAnchor, constant: 5),
-            hang.bottomAnchor.constraint(equalTo: huyHieuDongBo.bottomAnchor, constant: -5),
+            bieuTuongDongBo.widthAnchor.constraint(equalToConstant: 12),
+            bieuTuongDongBo.heightAnchor.constraint(equalToConstant: 12),
+            hang.topAnchor.constraint(equalTo: huyHieuDongBo.topAnchor, constant: 4),
+            hang.bottomAnchor.constraint(equalTo: huyHieuDongBo.bottomAnchor, constant: -4),
             hang.leadingAnchor.constraint(equalTo: huyHieuDongBo.leadingAnchor, constant: 8),
             hang.trailingAnchor.constraint(equalTo: huyHieuDongBo.trailingAnchor, constant: -8),
-            huyHieuDongBo.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 6),
-            huyHieuDongBo.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -14)
+            huyHieuDongBo.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 4),
+            huyHieuDongBo.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12)
         ])
     }
 
@@ -153,7 +161,7 @@ final class ManHinhGocTabBar: UITabBarController {
             huyHieuDongBo.alpha = 1
             bieuTuongDongBo.image = UIImage(systemName: "arrow.triangle.2.circlepath.icloud.fill")
             bieuTuongDongBo.tintColor = mau.primary
-            nhanDongBo.text = "Đang đồng bộ..."
+            nhanDongBo.text = "Đồng bộ..."
         case .dangTaiVe:
             huyHieuDongBo.isHidden = false
             huyHieuDongBo.alpha = 1
@@ -165,13 +173,13 @@ final class ManHinhGocTabBar: UITabBarController {
             huyHieuDongBo.alpha = 1
             bieuTuongDongBo.image = UIImage(systemName: "checkmark.icloud.fill")
             bieuTuongDongBo.tintColor = mau.success
-            nhanDongBo.text = "Đã đồng bộ"
+            nhanDongBo.text = "Đã lưu mây"
         case .loi:
             huyHieuDongBo.isHidden = false
             huyHieuDongBo.alpha = 1
             bieuTuongDongBo.image = UIImage(systemName: "exclamationmark.icloud.fill")
             bieuTuongDongBo.tintColor = mau.error
-            nhanDongBo.text = "Lưu cục bộ"
+            nhanDongBo.text = "Lưu máy"
         }
     }
 }

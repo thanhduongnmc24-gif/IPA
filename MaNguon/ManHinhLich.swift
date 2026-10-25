@@ -172,7 +172,6 @@ final class ManHinhLich: UIViewController, UICollectionViewDataSource, UICollect
         noiDung.translatesAutoresizingMaskIntoConstraints = false
         cuon.addSubview(noiDung)
 
-        // Thanh điều hướng tháng
         let nutTruoc = UIButton(type: .system)
         nutTruoc.setImage(UIImage(systemName: "chevron.left"), for: .normal)
         nutTruoc.addTarget(self, action: #selector(thangTruoc), for: .touchUpInside)
@@ -187,7 +186,6 @@ final class ManHinhLich: UIViewController, UICollectionViewDataSource, UICollect
         let hangThang = UIStackView(arrangedSubviews: [nutTruoc, tieuDeThang, nutSau])
         hangThang.distribution = .equalCentering
 
-        // Hàng tiêu đề thứ (T2 -> CN)
         let hangThu = UIStackView()
         hangThu.distribution = .fillEqually
         hangThu.spacing = 4
@@ -205,7 +203,6 @@ final class ManHinhLich: UIViewController, UICollectionViewDataSource, UICollect
         rangBuocCaoLuoi = luoiLich.heightAnchor.constraint(equalToConstant: 460)
         rangBuocCaoLuoi.isActive = true
 
-        // Thanh công cụ Tổng hợp ghi chú
         let tieuDeTongHop = UILabel()
         tieuDeTongHop.text = "Tổng Hợp Ghi Chú"
         tieuDeTongHop.font = .systemFont(ofSize: 17, weight: .bold)

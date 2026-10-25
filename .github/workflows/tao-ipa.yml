@@ -122,8 +122,6 @@ jobs:
           target_commitish: ${{ github.sha }}
           body: |
             Bản IPA chưa ký (Swift UIKit thuần) dành cho iPhone/iPad.
-            Tích hợp đầy đủ: Lịch ca làm việc & Âm lịch, Xưởng Cán (bảng động, cột chữ/ảnh chụp, lưu Google Drive + Bộ nhớ đệm Cache + Đồng bộ Supabase), Ghi chú nhanh, Sheets, Media AI (Gemini), Nhắc nhở đọc giọng nói, và Cài đặt.
-
             Tải file GhiChu-unsigned.ipa trong phần Assets và ký bằng ESign hoặc Scarlet.
           files: GhiChu-unsigned.ipa
           fail_on_unmatched_files: true

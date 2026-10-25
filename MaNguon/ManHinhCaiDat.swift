@@ -4,9 +4,22 @@ final class ManHinhCaiDat: UIViewController {
     private let cuon = UIScrollView()
     private let nganChinh = UIStackView()
 
+    // Bản nháp cài đặt: Mọi thay đổi trên màn hình chỉ lưu vào biến tạm này,
+    // KHÔNG tự động reload hay chuyển tab. Chỉ khi bấm nút "Lưu" mới áp dụng!
+    private var banNhap: CaiDatUngDung = KhoDuLieu.dungChung.caiDat
+    private let oGemini = UITextField()
+    private let nhanChuKy = UILabel()
+    private let nganGioThongBao = UIStackView()
+
     override func viewDidLoad() {
         super.viewDidLoad()
         navigationItem.title = "Cài Đặt"
+        navigationItem.rightBarButtonItem = UIBarButtonItem(
+            title: "Lưu",
+            style: .done,
+            target: self,
+            action: #selector(bamLuuCaiDat)
+        )
 
         cuon.keyboardDismissMode = .interactive
         cuon.alwaysBounceVertical = true
@@ -14,7 +27,7 @@ final class ManHinhCaiDat: UIViewController {
         view.addSubview(cuon)
 
         nganChinh.axis = .vertical
-        nganChinh.spacing = 14
+        nganChinh.spacing = 10
         nganChinh.translatesAutoresizingMaskIntoConstraints = false
         cuon.addSubview(nganChinh)
 
@@ -24,29 +37,36 @@ final class ManHinhCaiDat: UIViewController {
             cuon.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             cuon.trailingAnchor.constraint(equalTo: view.trailingAnchor),
 
-            nganChinh.topAnchor.constraint(equalTo: cuon.contentLayoutGuide.topAnchor, constant: 14),
-            nganChinh.bottomAnchor.constraint(equalTo: cuon.contentLayoutGuide.bottomAnchor, constant: -36),
-            nganChinh.leadingAnchor.constraint(equalTo: cuon.frameLayoutGuide.leadingAnchor, constant: 16),
-            nganChinh.trailingAnchor.constraint(equalTo: cuon.frameLayoutGuide.trailingAnchor, constant: -16)
+            nganChinh.topAnchor.constraint(equalTo: cuon.contentLayoutGuide.topAnchor, constant: 10),
+            nganChinh.bottomAnchor.constraint(equalTo: cuon.contentLayoutGuide.bottomAnchor, constant: -28),
+            nganChinh.leadingAnchor.constraint(equalTo: cuon.frameLayoutGuide.leadingAnchor, constant: 12),
+            nganChinh.trailingAnchor.constraint(equalTo: cuon.frameLayoutGuide.trailingAnchor, constant: -12)
         ])
 
+        banNhap = KhoDuLieu.dungChung.caiDat
         veGiaoDien()
-        NotificationCenter.default.addObserver(self, selector: #selector(veGiaoDien), name: .caiDatThayDoi, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(veGiaoDien), name: .duLieuDongBoXong, object: nil)
-    }
-
-    override func viewWillAppear(_ animated: Bool) {
-        super.viewWillAppear(animated)
-        veGiaoDien()
+        NotificationCenter.default.addObserver(self, selector: #selector(khiDongBoXong), name: .duLieuDongBoXong, object: nil)
     }
 
     deinit {
         NotificationCenter.default.removeObserver(self)
     }
 
-    @objc private func veGiaoDien() {
+    @objc private func khiDongBoXong() {
+        banNhap = KhoDuLieu.dungChung.caiDat
+        veGiaoDien()
+    }
+
+    @objc private func bamLuuCaiDat() {
+        view.endEditing(true)
+        banNhap.geminiApiKey = oGemini.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        KhoDuLieu.dungChung.luuCaiDat(banNhap, thongBao: true)
+        veGiaoDien()
+        hienThongBao("Đã lưu cài đặt", "Các thay đổi của bạn đã được áp dụng!")
+    }
+
+    private func veGiaoDien() {
         let mau = KhoDuLieu.dungChung.mauSac
-        let cd = KhoDuLieu.dungChung.caiDat
         view.backgroundColor = mau.bg
 
         nganChinh.arrangedSubviews.forEach {
@@ -54,224 +74,230 @@ final class ManHinhCaiDat: UIViewController {
             $0.removeFromSuperview()
         }
 
-        // 1. Tài khoản & Đồng bộ Supabase
-        nganChinh.addArrangedSubview(taoTieuDeMuc("☁️ TÀI KHOẢN & ĐỒNG BỘ SUPABASE"))
+        // 1. Tài khoản & Đồng bộ Supabase (Gọn gàng trên 2 dòng)
+        nganChinh.addArrangedSubview(taoTieuDeMuc("☁️ ĐỒNG BỘ SUPABASE"))
         let theDongBo = taoThe()
         let nganDongBo = taoNganBenTrong(theDongBo)
 
         if DichVuSupabase.dungChung.daDangNhap {
             let lbEmail = UILabel()
-            lbEmail.text = "● Đang đăng nhập: \(DichVuSupabase.dungChung.emailNguoiDung ?? "")"
-            lbEmail.font = .systemFont(ofSize: 14, weight: .bold)
+            lbEmail.text = "● \(DichVuSupabase.dungChung.emailNguoiDung ?? "")"
+            lbEmail.font = .systemFont(ofSize: 13, weight: .semibold)
             lbEmail.textColor = mau.success
+            lbEmail.lineBreakMode = .byTruncatingTail
 
-            let nutSaoLuu = taoNutHanhDong("☁️ Sao lưu ngay (Đẩy lên mây)", mau: mau.primary) { [weak self] in
-                DichVuSupabase.dungChung.saoLuuTatCaLenMay { ok, msg in
-                    self?.hienThongBao(ok ? "Thành công" : "Lỗi", msg)
-                }
-            }
-            let nutKhoiPhuc = taoNutHanhDong("📥 Khôi phục dữ liệu (Tải Ghi chú, Lịch, Xưởng Cán về máy)", mau: mau.success) { [weak self] in
-                DichVuSupabase.dungChung.khoiPhucTuMay { ok, msg in
-                    self?.hienThongBao(ok ? "Thành công" : "Lỗi", msg)
-                }
-            }
-            let nutDangXuat = taoNutHanhDong("Đăng xuất tài khoản", mau: mau.error) { [weak self] in
+            let nutDangXuat = taoNutNho("Đăng xuất", mau: mau.error) { [weak self] in
                 DichVuSupabase.dungChung.dangXuat()
                 self?.veGiaoDien()
             }
-            [lbEmail, nutSaoLuu, nutKhoiPhuc, nutDangXuat].forEach { nganDongBo.addArrangedSubview($0) }
-        } else {
-            let lbChuaDN = UILabel()
-            lbChuaDN.text = "Đăng nhập tài khoản Supabase để sao lưu hoặc khôi phục lại toàn bộ Ghi chú, Lịch và Xưởng Cán."
-            lbChuaDN.font = .systemFont(ofSize: 13)
-            lbChuaDN.textColor = mau.subText
-            lbChuaDN.numberOfLines = 0
+            nutDangXuat.widthAnchor.constraint(equalToConstant: 86).isActive = true
 
-            let nutDN = taoNutHanhDong("🔑 Đăng nhập / Đăng ký Supabase", mau: mau.primary) { [weak self] in
+            let hangTaiKhoan = UIStackView(arrangedSubviews: [lbEmail, nutDangXuat])
+            hangTaiKhoan.axis = .horizontal
+            hangTaiKhoan.spacing = 8
+            hangTaiKhoan.alignment = .center
+
+            let hangNutDongBo = UIStackView(arrangedSubviews: [
+                taoNutNho("☁️ Sao lưu lên mây", mau: mau.primary) { [weak self] in
+                    DichVuSupabase.dungChung.saoLuuTatCaLenMay { ok, msg in
+                        self?.hienThongBao(ok ? "Thành công" : "Lỗi", msg)
+                    }
+                },
+                taoNutNho("📥 Khôi phục về máy", mau: mau.success) { [weak self] in
+                    DichVuSupabase.dungChung.khoiPhucTuMay { ok, msg in
+                        self?.hienThongBao(ok ? "Thành công" : "Lỗi", msg)
+                    }
+                }
+            ])
+            hangNutDongBo.distribution = .fillEqually
+            hangNutDongBo.spacing = 8
+
+            nganDongBo.addArrangedSubview(hangTaiKhoan)
+            nganDongBo.addArrangedSubview(hangNutDongBo)
+        } else {
+            let nutDN = taoNutNho("🔑 Đăng nhập / Đăng ký Supabase", mau: mau.primary) { [weak self] in
                 self?.hienHopThoaiDangNhap()
             }
-            [lbChuaDN, nutDN].forEach { nganDongBo.addArrangedSubview($0) }
+            nganDongBo.addArrangedSubview(nutDN)
         }
         nganChinh.addArrangedSubview(theDongBo)
 
-        // 2. Cấu hình Google Drive & Bộ nhớ đệm ảnh (Xưởng Cán)
-        nganChinh.addArrangedSubview(taoTieuDeMuc("🗂️ GOOGLE DRIVE & BỘ NHỚ ĐỆM ẢNH (XƯỞNG CÁN)"))
+        // 2. Google Drive & Bộ nhớ đệm ảnh (Gọn gàng 1 hàng thông tin + 1 hàng 2 nút ngang)
+        nganChinh.addArrangedSubview(taoTieuDeMuc("🗂️ GOOGLE DRIVE & BỘ NHỚ ĐỆM ẢNH"))
         let theDrive = taoThe()
         let nganDrive = taoNganBenTrong(theDrive)
 
-        let trangThaiScript = cd.driveScriptUrl.isEmpty ? "Chưa dán Link Script" : "Đã cấu hình Script"
+        let daKetNoiDrive = !banNhap.driveRefreshToken.isEmpty
         let lbCache = UILabel()
-        lbCache.text = "Bộ nhớ đệm ảnh: \(BoNhoDemAnh.dungChung.dungLuongBoNhoDemChuoi()) • \(trangThaiScript)"
-        lbCache.font = .systemFont(ofSize: 13)
-        lbCache.textColor = mau.text
-        lbCache.numberOfLines = 0
+        lbCache.text = "Cache ảnh: \(BoNhoDemAnh.dungChung.dungLuongBoNhoDemChuoi()) • Drive OAuth: \(daKetNoiDrive ? "Đã kết nối" : "Chưa kết nối")"
+        lbCache.font = .systemFont(ofSize: 12.5)
+        lbCache.textColor = mau.subText
 
-        let nutCauHinhDrive = taoNutHanhDong("⚙️ Cấu hình Google Apps Script lưu ảnh Drive & Test thử", mau: mau.primary) { [weak self] in
-            let vc = ManHinhCauHinhDriveXuongCan()
-            self?.present(UINavigationController(rootViewController: vc), animated: true)
-        }
+        let hangNutDrive = UIStackView(arrangedSubviews: [
+            taoNutNho("⚙️ Kết nối Drive", mau: mau.primary) { [weak self] in
+                let vc = ManHinhCauHinhDriveXuongCan()
+                self?.present(UINavigationController(rootViewController: vc), animated: true)
+            },
+            taoNutNho("🧹 Dọn Cache", mau: mau.error) { [weak self] in
+                BoNhoDemAnh.dungChung.xoaBoNhoDem()
+                self?.veGiaoDien()
+            }
+        ])
+        hangNutDrive.distribution = .fillEqually
+        hangNutDrive.spacing = 8
 
-        let nutXoaCache = taoNutHanhDong("🧹 Dọn bộ nhớ đệm ảnh trên máy", mau: mau.error) { [weak self] in
-            BoNhoDemAnh.dungChung.xoaBoNhoDem()
-            self?.veGiaoDien()
-            self?.hienThongBao("Đã dọn bộ nhớ đệm", "Bộ nhớ đệm ảnh trên máy đã được làm sạch.")
-        }
-        [lbCache, nutCauHinhDrive, nutXoaCache].forEach { nganDrive.addArrangedSubview($0) }
+        nganDrive.addArrangedSubview(lbCache)
+        nganDrive.addArrangedSubview(hangNutDrive)
         nganChinh.addArrangedSubview(theDrive)
 
-        // 3. Giao diện Sáng / Tối
-        nganChinh.addArrangedSubview(taoTieuDeMuc("🎨 GIAO DIỆN"))
-        let theGiaoDien = taoThe()
-        let nganGD = taoNganBenTrong(theGiaoDien)
-        nganGD.addArrangedSubview(taoHangCongTac(ten: cd.giaoDienToi ? "Chế độ Tối 🌙" : "Chế độ Sáng ☀️", dangBat: cd.giaoDienToi) { bat in
-            var moi = KhoDuLieu.dungChung.caiDat
-            moi.giaoDienToi = bat
-            KhoDuLieu.dungChung.luuCaiDat(moi)
-        })
-        nganChinh.addArrangedSubview(theGiaoDien)
-
-        // 4. Quản lý Tab (Xưởng Cán ở đầu tiên)
-        nganChinh.addArrangedSubview(taoTieuDeMuc("👁️ QUẢN LÝ TAB HIỂN THỊ"))
+        // 3. Giao diện & Quản lý Tab (Gộp gọn, chỉ thay đổi biến tạm banNhap, bấm Lưu mới áp dụng)
+        nganChinh.addArrangedSubview(taoTieuDeMuc("🎨 GIAO DIỆN & CÁC TAB HIỂN THỊ (BẤM LƯU ĐỂ ÁP DỤNG)"))
         let theTab = taoThe()
         let nganTab = taoNganBenTrong(theTab)
-        nganTab.addArrangedSubview(taoHangCongTac(ten: "Xưởng Cán (Tab đầu tiên)", dangBat: cd.trangThaiTab.xuongCan) { bat in
-            var moi = KhoDuLieu.dungChung.caiDat; moi.trangThaiTab.xuongCan = bat; KhoDuLieu.dungChung.luuCaiDat(moi)
+
+        nganTab.addArrangedSubview(taoHangCongTac(ten: "Chế độ Tối (Dark Mode)", dangBat: banNhap.giaoDienToi) { [weak self] bat in
+            self?.banNhap.giaoDienToi = bat
         })
-        nganTab.addArrangedSubview(taoHangCongTac(ten: "Lịch làm việc", dangBat: cd.trangThaiTab.calendar) { bat in
-            var moi = KhoDuLieu.dungChung.caiDat; moi.trangThaiTab.calendar = bat; KhoDuLieu.dungChung.luuCaiDat(moi)
+        nganTab.addArrangedSubview(taoVachNgan())
+        nganTab.addArrangedSubview(taoHangCongTac(ten: "Tab Xưởng Cán (Đầu tiên)", dangBat: banNhap.trangThaiTab.xuongCan) { [weak self] bat in
+            self?.banNhap.trangThaiTab.xuongCan = bat
         })
-        nganTab.addArrangedSubview(taoHangCongTac(ten: "Ghi chú", dangBat: cd.trangThaiTab.notes) { bat in
-            var moi = KhoDuLieu.dungChung.caiDat; moi.trangThaiTab.notes = bat; KhoDuLieu.dungChung.luuCaiDat(moi)
+        nganTab.addArrangedSubview(taoHangCongTac(ten: "Tab Lịch làm việc", dangBat: banNhap.trangThaiTab.calendar) { [weak self] bat in
+            self?.banNhap.trangThaiTab.calendar = bat
         })
-        nganTab.addArrangedSubview(taoHangCongTac(ten: "Trang tính (Sheets)", dangBat: cd.trangThaiTab.sheets) { bat in
-            var moi = KhoDuLieu.dungChung.caiDat; moi.trangThaiTab.sheets = bat; KhoDuLieu.dungChung.luuCaiDat(moi)
+        nganTab.addArrangedSubview(taoHangCongTac(ten: "Tab Ghi chú", dangBat: banNhap.trangThaiTab.notes) { [weak self] bat in
+            self?.banNhap.trangThaiTab.notes = bat
         })
-        nganTab.addArrangedSubview(taoHangCongTac(ten: "Media AI", dangBat: cd.trangThaiTab.media) { bat in
-            var moi = KhoDuLieu.dungChung.caiDat; moi.trangThaiTab.media = bat; KhoDuLieu.dungChung.luuCaiDat(moi)
+        nganTab.addArrangedSubview(taoHangCongTac(ten: "Tab Trang tính (Sheets)", dangBat: banNhap.trangThaiTab.sheets) { [weak self] bat in
+            self?.banNhap.trangThaiTab.sheets = bat
         })
-        nganTab.addArrangedSubview(taoHangCongTac(ten: "Nhắc nhở", dangBat: cd.trangThaiTab.reminders) { bat in
-            var moi = KhoDuLieu.dungChung.caiDat; moi.trangThaiTab.reminders = bat; KhoDuLieu.dungChung.luuCaiDat(moi)
+        nganTab.addArrangedSubview(taoHangCongTac(ten: "Tab Media AI", dangBat: banNhap.trangThaiTab.media) { [weak self] bat in
+            self?.banNhap.trangThaiTab.media = bat
+        })
+        nganTab.addArrangedSubview(taoHangCongTac(ten: "Tab Nhắc nhở", dangBat: banNhap.trangThaiTab.reminders) { [weak self] bat in
+            self?.banNhap.trangThaiTab.reminders = bat
         })
         nganChinh.addArrangedSubview(theTab)
 
-        // 5. Cấu hình AI Gemini
-        nganChinh.addArrangedSubview(taoTieuDeMuc("🤖 CẤU HÌNH AI (GEMINI)"))
-        let theGemini = taoThe()
-        let nganGemini = taoNganBenTrong(theGemini)
-        let oGemini = UITextField()
-        oGemini.borderStyle = .roundedRect
-        oGemini.placeholder = "AIzaSy..."
-        oGemini.text = cd.geminiApiKey
-        oGemini.isSecureTextEntry = true
-        let nutLuuGemini = taoNutHanhDong("Lưu Key Gemini", mau: mau.primary) { [weak self, weak oGemini] in
-            var moi = KhoDuLieu.dungChung.caiDat
-            moi.geminiApiKey = oGemini?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            KhoDuLieu.dungChung.luuCaiDat(moi)
-            self?.hienThongBao("Đã lưu", "Key Gemini đã được cập nhật!")
-        }
-        nganGemini.addArrangedSubview(oGemini)
-        nganGemini.addArrangedSubview(nutLuuGemini)
-        nganChinh.addArrangedSubview(theGemini)
-
-        // 6. Tùy chỉnh chu kỳ & Ngày bắt đầu
-        nganChinh.addArrangedSubview(taoTieuDeMuc("⚙️ TÙY CHỈNH CHU KỲ CA LÀM VIỆC"))
+        // 4. Chu kỳ ca làm việc & Thông báo
+        nganChinh.addArrangedSubview(taoTieuDeMuc("⚙️ CHU KỲ CA & THÔNG BÁO"))
         let theChuKy = taoThe()
         let nganChuKy = taoNganBenTrong(theChuKy)
 
-        let chuoiChuKy = cd.chuKyLamViec.enumerated().map { idx, loai -> String in
-            switch loai {
-            case "ngay": return "\(idx + 1).☀️Ngày"
-            case "dem": return "\(idx + 1).🌙Đêm"
-            default: return "\(idx + 1).☕Nghỉ"
-            }
-        }.joined(separator: " → ")
-
-        let lbChuKy = UILabel()
-        lbChuKy.text = "Thứ tự hiện tại: \(chuoiChuKy)"
-        lbChuKy.font = .systemFont(ofSize: 13, weight: .semibold)
-        lbChuKy.textColor = mau.text
-        lbChuKy.numberOfLines = 0
-        nganChuKy.addArrangedSubview(lbChuKy)
+        nhanChuKy.font = .systemFont(ofSize: 12.5, weight: .semibold)
+        nhanChuKy.textColor = mau.text
+        nhanChuKy.numberOfLines = 0
+        capNhatTextChuKy()
+        nganChuKy.addArrangedSubview(nhanChuKy)
 
         let hangThemCa = UIStackView(arrangedSubviews: [
-            taoNutHanhDong("+ Ngày", mau: .systemOrange) {
-                var moi = KhoDuLieu.dungChung.caiDat; moi.chuKyLamViec.append("ngay"); KhoDuLieu.dungChung.luuCaiDat(moi)
+            taoNutNho("+ Ngày", mau: .systemOrange) { [weak self] in
+                self?.banNhap.chuKyLamViec.append("ngay")
+                self?.capNhatTextChuKy()
             },
-            taoNutHanhDong("+ Đêm", mau: .systemIndigo) {
-                var moi = KhoDuLieu.dungChung.caiDat; moi.chuKyLamViec.append("dem"); KhoDuLieu.dungChung.luuCaiDat(moi)
+            taoNutNho("+ Đêm", mau: .systemIndigo) { [weak self] in
+                self?.banNhap.chuKyLamViec.append("dem")
+                self?.capNhatTextChuKy()
             },
-            taoNutHanhDong("+ Nghỉ", mau: mau.success) {
-                var moi = KhoDuLieu.dungChung.caiDat; moi.chuKyLamViec.append("nghi"); KhoDuLieu.dungChung.luuCaiDat(moi)
+            taoNutNho("+ Nghỉ", mau: mau.success) { [weak self] in
+                self?.banNhap.chuKyLamViec.append("nghi")
+                self?.capNhatTextChuKy()
+            },
+            taoNutNho("Xóa cuối", mau: mau.error) { [weak self] in
+                guard let self, self.banNhap.chuKyLamViec.count > 1 else { return }
+                self.banNhap.chuKyLamViec.removeLast()
+                self.capNhatTextChuKy()
             }
         ])
         hangThemCa.distribution = .fillEqually
-        hangThemCa.spacing = 6
+        hangThemCa.spacing = 5
         nganChuKy.addArrangedSubview(hangThemCa)
-
-        let hangXoaReset = UIStackView(arrangedSubviews: [
-            taoNutHanhDong("Xóa bước cuối", mau: mau.error) {
-                var moi = KhoDuLieu.dungChung.caiDat
-                if moi.chuKyLamViec.count > 1 { moi.chuKyLamViec.removeLast(); KhoDuLieu.dungChung.luuCaiDat(moi) }
-            },
-            taoNutHanhDong("Về mặc định", mau: mau.primary) {
-                var moi = KhoDuLieu.dungChung.caiDat
-                moi.chuKyLamViec = ["ngay", "dem", "nghi"]
-                KhoDuLieu.dungChung.luuCaiDat(moi)
-            }
-        ])
-        hangXoaReset.distribution = .fillEqually
-        hangXoaReset.spacing = 6
-        nganChuKy.addArrangedSubview(hangXoaReset)
 
         let chonNgayBD = UIDatePicker()
         chonNgayBD.datePickerMode = .date
         chonNgayBD.preferredDatePickerStyle = .compact
         chonNgayBD.locale = Locale(identifier: "vi_VN")
-        chonNgayBD.date = cd.ngayBatDauChuKy
-        chonNgayBD.addAction(UIAction { [weak chonNgayBD] _ in
+        chonNgayBD.date = banNhap.ngayBatDauChuKy
+        chonNgayBD.addAction(UIAction { [weak self, weak chonNgayBD] _ in
             guard let d = chonNgayBD?.date else { return }
-            var moi = KhoDuLieu.dungChung.caiDat
-            moi.ngayBatDauChuKy = d
-            moi.daChonNgayBatDau = true
-            KhoDuLieu.dungChung.luuCaiDat(moi)
+            self?.banNhap.ngayBatDauChuKy = d
+            self?.banNhap.daChonNgayBatDau = true
         }, for: .valueChanged)
 
         let lbBD = UILabel()
-        lbBD.text = "Ngày bắt đầu BƯỚC 1:"
-        lbBD.font = .systemFont(ofSize: 14, weight: .medium)
+        lbBD.text = "Ngày bắt đầu Bước 1:"
+        lbBD.font = .systemFont(ofSize: 13.5, weight: .medium)
         lbBD.textColor = mau.text
 
         let hangNgayBD = UIStackView(arrangedSubviews: [lbBD, chonNgayBD])
         hangNgayBD.distribution = .equalSpacing
         hangNgayBD.alignment = .center
         nganChuKy.addArrangedSubview(hangNgayBD)
+
+        nganChuKy.addArrangedSubview(taoVachNgan())
+        nganChuKy.addArrangedSubview(taoHangCongTac(ten: "Bật thông báo nhắc ca", dangBat: banNhap.batThongBao) { [weak self] bat in
+            self?.banNhap.batThongBao = bat
+            self?.nganGioThongBao.isHidden = !bat
+        })
+
+        nganGioThongBao.axis = .vertical
+        nganGioThongBao.spacing = 6
+        nganGioThongBao.arrangedSubviews.forEach {
+            nganGioThongBao.removeArrangedSubview($0)
+            $0.removeFromSuperview()
+        }
+        nganGioThongBao.addArrangedSubview(taoHangGioNhac("Giờ nhắc Ca Ngày ☀️", gio: banNhap.gioCaNgay) { [weak self] d in
+            self?.banNhap.gioCaNgay = d
+        })
+        nganGioThongBao.addArrangedSubview(taoHangGioNhac("Giờ nhắc Ca Đêm 🌙", gio: banNhap.gioCaDem) { [weak self] d in
+            self?.banNhap.gioCaDem = d
+        })
+        nganGioThongBao.addArrangedSubview(taoHangGioNhac("Giờ nhắc Ngày Nghỉ ☕", gio: banNhap.gioNgayNghi) { [weak self] d in
+            self?.banNhap.gioNgayNghi = d
+        })
+        nganGioThongBao.isHidden = !banNhap.batThongBao
+        nganChuKy.addArrangedSubview(nganGioThongBao)
         nganChinh.addArrangedSubview(theChuKy)
 
-        // 7. Cấu hình thông báo
-        nganChinh.addArrangedSubview(taoTieuDeMuc("🔔 CẤU HÌNH THÔNG BÁO"))
-        let theTB = taoThe()
-        let nganTB = taoNganBenTrong(theTB)
-        nganTB.addArrangedSubview(taoHangCongTac(ten: "Bật thông báo nhắc nhở ca", dangBat: cd.batThongBao) { bat in
-            var moi = KhoDuLieu.dungChung.caiDat; moi.batThongBao = bat; KhoDuLieu.dungChung.luuCaiDat(moi)
-        })
-        if cd.batThongBao {
-            nganTB.addArrangedSubview(taoHangGioNhac("Giờ nhắc Ca Ngày ☀️", gio: cd.gioCaNgay) { d in
-                var moi = KhoDuLieu.dungChung.caiDat; moi.gioCaNgay = d; KhoDuLieu.dungChung.luuCaiDat(moi, thongBao: false)
-            })
-            nganTB.addArrangedSubview(taoHangGioNhac("Giờ nhắc Ca Đêm 🌙", gio: cd.gioCaDem) { d in
-                var moi = KhoDuLieu.dungChung.caiDat; moi.gioCaDem = d; KhoDuLieu.dungChung.luuCaiDat(moi, thongBao: false)
-            })
-            nganTB.addArrangedSubview(taoHangGioNhac("Giờ nhắc Ngày Nghỉ ☕", gio: cd.gioNgayNghi) { d in
-                var moi = KhoDuLieu.dungChung.caiDat; moi.gioNgayNghi = d; KhoDuLieu.dungChung.luuCaiDat(moi, thongBao: false)
-            })
-        }
-        nganChinh.addArrangedSubview(theTB)
+        // 5. Gemini API Key
+        nganChinh.addArrangedSubview(taoTieuDeMuc("🤖 GEMINI API KEY"))
+        let theGemini = taoThe()
+        let nganGemini = taoNganBenTrong(theGemini)
+        oGemini.borderStyle = .roundedRect
+        oGemini.placeholder = "AIzaSy..."
+        oGemini.font = .systemFont(ofSize: 13)
+        oGemini.text = banNhap.geminiApiKey
+        oGemini.isSecureTextEntry = true
+        nganGemini.addArrangedSubview(oGemini)
+        nganChinh.addArrangedSubview(theGemini)
+
+        // 6. Nút Lưu Cài Đặt nổi bật ở cuối trang
+        let nutLuuCuoi = UIButton(type: .system)
+        var chLuu = UIButton.Configuration.filled()
+        chLuu.title = "💾 LƯU CÀI ĐẶT"
+        chLuu.baseBackgroundColor = mau.primary
+        chLuu.cornerStyle = .medium
+        nutLuuCuoi.configuration = chLuu
+        nutLuuCuoi.heightAnchor.constraint(equalToConstant: 42).isActive = true
+        nutLuuCuoi.addTarget(self, action: #selector(bamLuuCaiDat), for: .touchUpInside)
+        nganChinh.addArrangedSubview(nutLuuCuoi)
+    }
+
+    private func capNhatTextChuKy() {
+        let chuoi = banNhap.chuKyLamViec.enumerated().map { idx, loai -> String in
+            switch loai {
+            case "ngay": return "\(idx + 1).☀️Ngày"
+            case "dem": return "\(idx + 1).🌙Đêm"
+            default: return "\(idx + 1).☕Nghỉ"
+            }
+        }.joined(separator: " → ")
+        nhanChuKy.text = "Chu kỳ: \(chuoi)"
     }
 
     private func taoTieuDeMuc(_ chu: String) -> UILabel {
         let lb = UILabel()
         lb.text = chu
-        lb.font = .systemFont(ofSize: 12, weight: .bold)
+        lb.font = .systemFont(ofSize: 11, weight: .bold)
         lb.textColor = KhoDuLieu.dungChung.mauSac.subText
         return lb
     }
@@ -280,7 +306,7 @@ final class ManHinhCaiDat: UIViewController {
         let mau = KhoDuLieu.dungChung.mauSac
         let v = UIView()
         v.backgroundColor = mau.card
-        v.layer.cornerRadius = 14
+        v.layer.cornerRadius = 12
         v.layer.borderWidth = 1
         v.layer.borderColor = mau.border.cgColor
         return v
@@ -289,26 +315,35 @@ final class ManHinhCaiDat: UIViewController {
     private func taoNganBenTrong(_ the: UIView) -> UIStackView {
         let st = UIStackView()
         st.axis = .vertical
-        st.spacing = 10
+        st.spacing = 8
         st.translatesAutoresizingMaskIntoConstraints = false
         the.addSubview(st)
         NSLayoutConstraint.activate([
-            st.topAnchor.constraint(equalTo: the.topAnchor, constant: 12),
-            st.bottomAnchor.constraint(equalTo: the.bottomAnchor, constant: -12),
+            st.topAnchor.constraint(equalTo: the.topAnchor, constant: 10),
+            st.bottomAnchor.constraint(equalTo: the.bottomAnchor, constant: -10),
             st.leadingAnchor.constraint(equalTo: the.leadingAnchor, constant: 12),
             st.trailingAnchor.constraint(equalTo: the.trailingAnchor, constant: -12)
         ])
         return st
     }
 
-    private func taoNutHanhDong(_ tieuDe: String, mau: UIColor, hanhDong: @escaping () -> Void) -> UIButton {
+    private func taoVachNgan() -> UIView {
+        let v = UIView()
+        v.backgroundColor = KhoDuLieu.dungChung.mauSac.border
+        v.heightAnchor.constraint(equalToConstant: 0.7).isActive = true
+        return v
+    }
+
+    private func taoNutNho(_ tieuDe: String, mau: UIColor, hanhDong: @escaping () -> Void) -> UIButton {
         let b = UIButton(type: .system)
-        var ch = UIButton.Configuration.tinted()
-        ch.title = tieuDe
-        ch.baseBackgroundColor = mau
-        ch.baseForegroundColor = mau
-        ch.cornerStyle = .medium
-        b.configuration = ch
+        b.setTitle(tieuDe, for: .normal)
+        b.setTitleColor(mau, for: .normal)
+        b.titleLabel?.font = .systemFont(ofSize: 12.5, weight: .semibold)
+        b.titleLabel?.numberOfLines = 1
+        b.titleLabel?.lineBreakMode = .byTruncatingTail
+        b.backgroundColor = mau.withAlphaComponent(0.12)
+        b.layer.cornerRadius = 8
+        b.heightAnchor.constraint(equalToConstant: 32).isActive = true
         b.addAction(UIAction { _ in hanhDong() }, for: .touchUpInside)
         return b
     }
@@ -316,12 +351,13 @@ final class ManHinhCaiDat: UIViewController {
     private func taoHangCongTac(ten: String, dangBat: Bool, khiDoi: @escaping (Bool) -> Void) -> UIStackView {
         let lb = UILabel()
         lb.text = ten
-        lb.font = .systemFont(ofSize: 15, weight: .medium)
+        lb.font = .systemFont(ofSize: 13.5, weight: .medium)
         lb.textColor = KhoDuLieu.dungChung.mauSac.text
 
         let sw = UISwitch()
         sw.isOn = dangBat
         sw.onTintColor = KhoDuLieu.dungChung.mauSac.primary
+        sw.transform = CGAffineTransform(scaleX: 0.82, y: 0.82)
         sw.addAction(UIAction { [weak sw] _ in
             khiDoi(sw?.isOn ?? false)
         }, for: .valueChanged)
@@ -329,13 +365,14 @@ final class ManHinhCaiDat: UIViewController {
         let h = UIStackView(arrangedSubviews: [lb, sw])
         h.distribution = .equalSpacing
         h.alignment = .center
+        h.heightAnchor.constraint(equalToConstant: 30).isActive = true
         return h
     }
 
     private func taoHangGioNhac(_ ten: String, gio: Date, khiDoi: @escaping (Date) -> Void) -> UIStackView {
         let lb = UILabel()
         lb.text = ten
-        lb.font = .systemFont(ofSize: 14)
+        lb.font = .systemFont(ofSize: 13)
         lb.textColor = KhoDuLieu.dungChung.mauSac.text
 
         let dp = UIDatePicker()
@@ -353,7 +390,7 @@ final class ManHinhCaiDat: UIViewController {
     }
 
     private func hienHopThoaiDangNhap() {
-        let alert = UIAlertController(title: "Tài khoản Supabase", message: "Nhập Email và Mật khẩu để đăng nhập (tự động khôi phục Ghi chú & Lịch ngay sau khi đăng nhập)", preferredStyle: .alert)
+        let alert = UIAlertController(title: "Tài khoản Supabase", message: "Nhập Email và Mật khẩu", preferredStyle: .alert)
         alert.addTextField { tf in
             tf.placeholder = "email@example.com"
             tf.keyboardType = .emailAddress
@@ -371,8 +408,9 @@ final class ManHinhCaiDat: UIViewController {
             DichVuSupabase.dungChung.dangNhap(email: email, matKhau: pass) { kq in
                 switch kq {
                 case .success:
+                    self?.banNhap = KhoDuLieu.dungChung.caiDat
                     self?.veGiaoDien()
-                    self?.hienThongBao("Thành công", "Đã đăng nhập và khôi phục dữ liệu từ tài khoản \(email)!")
+                    self?.hienThongBao("Thành công", "Đã đăng nhập và khôi phục dữ liệu!")
                 case .failure(let err):
                     self?.hienThongBao("Lỗi đăng nhập", err.localizedDescription)
                 }
