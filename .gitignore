@@ -1,0 +1,8 @@
+.DS_Store
+*.xcodeproj
+*.xcworkspace
+DerivedData/
+Payload/
+*.ipa
+build/
+TaiNguyen/Assets.xcassets/AppIcon.appiconset/icon-source.png
