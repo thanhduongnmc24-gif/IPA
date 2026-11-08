@@ -8,9 +8,11 @@ final class ManHinhXuongCan: UIViewController, UIImagePickerControllerDelegate, 
     // Lưu vị trí ô ảnh đang chọn để nhận kết quả từ Camera / Thư viện ảnh
     private var oAnhDangChon: (idBang: String, idDong: String, idCot: String)?
 
-    // Giao diện siêu gọn: chỉ 1 thanh ngang 30pt chứa danh sách bảng + nút thêm nhanh, tiếp theo là lưới bảng ngay bên dưới
+    // Giao diện siêu gọn: thanh ngang 30pt chứa danh sách bảng + ô tìm kiếm lọc cột đầu tiên + lưới bảng ngay bên dưới
     private let thanhChonBangCuon = UIScrollView()
     private let nganChonBang = UIStackView()
+    private let oTimKiemCotDau = UITextField()
+    private var tuKhoaCotDau: String = ""
     private let cuonNgangBang = UIScrollView()
     private let cuonDocBang = UIScrollView()
     private let nganBangDuLieu = UIStackView()
@@ -104,8 +106,31 @@ final class ManHinhXuongCan: UIViewController, UIImagePickerControllerDelegate, 
         nganChonBang.translatesAutoresizingMaskIntoConstraints = false
         thanhChonBangCuon.addSubview(nganChonBang)
 
-        // Khung bảng cuộn 2 chiều (Ngang + Dọc) đặt sát ngay dưới thanh chọn bảng
+        // Ô tìm kiếm lọc trực tiếp theo cột đầu tiên khi đang gõ
+        oTimKiemCotDau.borderStyle = .none
+        oTimKiemCotDau.layer.cornerRadius = 8
+        oTimKiemCotDau.layer.borderWidth = 1
+        oTimKiemCotDau.font = .systemFont(ofSize: 13)
+        oTimKiemCotDau.clearButtonMode = .whileEditing
+        oTimKiemCotDau.returnKeyType = .done
+        oTimKiemCotDau.autocorrectionType = .no
+        oTimKiemCotDau.autocapitalizationType = .none
+        oTimKiemCotDau.translatesAutoresizingMaskIntoConstraints = false
+
+        let khungIconTim = UIView(frame: CGRect(x: 0, y: 0, width: 28, height: 32))
+        let iconTim = UIImageView(image: UIImage(systemName: "magnifyingglass"))
+        iconTim.tintColor = .secondaryLabel
+        iconTim.contentMode = .scaleAspectFit
+        iconTim.frame = CGRect(x: 8, y: 8, width: 15, height: 15)
+        khungIconTim.addSubview(iconTim)
+        oTimKiemCotDau.leftView = khungIconTim
+        oTimKiemCotDau.leftViewMode = .always
+        oTimKiemCotDau.addTarget(self, action: #selector(khiThayDoiTimKiemCotDau), for: .editingChanged)
+        oTimKiemCotDau.addTarget(self, action: #selector(anBanPhimTimKiem), for: .editingDidEndOnExit)
+
+        // Khung bảng cuộn 2 chiều (Ngang + Dọc) đặt sát ngay dưới ô tìm kiếm
         cuonDocBang.alwaysBounceVertical = true
+        cuonDocBang.keyboardDismissMode = .onDrag
         cuonDocBang.translatesAutoresizingMaskIntoConstraints = false
 
         cuonNgangBang.showsHorizontalScrollIndicator = true
@@ -117,6 +142,7 @@ final class ManHinhXuongCan: UIViewController, UIImagePickerControllerDelegate, 
         nganBangDuLieu.translatesAutoresizingMaskIntoConstraints = false
 
         view.addSubview(thanhChonBangCuon)
+        view.addSubview(oTimKiemCotDau)
         view.addSubview(cuonDocBang)
         cuonDocBang.addSubview(cuonNgangBang)
         cuonNgangBang.addSubview(nganBangDuLieu)
@@ -133,7 +159,12 @@ final class ManHinhXuongCan: UIViewController, UIImagePickerControllerDelegate, 
             nganChonBang.trailingAnchor.constraint(equalTo: thanhChonBangCuon.contentLayoutGuide.trailingAnchor),
             nganChonBang.heightAnchor.constraint(equalTo: thanhChonBangCuon.frameLayoutGuide.heightAnchor),
 
-            cuonDocBang.topAnchor.constraint(equalTo: thanhChonBangCuon.bottomAnchor, constant: 4),
+            oTimKiemCotDau.topAnchor.constraint(equalTo: thanhChonBangCuon.bottomAnchor, constant: 4),
+            oTimKiemCotDau.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 8),
+            oTimKiemCotDau.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -8),
+            oTimKiemCotDau.heightAnchor.constraint(equalToConstant: 32),
+
+            cuonDocBang.topAnchor.constraint(equalTo: oTimKiemCotDau.bottomAnchor, constant: 4),
             cuonDocBang.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 6),
             cuonDocBang.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -6),
             cuonDocBang.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -2),
@@ -190,6 +221,29 @@ final class ManHinhXuongCan: UIViewController, UIImagePickerControllerDelegate, 
         nutThemBangNhanh.addTarget(self, action: #selector(hienHopThoaiThemBang), for: .touchUpInside)
         nganChonBang.addArrangedSubview(nutThemBangNhanh)
 
+        oTimKiemCotDau.backgroundColor = mau.card
+        oTimKiemCotDau.textColor = mau.text
+        oTimKiemCotDau.layer.borderColor = mau.border.cgColor
+        let tenCotDau = bangHienTai?.cot.sorted(by: { $0.thuTu < $1.thuTu }).first?.tenCot ?? "cột đầu tiên"
+        oTimKiemCotDau.attributedPlaceholder = NSAttributedString(
+            string: "Lọc theo \(tenCotDau)...",
+            attributes: [.foregroundColor: mau.subText]
+        )
+
+        veLuoiBang()
+    }
+
+    @objc private func khiThayDoiTimKiemCotDau() {
+        tuKhoaCotDau = oTimKiemCotDau.text ?? ""
+        veLuoiBang()
+    }
+
+    @objc private func anBanPhimTimKiem() {
+        oTimKiemCotDau.resignFirstResponder()
+    }
+
+    private func veLuoiBang() {
+        let mau = KhoDuLieu.dungChung.mauSac
         nganBangDuLieu.arrangedSubviews.forEach {
             nganBangDuLieu.removeArrangedSubview($0)
             $0.removeFromSuperview()
@@ -208,9 +262,40 @@ final class ManHinhXuongCan: UIViewController, UIImagePickerControllerDelegate, 
             oTrong.textAlignment = .center
             oTrong.heightAnchor.constraint(equalToConstant: 60).isActive = true
             nganBangDuLieu.addArrangedSubview(oTrong)
+            return
+        }
+
+        let cotDauTien = bang.cot.sorted(by: { $0.thuTu < $1.thuTu }).first
+        let tk = tuKhoaCotDau.trimmingCharacters(in: .whitespacesAndNewlines)
+        let tkKhongDau = BoDocTapTinThucDon.boDau(tk).lowercased()
+
+        var cacDongHienThi: [(chiSoGoc: Int, dong: DongXuongCan)] = []
+        for (chiSoDong, dong) in bang.dong.enumerated() {
+            if tk.isEmpty {
+                cacDongHienThi.append((chiSoDong, dong))
+            } else {
+                let chuCotDau = (cotDauTien.flatMap { dong.giaTri[$0.id]?.vanBan } ?? "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if !chuCotDau.isEmpty && (
+                    chuCotDau.localizedCaseInsensitiveContains(tk) ||
+                    BoDocTapTinThucDon.boDau(chuCotDau).lowercased().contains(tkKhongDau)
+                ) {
+                    cacDongHienThi.append((chiSoDong, dong))
+                }
+            }
+        }
+
+        if cacDongHienThi.isEmpty {
+            let oTrong = UILabel()
+            oTrong.text = "Không có dòng nào chứa "\(tk)" ở cột đầu tiên."
+            oTrong.font = .italicSystemFont(ofSize: 12.5)
+            oTrong.textColor = mau.subText
+            oTrong.textAlignment = .center
+            oTrong.heightAnchor.constraint(equalToConstant: 60).isActive = true
+            nganBangDuLieu.addArrangedSubview(oTrong)
         } else {
-            for (chiSoDong, dong) in bang.dong.enumerated() {
-                let hangDong = taoHangDuLieu(bang: bang, dong: dong, soThuTu: chiSoDong + 1)
+            for muc in cacDongHienThi {
+                let hangDong = taoHangDuLieu(bang: bang, dong: muc.dong, soThuTu: muc.chiSoGoc + 1)
                 nganBangDuLieu.addArrangedSubview(hangDong)
             }
         }

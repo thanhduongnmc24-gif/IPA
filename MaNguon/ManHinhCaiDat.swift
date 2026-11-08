@@ -60,7 +60,6 @@ final class ManHinhCaiDat: UIViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        // Cập nhật lại các trường Drive từ kho chung để không bao giờ ghi đè mất Key Drive vừa nhập
         let hienTai = KhoDuLieu.dungChung.caiDat
         banNhap.driveClientId = hienTai.driveClientId
         banNhap.driveClientSecret = hienTai.driveClientSecret
@@ -78,7 +77,7 @@ final class ManHinhCaiDat: UIViewController {
         banNhap.geminiApiKey = oGemini.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         KhoDuLieu.dungChung.luuCaiDat(banNhap, thongBao: true)
         veGiaoDien()
-        hienThongBao("Đã lưu cài đặt", "Các thay đổi của bạn và lịch hẹn giờ thông báo (ca làm việc & thực đơn) đã được áp dụng!")
+        hienThongBao("Đã lưu cài đặt", "Các thay đổi của bạn và lịch hẹn giờ thông báo đã được áp dụng!")
     }
 
     private func veGiaoDien() {
@@ -90,7 +89,7 @@ final class ManHinhCaiDat: UIViewController {
             $0.removeFromSuperview()
         }
 
-        // 1. Tài khoản & Đồng bộ Supabase (Gọn gàng trên 2 dòng)
+        // 1. Tài khoản & Đồng bộ Supabase
         nganChinh.addArrangedSubview(taoTieuDeMuc("☁️ ĐỒNG BỘ SUPABASE"))
         let theDongBo = taoThe()
         let nganDongBo = taoNganBenTrong(theDongBo)
@@ -138,7 +137,7 @@ final class ManHinhCaiDat: UIViewController {
         }
         nganChinh.addArrangedSubview(theDongBo)
 
-        // 2. Google Drive & Bộ nhớ đệm ảnh (Gọn gàng 1 hàng thông tin + 1 hàng 2 nút ngang)
+        // 2. Google Drive & Bộ nhớ đệm ảnh
         nganChinh.addArrangedSubview(taoTieuDeMuc("🗂️ GOOGLE DRIVE & BỘ NHỚ ĐỆM ẢNH"))
         let theDrive = taoThe()
         let nganDrive = taoNganBenTrong(theDrive)
@@ -166,7 +165,7 @@ final class ManHinhCaiDat: UIViewController {
         nganDrive.addArrangedSubview(hangNutDrive)
         nganChinh.addArrangedSubview(theDrive)
 
-        // 3. Giao diện & Quản lý Tab (Gộp gọn, chỉ thay đổi biến tạm banNhap, bấm Lưu mới áp dụng)
+        // 3. Giao diện & Quản lý Tab
         nganChinh.addArrangedSubview(taoTieuDeMuc("🎨 GIAO DIỆN & CÁC TAB HIỂN THỊ (BẤM LƯU ĐỂ ÁP DỤNG)"))
         let theTab = taoThe()
         let nganTab = taoNganBenTrong(theTab)
@@ -198,8 +197,8 @@ final class ManHinhCaiDat: UIViewController {
         })
         nganChinh.addArrangedSubview(theTab)
 
-        // 4. Chu kỳ ca làm việc & Thông báo (Nghỉ luân phiên + Thực đơn)
-        nganChinh.addArrangedSubview(taoTieuDeMuc("⚙️ CHU KỲ CA & THÔNG BÁO (NGHỈ LUÂN PHIÊN & THỰC ĐƠN)"))
+        // 4. Chu kỳ ca làm việc & Thông báo
+        nganChinh.addArrangedSubview(taoTieuDeMuc("⚙️ CHU KỲ CA & THÔNG BÁO"))
         let theChuKy = taoThe()
         let nganChuKy = taoNganBenTrong(theChuKy)
 
@@ -255,7 +254,7 @@ final class ManHinhCaiDat: UIViewController {
 
         // 4A. Thông báo nhắc ca / nghỉ luân phiên
         nganChuKy.addArrangedSubview(taoVachNgan())
-        nganChuKy.addArrangedSubview(taoHangCongTac(ten: "Bật thông báo nhắc ca (Nghỉ luân phiên)", dangBat: banNhap.batThongBao) { [weak self] bat in
+        nganChuKy.addArrangedSubview(taoHangCongTac(ten: "Bật thông báo nhắc ca", dangBat: banNhap.batThongBao) { [weak self] bat in
             self?.banNhap.batThongBao = bat
             self?.nganGioThongBao.isHidden = !bat
         })
@@ -278,7 +277,7 @@ final class ManHinhCaiDat: UIViewController {
         nganGioThongBao.isHidden = !banNhap.batThongBao
         nganChuKy.addArrangedSubview(nganGioThongBao)
 
-        // 4B. Thông báo Thực đơn các ngày
+        // 4B. Thông báo Thực đơn theo 4 khung giờ: Sáng - Trưa - Chiều - Đêm
         nganChuKy.addArrangedSubview(taoVachNgan())
         nganChuKy.addArrangedSubview(taoHangCongTac(ten: "Bật thông báo Thực đơn 🍱", dangBat: banNhap.batThongBaoThucDon) { [weak self] bat in
             self?.banNhap.batThongBaoThucDon = bat
@@ -291,10 +290,16 @@ final class ManHinhCaiDat: UIViewController {
             nganGioThongBaoThucDon.removeArrangedSubview($0)
             $0.removeFromSuperview()
         }
-        nganGioThongBaoThucDon.addArrangedSubview(taoHangGioNhac("Giờ báo thực đơn Ca Ngày ☀️", gio: banNhap.gioThongBaoThucDonNgay) { [weak self] d in
-            self?.banNhap.gioThongBaoThucDonNgay = d
+        nganGioThongBaoThucDon.addArrangedSubview(taoHangGioNhac("Giờ báo thực đơn Sáng 🥖", gio: banNhap.gioThongBaoThucDonSang) { [weak self] d in
+            self?.banNhap.gioThongBaoThucDonSang = d
         })
-        nganGioThongBaoThucDon.addArrangedSubview(taoHangGioNhac("Giờ báo thực đơn Ca Đêm 🌙", gio: banNhap.gioThongBaoThucDonDem) { [weak self] d in
+        nganGioThongBaoThucDon.addArrangedSubview(taoHangGioNhac("Giờ báo thực đơn Trưa 🍱", gio: banNhap.gioThongBaoThucDonTrua) { [weak self] d in
+            self?.banNhap.gioThongBaoThucDonTrua = d
+        })
+        nganGioThongBaoThucDon.addArrangedSubview(taoHangGioNhac("Giờ báo thực đơn Chiều 🍲", gio: banNhap.gioThongBaoThucDonChieu) { [weak self] d in
+            self?.banNhap.gioThongBaoThucDonChieu = d
+        })
+        nganGioThongBaoThucDon.addArrangedSubview(taoHangGioNhac("Giờ báo thực đơn Đêm 🌙", gio: banNhap.gioThongBaoThucDonDem) { [weak self] d in
             self?.banNhap.gioThongBaoThucDonDem = d
         })
         nganGioThongBaoThucDon.isHidden = !banNhap.batThongBaoThucDon

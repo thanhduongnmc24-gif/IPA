@@ -139,7 +139,6 @@ final class BoDocTapTinThucDon {
         for (tenSheet, bang) in cacSheet {
             let tenSheetThuong = boDau(tenSheet).lowercased()
 
-            // Kiểm tra sheet "Quy tắc lọc" riêng biệt
             if tenSheetThuong.contains("quy tac") || (bang.first?.count == 2 && boDau(bang.first?.first ?? "").lowercased().contains("noi dung")) {
                 for dong in bang.dropFirst() {
                     let c0 = dong.indices.contains(0) ? dong[0].trimmingCharacters(in: .whitespacesAndNewlines) : ""
@@ -151,7 +150,6 @@ final class BoDocTapTinThucDon {
                 continue
             }
 
-            // Tìm dòng tiêu đề trong bảng thực đơn
             var chiSoTieuDe = 0
             var anhXaCot = AnhXaCotThucDon()
             for (idx, dong) in bang.prefix(10).enumerated() {
@@ -256,10 +254,6 @@ final class BoDocTapTinThucDon {
         )
     }
 
-    /// Áp dụng quy tắc lọc theo Chu kỳ ca làm việc:
-    /// - Ca ngày: lấy bữa trưa (Cải thiện + TĐ1 chính/phụ + TĐ2 chính/phụ) và Chiều/Tối (1 thực đơn).
-    /// - Ca đêm: lấy Ăn đêm ngày vào ca và Sáng hôm sau.
-    /// - Ngày nghỉ: bỏ qua.
     static func apDungLocTheoChuKyCa(_ danhSachGoc: [MucThucDonNgay]) -> [MucThucDonNgay] {
         var ketQua: [MucThucDonNgay] = []
         for (idx, muc) in danhSachGoc.enumerated() {
@@ -314,7 +308,7 @@ final class BoDocTapTinThucDon {
             .replacingOccurrences(of: "Đ", with: "D")
     }
 
-    // MARK: - Bộ Ánh Xạ Cột 11 Cột Chuẩn (Hỗ trợ cả bảng 11 cột có TĐ1/TĐ2 và bảng 9 cột cũ)
+    // MARK: - Bộ Ánh Xạ Cột 11 Cột Chuẩn
 
     private struct AnhXaCotThucDon {
         var ngayVaoCa: Int? = 0
@@ -332,7 +326,6 @@ final class BoDocTapTinThucDon {
         init() {}
 
         init(dongTieuDe: [String]) {
-            // Nếu bảng có 9 cột kiểu cũ (không có TĐ2)
             if dongTieuDe.count == 9 {
                 let ghep = BoDocTapTinThucDon.boDau(dongTieuDe.joined(separator: " ")).lowercased()
                 if !ghep.contains("td2") && !ghep.contains("thuc don 2") {
@@ -493,7 +486,7 @@ final class BoDocTapTinThucDon {
         return ketQua
     }
 
-    // MARK: - Giải nén ZIP thuần Swift (Dùng Compression Framework của iOS)
+    // MARK: - Giải nén ZIP thuần Swift
 
     private static func docUInt16(_ data: Data, tai viTri: Int) -> UInt16 {
         guard viTri >= 0, viTri + 2 <= data.count else { return 0 }
@@ -807,24 +800,17 @@ private final class BoPhanTichWorksheet: NSObject, XMLParserDelegate {
     }
 }
 
-// MARK: - 3. Màn Hình Thực Đơn Chính (Tab Thực Đơn)
+// MARK: - 3. Màn Hình Thực Đơn Chính (Giao diện tinh gọn: chỉ thanh lọc Ca và danh sách ngày)
 
-final class ManHinhThucDon: UIViewController, UITableViewDataSource, UITableViewDelegate, UISearchBarDelegate, UIDocumentPickerDelegate {
-    private let theThongTinTep = UIView()
-    private let nhanTenTep = UILabel()
-    private let nhanTrangThaiThongBao = UILabel()
-    private let nutChonTep = UIButton(type: .system)
-    private let thanhTimKiem = UISearchBar()
+final class ManHinhThucDon: UIViewController, UITableViewDataSource, UITableViewDelegate, UIDocumentPickerDelegate {
     private let chonBoLoc = UISegmentedControl(items: ["Tất cả", "Sắp tới", "Ca Ngày ☀️", "Ca Đêm 🌙"])
     private let bang = UITableView(frame: .zero, style: .plain)
-
-    private var tuKhoaTim: String = ""
 
     private var danhSachHienThi: [MucThucDonNgay] {
         let tatCa = KhoDuLieu.dungChung.duLieuThucDon.danhSachNgay
         let homNayKhoa = TienIchLich.dinhDangKhoaNgay.string(from: Date())
 
-        let theoBoLoc = tatCa.filter { muc in
+        return tatCa.filter { muc in
             switch chonBoLoc.selectedSegmentIndex {
             case 1:
                 return muc.khoaNgay.isEmpty || muc.khoaNgay >= homNayKhoa
@@ -835,26 +821,6 @@ final class ManHinhThucDon: UIViewController, UITableViewDataSource, UITableView
             default:
                 return true
             }
-        }
-
-        let tk = BoDocTapTinThucDon.boDau(tuKhoaTim).lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !tk.isEmpty else { return theoBoLoc }
-
-        return theoBoLoc.filter { muc in
-            let ghep = [
-                muc.ngayVaoCa,
-                muc.ca,
-                muc.truaCaiThien,
-                muc.td1MonChinh,
-                muc.td1MonPhu,
-                muc.td2MonChinh,
-                muc.td2MonPhu,
-                muc.chieuToi,
-                muc.anDem,
-                muc.sangHomSau,
-                muc.ghiChu
-            ].joined(separator: " ")
-            return BoDocTapTinThucDon.boDau(ghep).lowercased().contains(tk)
         }
     }
 
@@ -908,49 +874,6 @@ final class ManHinhThucDon: UIViewController, UITableViewDataSource, UITableView
     }
 
     private func taoGiaoDien() {
-        theThongTinTep.layer.cornerRadius = 12
-        theThongTinTep.layer.borderWidth = 1
-        theThongTinTep.translatesAutoresizingMaskIntoConstraints = false
-
-        nhanTenTep.font = .systemFont(ofSize: 13, weight: .semibold)
-        nhanTenTep.numberOfLines = 2
-
-        nhanTrangThaiThongBao.font = .systemFont(ofSize: 11.5, weight: .medium)
-        nhanTrangThaiThongBao.numberOfLines = 2
-
-        var chChon = UIButton.Configuration.filled()
-        chChon.title = "📂 Nhập file Thực đơn (.xlsx / .csv)"
-        chChon.cornerStyle = .medium
-        chChon.buttonSize = .small
-        nutChonTep.configuration = chChon
-        nutChonTep.heightAnchor.constraint(equalToConstant: 34).isActive = true
-        nutChonTep.addTarget(self, action: #selector(bamChonTepThucDon), for: .touchUpInside)
-
-        let nutQuyTac = UIButton(type: .system)
-        var chQT = UIButton.Configuration.tinted()
-        chQT.title = "📋 Quy tắc"
-        chQT.cornerStyle = .medium
-        chQT.buttonSize = .small
-        nutQuyTac.configuration = chQT
-        nutQuyTac.heightAnchor.constraint(equalToConstant: 34).isActive = true
-        nutQuyTac.widthAnchor.constraint(equalToConstant: 96).isActive = true
-        nutQuyTac.addTarget(self, action: #selector(hienQuyTacLoc), for: .touchUpInside)
-
-        let hangNutTep = UIStackView(arrangedSubviews: [nutChonTep, nutQuyTac])
-        hangNutTep.axis = .horizontal
-        hangNutTep.spacing = 8
-
-        let nganTep = UIStackView(arrangedSubviews: [nhanTenTep, nhanTrangThaiThongBao, hangNutTep])
-        nganTep.axis = .vertical
-        nganTep.spacing = 6
-        nganTep.translatesAutoresizingMaskIntoConstraints = false
-        theThongTinTep.addSubview(nganTep)
-
-        thanhTimKiem.placeholder = "Tìm ngày (VD: 14/11) hoặc tên món ăn..."
-        thanhTimKiem.delegate = self
-        thanhTimKiem.searchBarStyle = .minimal
-        thanhTimKiem.translatesAutoresizingMaskIntoConstraints = false
-
         chonBoLoc.selectedSegmentIndex = 0
         chonBoLoc.addTarget(self, action: #selector(doiBoLoc), for: .valueChanged)
         chonBoLoc.translatesAutoresizingMaskIntoConstraints = false
@@ -962,27 +885,11 @@ final class ManHinhThucDon: UIViewController, UITableViewDataSource, UITableView
         bang.keyboardDismissMode = .onDrag
         bang.translatesAutoresizingMaskIntoConstraints = false
 
-        view.addSubview(theThongTinTep)
-        view.addSubview(thanhTimKiem)
         view.addSubview(chonBoLoc)
         view.addSubview(bang)
 
         NSLayoutConstraint.activate([
-            theThongTinTep.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 6),
-            theThongTinTep.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
-            theThongTinTep.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
-
-            nganTep.topAnchor.constraint(equalTo: theThongTinTep.topAnchor, constant: 10),
-            nganTep.bottomAnchor.constraint(equalTo: theThongTinTep.bottomAnchor, constant: -10),
-            nganTep.leadingAnchor.constraint(equalTo: theThongTinTep.leadingAnchor, constant: 12),
-            nganTep.trailingAnchor.constraint(equalTo: theThongTinTep.trailingAnchor, constant: -12),
-
-            thanhTimKiem.topAnchor.constraint(equalTo: theThongTinTep.bottomAnchor, constant: 2),
-            thanhTimKiem.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 6),
-            thanhTimKiem.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -6),
-            thanhTimKiem.heightAnchor.constraint(equalToConstant: 42),
-
-            chonBoLoc.topAnchor.constraint(equalTo: thanhTimKiem.bottomAnchor, constant: 2),
+            chonBoLoc.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 6),
             chonBoLoc.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
             chonBoLoc.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
 
@@ -994,43 +901,12 @@ final class ManHinhThucDon: UIViewController, UITableViewDataSource, UITableView
     }
 
     @objc private func capNhatGiaoDien() {
-        let mau = KhoDuLieu.dungChung.mauSac
-        let cd = KhoDuLieu.dungChung.caiDat
-        let td = KhoDuLieu.dungChung.duLieuThucDon
-
-        view.backgroundColor = mau.bg
-        theThongTinTep.backgroundColor = mau.card
-        theThongTinTep.layer.borderColor = mau.border.cgColor
-
-        let tenFile = td.tenTepNguon.isEmpty ? "Chưa chọn file" : td.tenTepNguon
-        let tenSheet = td.tenSheetChinh.isEmpty ? "" : " (\(td.tenSheetChinh))"
-        nhanTenTep.text = "📄 File: \(tenFile)\(tenSheet) • \(td.danhSachNgay.count) ngày"
-        nhanTenTep.textColor = mau.text
-
-        let gioNgayStr = TienIchLich.dinhDangGioPhut.string(from: cd.gioThongBaoThucDonNgay)
-        let gioDemStr = TienIchLich.dinhDangGioPhut.string(from: cd.gioThongBaoThucDonDem)
-        if cd.batThongBaoThucDon {
-            nhanTrangThaiThongBao.text = "🔔 Thông báo thực đơn: Đang BẬT (☀️ Ca Ngày \(gioNgayStr) • 🌙 Ca Đêm \(gioDemStr))"
-            nhanTrangThaiThongBao.textColor = mau.success
-        } else {
-            nhanTrangThaiThongBao.text = "🔕 Thông báo thực đơn: Đang TẮT (Bật & chỉnh giờ trong tab Cài đặt)"
-            nhanTrangThaiThongBao.textColor = mau.subText
-        }
-
+        view.backgroundColor = KhoDuLieu.dungChung.mauSac.bg
         bang.reloadData()
     }
 
     @objc private func doiBoLoc() {
         bang.reloadData()
-    }
-
-    func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
-        tuKhoaTim = searchText
-        bang.reloadData()
-    }
-
-    func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
-        searchBar.resignFirstResponder()
     }
 
     // MARK: - Chọn File Thực Đơn Tên Bất Kỳ
@@ -1093,7 +969,7 @@ final class ManHinhThucDon: UIViewController, UITableViewDataSource, UITableView
     @objc private func moMenuTuyChon() {
         let sheet = UIAlertController(title: "Tùy chọn Thực đơn", message: nil, preferredStyle: .actionSheet)
 
-        sheet.addAction(UIAlertAction(title: "📂 Chọn file Thực đơn khác (.xlsx, .csv)", style: .default) { [weak self] _ in
+        sheet.addAction(UIAlertAction(title: "📂 Nhập file Thực đơn (.xlsx, .csv)", style: .default) { [weak self] _ in
             self?.bamChonTepThucDon()
         })
 
@@ -1185,7 +1061,7 @@ final class ManHinhThucDon: UIViewController, UITableViewDataSource, UITableView
             let cell = UITableViewCell(style: .default, reuseIdentifier: "OTrongThucDon")
             cell.selectionStyle = .none
             cell.backgroundColor = .clear
-            cell.textLabel?.text = "Không có ngày thực đơn nào khớp bộ lọc.\nBấm nút '📂 Nhập file Thực đơn' để tải file mới."
+            cell.textLabel?.text = "Chưa có dữ liệu thực đơn khớp bộ lọc.\nBấm biểu tượng 📁+ ở góc trên bên phải để nhập file thực đơn."
             cell.textLabel?.numberOfLines = 0
             cell.textLabel?.textAlignment = .center
             cell.textLabel?.font = .italicSystemFont(ofSize: 14)
@@ -1286,7 +1162,6 @@ final class ManHinhThucDon: UIViewController, UITableViewDataSource, UITableView
             nganMonAn.addArrangedSubview(lb)
         }
 
-        // Bữa trưa: Cải thiện + Thực đơn 1 (món chính + món phụ) + Thực đơn 2 (món chính + món phụ)
         themDongMon(nhan: "🍱 Trưa - Cải thiện", giaTri: muc.truaCaiThien, mauNhan: mau.primary)
 
         if !muc.td1MonChinh.isEmpty || !muc.td1MonPhu.isEmpty {
@@ -1305,10 +1180,7 @@ final class ManHinhThucDon: UIViewController, UITableViewDataSource, UITableView
             themDongMon(nhan: "🍛 Trưa - Thực đơn 2", giaTri: chiTietTD2, mauNhan: UIColor(red: 0.05, green: 0.60, blue: 0.55, alpha: 1))
         }
 
-        // Bữa chiều/tối (1 thực đơn)
         themDongMon(nhan: "🍲 Chiều/Tối (1 thực đơn)", giaTri: muc.chieuToi, mauNhan: UIColor(red: 0.90, green: 0.45, blue: 0.05, alpha: 1))
-
-        // Ca đêm: Ăn đêm + Sáng hôm sau
         themDongMon(nhan: "🍜 Ăn đêm (ca đêm)", giaTri: muc.anDem, mauNhan: UIColor(red: 0.42, green: 0.40, blue: 0.95, alpha: 1))
         themDongMon(nhan: "🥖 Sáng hôm sau", giaTri: muc.sangHomSau, mauNhan: mau.success)
 

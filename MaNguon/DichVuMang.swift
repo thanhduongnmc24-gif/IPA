@@ -675,7 +675,9 @@ final class DichVuSupabase {
             "CYCLE_START_DATE": ISO8601DateFormatter().string(from: kho.caiDat.ngayBatDauChuKy),
             "NOTIF_ENABLED": kho.caiDat.batThongBao,
             "MENU_NOTIF_ENABLED": kho.caiDat.batThongBaoThucDon,
-            "MENU_NOTIF_DAY_TIME": ISO8601DateFormatter().string(from: kho.caiDat.gioThongBaoThucDonNgay),
+            "MENU_NOTIF_MORNING_TIME": ISO8601DateFormatter().string(from: kho.caiDat.gioThongBaoThucDonSang),
+            "MENU_NOTIF_NOON_TIME": ISO8601DateFormatter().string(from: kho.caiDat.gioThongBaoThucDonTrua),
+            "MENU_NOTIF_AFTERNOON_TIME": ISO8601DateFormatter().string(from: kho.caiDat.gioThongBaoThucDonChieu),
             "MENU_NOTIF_NIGHT_TIME": ISO8601DateFormatter().string(from: kho.caiDat.gioThongBaoThucDonDem),
             "MENU_DATA": thucDonObj,
             "GEMINI_API_KEY": kho.caiDat.geminiApiKey,
@@ -856,9 +858,17 @@ final class DichVuSupabase {
         if let menuNotif = backup["MENU_NOTIF_ENABLED"] as? Bool {
             cd.batThongBaoThucDon = menuNotif
         }
-        if let sDayTime = backup["MENU_NOTIF_DAY_TIME"] as? String,
-           let dDay = TienIchLich.docNgayISO(sDayTime) {
-            cd.gioThongBaoThucDonNgay = dDay
+        if let sMorning = backup["MENU_NOTIF_MORNING_TIME"] as? String,
+           let dMorning = TienIchLich.docNgayISO(sMorning) {
+            cd.gioThongBaoThucDonSang = dMorning
+        }
+        if let sNoon = backup["MENU_NOTIF_NOON_TIME"] as? String,
+           let dNoon = TienIchLich.docNgayISO(sNoon) {
+            cd.gioThongBaoThucDonTrua = dNoon
+        }
+        if let sAfternoon = backup["MENU_NOTIF_AFTERNOON_TIME"] as? String,
+           let dAfternoon = TienIchLich.docNgayISO(sAfternoon) {
+            cd.gioThongBaoThucDonChieu = dAfternoon
         }
         if let sNightTime = backup["MENU_NOTIF_NIGHT_TIME"] as? String,
            let dNight = TienIchLich.docNgayISO(sNightTime) {
