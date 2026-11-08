@@ -137,20 +137,22 @@ struct MucAnhSheet: Codable, Hashable, Identifiable {
     var base64: String? = nil
 }
 
-// MARK: - 1B. Mô hình Thực Đơn Theo Ca / Ngày
+// MARK: - 1B. Mô hình Thực Đơn Theo Ca / Ngày (Chuẩn 11 cột: Cải thiện, TĐ1, TĐ2, Chiều/Tối, Ăn đêm, Sáng hôm sau, Ghi chú)
 
 struct MucThucDonNgay: Codable, Hashable, Identifiable {
     var id: String = UUID().uuidString
-    var ngayVaoCa: String       // VD: "08/11/2026"
-    var khoaNgay: String        // VD: "2026-11-08"
-    var ca: String              // VD: "Ngày" hoặc "Đêm"
+    var ngayVaoCa: String       // Cột 1: Ngày vào ca (VD: "08/11/2026")
+    var khoaNgay: String        // Khóa chuẩn: "2026-11-08"
+    var ca: String              // Cột 2: Ca ("Ngày" hoặc "Đêm")
     var truaCaiThien: String    // Cột 3: Trưa - Cải thiện
-    var truaMonChinh: String    // Cột 4: Trưa - Món chính
-    var truaMonThuHai: String   // Cột 5: Trưa - Món thứ 2
-    var chieuToi: String        // Cột 6: Chiều/Tối (ca ngày)
-    var anDem: String           // Cột 7: Ăn đêm (ca đêm)
-    var sangHomSau: String      // Cột 8: Sáng hôm sau
-    var ghiChu: String          // Cột 9: Ghi chú
+    var td1MonChinh: String     // Cột 4: TĐ1 - Món chính
+    var td1MonPhu: String       // Cột 5: TĐ1 - Món phụ
+    var td2MonChinh: String     // Cột 6: TĐ2 - Món chính
+    var td2MonPhu: String       // Cột 7: TĐ2 - Món phụ
+    var chieuToi: String        // Cột 8: Chiều/Tối (1 thực đơn)
+    var anDem: String           // Cột 9: Ăn đêm (ca đêm)
+    var sangHomSau: String      // Cột 10: Sáng hôm sau
+    var ghiChu: String          // Cột 11: Ghi chú
 
     init(
         id: String = UUID().uuidString,
@@ -158,8 +160,10 @@ struct MucThucDonNgay: Codable, Hashable, Identifiable {
         khoaNgay: String = "",
         ca: String,
         truaCaiThien: String = "",
-        truaMonChinh: String = "",
-        truaMonThuHai: String = "",
+        td1MonChinh: String = "",
+        td1MonPhu: String = "",
+        td2MonChinh: String = "",
+        td2MonPhu: String = "",
         chieuToi: String = "",
         anDem: String = "",
         sangHomSau: String = "",
@@ -175,26 +179,82 @@ struct MucThucDonNgay: Codable, Hashable, Identifiable {
         }
         self.ca = ca
         self.truaCaiThien = truaCaiThien
-        self.truaMonChinh = truaMonChinh
-        self.truaMonThuHai = truaMonThuHai
+        self.td1MonChinh = td1MonChinh
+        self.td1MonPhu = td1MonPhu
+        self.td2MonChinh = td2MonChinh
+        self.td2MonPhu = td2MonPhu
         self.chieuToi = chieuToi
         self.anDem = anDem
         self.sangHomSau = sangHomSau
         self.ghiChu = ghiChu
     }
 
+    enum CodingKeys: String, CodingKey {
+        case id, ngayVaoCa, khoaNgay, ca, truaCaiThien
+        case td1MonChinh, td1MonPhu, td2MonChinh, td2MonPhu
+        case truaMonChinh, truaMonThuHai // Tương thích ngược nếu có bản lưu cũ
+        case chieuToi, anDem, sangHomSau, ghiChu
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = (try? c.decodeIfPresent(String.self, forKey: .id)) ?? UUID().uuidString
+        let rawNgay = (try? c.decodeIfPresent(String.self, forKey: .ngayVaoCa)) ?? ""
+        let rawKhoa = (try? c.decodeIfPresent(String.self, forKey: .khoaNgay)) ?? ""
+        if let chuan = TienIchLich.chuanHoaNgayThucDon(rawNgay) {
+            self.ngayVaoCa = chuan.hienThi
+            self.khoaNgay = rawKhoa.isEmpty ? chuan.khoa : rawKhoa
+        } else {
+            self.ngayVaoCa = rawNgay
+            self.khoaNgay = rawKhoa
+        }
+        self.ca = (try? c.decodeIfPresent(String.self, forKey: .ca)) ?? ""
+        self.truaCaiThien = (try? c.decodeIfPresent(String.self, forKey: .truaCaiThien)) ?? ""
+        let m1Chinh = (try? c.decodeIfPresent(String.self, forKey: .td1MonChinh)) ?? ""
+        let m1Cu = (try? c.decodeIfPresent(String.self, forKey: .truaMonChinh)) ?? ""
+        self.td1MonChinh = m1Chinh.isEmpty ? m1Cu : m1Chinh
+
+        let m1Phu = (try? c.decodeIfPresent(String.self, forKey: .td1MonPhu)) ?? ""
+        let m2Cu = (try? c.decodeIfPresent(String.self, forKey: .truaMonThuHai)) ?? ""
+        self.td1MonPhu = m1Phu.isEmpty ? m2Cu : m1Phu
+
+        self.td2MonChinh = (try? c.decodeIfPresent(String.self, forKey: .td2MonChinh)) ?? ""
+        self.td2MonPhu = (try? c.decodeIfPresent(String.self, forKey: .td2MonPhu)) ?? ""
+        self.chieuToi = (try? c.decodeIfPresent(String.self, forKey: .chieuToi)) ?? ""
+        self.anDem = (try? c.decodeIfPresent(String.self, forKey: .anDem)) ?? ""
+        self.sangHomSau = (try? c.decodeIfPresent(String.self, forKey: .sangHomSau)) ?? ""
+        self.ghiChu = (try? c.decodeIfPresent(String.self, forKey: .ghiChu)) ?? ""
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(ngayVaoCa, forKey: .ngayVaoCa)
+        try c.encode(khoaNgay, forKey: .khoaNgay)
+        try c.encode(ca, forKey: .ca)
+        try c.encode(truaCaiThien, forKey: .truaCaiThien)
+        try c.encode(td1MonChinh, forKey: .td1MonChinh)
+        try c.encode(td1MonPhu, forKey: .td1MonPhu)
+        try c.encode(td2MonChinh, forKey: .td2MonChinh)
+        try c.encode(td2MonPhu, forKey: .td2MonPhu)
+        try c.encode(chieuToi, forKey: .chieuToi)
+        try c.encode(anDem, forKey: .anDem)
+        try c.encode(sangHomSau, forKey: .sangHomSau)
+        try c.encode(ghiChu, forKey: .ghiChu)
+    }
+
     var laCaDem: Bool {
         let c = ca.folding(options: .diacriticInsensitive, locale: .current).lowercased()
         if c.contains("dem") || c.contains("đêm") || c.contains("toi") { return true }
         if c.contains("ngay") || c.contains("ngày") || c.contains("sang") { return false }
-        return (!anDem.isEmpty || !sangHomSau.isEmpty) && truaCaiThien.isEmpty && truaMonChinh.isEmpty
+        return (!anDem.isEmpty || !sangHomSau.isEmpty) && truaCaiThien.isEmpty && td1MonChinh.isEmpty && td2MonChinh.isEmpty
     }
 
     var laCaNgay: Bool {
         let c = ca.folding(options: .diacriticInsensitive, locale: .current).lowercased()
         if c.contains("ngay") || c.contains("ngày") || c.contains("sang") { return true }
         if laCaDem { return false }
-        return !truaCaiThien.isEmpty || !truaMonChinh.isEmpty || !truaMonThuHai.isEmpty || !chieuToi.isEmpty
+        return !truaCaiThien.isEmpty || !td1MonChinh.isEmpty || !td1MonPhu.isEmpty || !td2MonChinh.isEmpty || !td2MonPhu.isEmpty || !chieuToi.isEmpty
     }
 
     var caChuan: String {
@@ -203,18 +263,38 @@ struct MucThucDonNgay: Codable, Hashable, Identifiable {
         return "khac"
     }
 
+    var chuoiThucDon1: String {
+        [td1MonChinh, td1MonPhu]
+            .map { /usr/bin/bash.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !/usr/bin/bash.isEmpty }
+            .joined(separator: " + ")
+    }
+
+    var chuoiThucDon2: String {
+        [td2MonChinh, td2MonPhu]
+            .map { /usr/bin/bash.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !/usr/bin/bash.isEmpty }
+            .joined(separator: " + ")
+    }
+
     var tomTatThongBao: String {
         var cacDong: [String] = []
         if laCaNgay {
-            let cacMonTrua = [truaCaiThien, truaMonChinh, truaMonThuHai]
-                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                .filter { !$0.isEmpty }
-            if !cacMonTrua.isEmpty {
-                cacDong.append("🍱 Trưa: \(cacMonTrua.joined(separator: " • "))")
-            }
-            let ct = chieuToi.trimmingCharacters(in: .whitespacesAndNewlines)
+            let ct = truaCaiThien.trimmingCharacters(in: .whitespacesAndNewlines)
             if !ct.isEmpty {
-                cacDong.append("🍲 Chiều/Tối: \(ct)")
+                cacDong.append("🍱 Cải thiện: \(ct)")
+            }
+            let td1 = chuoiThucDon1
+            if !td1.isEmpty {
+                cacDong.append("🍛 Trưa TĐ1: \(td1)")
+            }
+            let td2 = chuoiThucDon2
+            if !td2.isEmpty {
+                cacDong.append("🍛 Trưa TĐ2: \(td2)")
+            }
+            let chieu = chieuToi.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !chieu.isEmpty {
+                cacDong.append("🍲 Chiều/Tối: \(chieu)")
             }
         }
         if laCaDem || (!anDem.isEmpty || !sangHomSau.isEmpty) {
@@ -268,8 +348,10 @@ struct DuLieuThucDon: Codable, Hashable {
                 ngayVaoCa: "08/11/2026",
                 ca: "Ngày",
                 truaCaiThien: "Bánh canh chả tôm / Sữa tươi Ba Vì",
-                truaMonChinh: "Bò nấu lagu",
-                truaMonThuHai: "Đậu khuôn chiên sốt cà",
+                td1MonChinh: "Bò nấu lagu",
+                td1MonPhu: "Đậu khuôn chiên sốt cà",
+                td2MonChinh: "Thịt kho trứng",
+                td2MonPhu: "Đậu khuôn chiên sốt cà",
                 chieuToi: "Cotlet rim; Chả cá rim tiêu; Cơm trắng; Cà tím xào mỡ hành; Canh dưa chua thịt bò"
             ),
             MucThucDonNgay(
@@ -282,8 +364,10 @@ struct DuLieuThucDon: Codable, Hashable {
                 ngayVaoCa: "11/11/2026",
                 ca: "Ngày",
                 truaCaiThien: "Cơm chiên Dương Châu / Sữa tươi Ba Vì / Táo",
-                truaMonChinh: "Cá diêu hồng chiên mắm",
-                truaMonThuHai: "Gỏi dưa leo chả lụa",
+                td1MonChinh: "Cá diêu hồng chiên mắm",
+                td1MonPhu: "Gỏi dưa leo chả lụa",
+                td2MonChinh: "Thịt kho tàu",
+                td2MonPhu: "Gỏi dưa leo chả lụa",
                 chieuToi: "Cotlet nướng mỡ hành; Trứng chiên hành; Cơm trắng; Cải thảo xào; Canh dưa chua thịt bò"
             ),
             MucThucDonNgay(
@@ -296,8 +380,10 @@ struct DuLieuThucDon: Codable, Hashable {
                 ngayVaoCa: "14/11/2026",
                 ca: "Ngày",
                 truaCaiThien: "Bún gà nấu ớt hiểm / Sữa Yomost",
-                truaMonChinh: "Tỏi gà rôty",
-                truaMonThuHai: "Thịt xào dưa cải",
+                td1MonChinh: "Tỏi gà rôty",
+                td1MonPhu: "Thịt xào dưa cải",
+                td2MonChinh: "Cá biển kho",
+                td2MonPhu: "Thịt xào dưa cải",
                 chieuToi: "Giò kho sả ớt; Ốc om chuối đậu; Cơm trắng; Bầu xào; Canh mồng tơi nấu cua/ghẹ"
             ),
             MucThucDonNgay(
@@ -310,8 +396,10 @@ struct DuLieuThucDon: Codable, Hashable {
                 ngayVaoCa: "17/11/2026",
                 ca: "Ngày",
                 truaCaiThien: "Mì tôm thịt bò, trứng ốp la / Sữa tươi Ba Vì",
-                truaMonChinh: "Tỏi gà chiên mắm",
-                truaMonThuHai: "Trứng gà luộc",
+                td1MonChinh: "Tỏi gà chiên mắm",
+                td1MonPhu: "Trứng gà luộc",
+                td2MonChinh: "Tôm rim thịt",
+                td2MonPhu: "Trứng gà luộc",
                 chieuToi: "Cotlet nướng mỡ hành; Đậu khuôn chiên sốt cà; Cơm trắng; Bầu luộc; Canh chua chả cá"
             ),
             MucThucDonNgay(
@@ -324,8 +412,10 @@ struct DuLieuThucDon: Codable, Hashable {
                 ngayVaoCa: "20/11/2026",
                 ca: "Ngày",
                 truaCaiThien: "Hủ tiếu bò / Sữa tươi Ba Vì",
-                truaMonChinh: "Sườn sốt chua ngọt",
-                truaMonThuHai: "Thịt xào dưa cải",
+                td1MonChinh: "Sườn sốt chua ngọt",
+                td1MonPhu: "Thịt xào dưa cải",
+                td2MonChinh: "Cá biển chiên mắm",
+                td2MonPhu: "Thịt xào dưa cải",
                 chieuToi: "Bò xào hành cần; Cá cơm khô rang đậu phộng; Cơm trắng; Rau cải luộc; Canh khổ qua nấu thịt"
             ),
             MucThucDonNgay(
@@ -337,11 +427,12 @@ struct DuLieuThucDon: Codable, Hashable {
             MucThucDonNgay(
                 ngayVaoCa: "23/11/2026",
                 ca: "Ngày",
-                truaCaiThien: "Cơm tấm / Sữa (tên món bị OCR thiếu một phần)",
-                truaMonChinh: "Cánh gà chiên mắm",
-                truaMonThuHai: "Chả cá chiên sốt cà",
-                chieuToi: "Tôm rim; Cá biển kho; Cơm trắng; Bầu luộc; Canh bí đỏ nấu thịt",
-                ghiChu: "[Suy luận] Tên món cải thiện 23/11 dựa theo vị trí cột và chu kỳ món; PDF trích xuất thiếu chữ."
+                truaCaiThien: "Cơm tấm / Sữa Yomost / Chuối",
+                td1MonChinh: "Cánh gà chiên mắm",
+                td1MonPhu: "Chả cá chiên sốt cà",
+                td2MonChinh: "Thịt rim mặn",
+                td2MonPhu: "Chả cá chiên sốt cà",
+                chieuToi: "Tôm rim; Cá biển kho; Cơm trắng; Bầu luộc; Canh bí đỏ nấu thịt"
             ),
             MucThucDonNgay(
                 ngayVaoCa: "24/11/2026",
@@ -353,8 +444,10 @@ struct DuLieuThucDon: Codable, Hashable {
                 ngayVaoCa: "26/11/2026",
                 ca: "Ngày",
                 truaCaiThien: "Bún Thái hải sản / Sữa Yomost",
-                truaMonChinh: "Bò xào hành cần",
-                truaMonThuHai: "Thịt viên chiên sốt cà",
+                td1MonChinh: "Bò xào hành cần",
+                td1MonPhu: "Thịt viên chiên sốt cà",
+                td2MonChinh: "Cá biển kho tiêu",
+                td2MonPhu: "Thịt viên chiên sốt cà",
                 chieuToi: "Gà kho sả ớt; Thịt xào dưa cải; Cơm trắng; Mít xào lá lốt; Canh cải nấu thịt"
             ),
             MucThucDonNgay(
@@ -367,8 +460,10 @@ struct DuLieuThucDon: Codable, Hashable {
                 ngayVaoCa: "29/11/2026",
                 ca: "Ngày",
                 truaCaiThien: "Phở bò / Sữa tươi Vinamilk",
-                truaMonChinh: "Sườn kho sả",
-                truaMonThuHai: "Trứng gà luộc",
+                td1MonChinh: "Sườn kho sả",
+                td1MonPhu: "Trứng gà luộc",
+                td2MonChinh: "Cơm gà",
+                td2MonPhu: "Trứng gà luộc",
                 chieuToi: "Cá lóc chiên mắm xoài; Chả lụa xào nấm hành tây; Cơm trắng; Rau cải, giá luộc; Canh bí xanh nấu chả cá"
             ),
             MucThucDonNgay(
@@ -382,13 +477,13 @@ struct DuLieuThucDon: Codable, Hashable {
 
         let qt: [QuyTacThucDon] = [
             QuyTacThucDon(noiDung: "Chu kỳ kíp A", quyTac: "Ngày → Đêm → Nghỉ, lặp lại từ 08/11/2026"),
-            QuyTacThucDon(noiDung: "Ca ngày", quyTac: "Lấy bữa trưa: món cải thiện + món chính + món thứ 2; lấy thêm bữa chiều/tối cùng ngày"),
-            QuyTacThucDon(noiDung: "Ca đêm", quyTac: "Lấy món ăn đêm ngày vào ca và món ăn sáng của ngày kế tiếp"),
+            QuyTacThucDon(noiDung: "Ca ngày", quyTac: "Ca ngày: bữa trưa gồm món cải thiện, Thực đơn 1 (món chính + món phụ), Thực đơn 2 (món chính + món phụ); bữa chiều chỉ có 1 thực đơn."),
+            QuyTacThucDon(noiDung: "Ca đêm", quyTac: "Ca đêm: lấy món ăn đêm ngày vào ca và món ăn sáng của ngày kế tiếp."),
             QuyTacThucDon(noiDung: "Nguồn", quyTac: "Thực đơn tháng 11/2026 do Anh Hai cung cấp")
         ]
 
         return DuLieuThucDon(
-            tenTepNguon: "thuc_don_kip_A_thang_11_2026.xlsx",
+            tenTepNguon: "thuc_don_kip_A_thang_11_2026_da_kiem_tra.xlsx",
             tenSheetChinh: "Kíp A tháng 11",
             capNhatLuc: Date(),
             danhSachNgay: ds,
@@ -755,7 +850,8 @@ final class KhoDuLieu {
             tm.ghi(danhSachBangXuongCan, vao: tm.tepXuongCan)
         }
 
-        if let td = tm.doc(DuLieuThucDon.self, tu: tm.tepThucDon) {
+        if let td = tm.doc(DuLieuThucDon.self, tu: tm.tepThucDon),
+           !(td.tenTepNguon == "thuc_don_kip_A_thang_11_2026.xlsx" && td.danhSachNgay.allSatisfy({ $0.td2MonChinh.isEmpty })) {
             duLieuThucDon = td
         } else {
             duLieuThucDon = DuLieuThucDon.duLieuMauThang11()
@@ -840,10 +936,10 @@ final class KhoDuLieu {
     func luuDuLieuThucDon(_ moi: DuLieuThucDon, dongBoSupabase: Bool = true) {
         var banLuu = moi
         banLuu.danhSachNgay.sort {
-            if $0.khoaNgay != $1.khoaNgay {
-                return $0.khoaNgay < $1.khoaNgay
+            if /usr/bin/bash.khoaNgay != $1.khoaNgay {
+                return /usr/bin/bash.khoaNgay < $1.khoaNgay
             }
-            return $0.ngayVaoCa < $1.ngayVaoCa
+            return /usr/bin/bash.ngayVaoCa < $1.ngayVaoCa
         }
         duLieuThucDon = banLuu
         ThuMucDuLieu.dungChung.ghi(banLuu, vao: ThuMucDuLieu.dungChung.tepThucDon)
@@ -884,7 +980,7 @@ final class KhoDuLieu {
 
     func capNhatMotBangXuongCan(_ bang: BangXuongCan, dongBoSupabase: Bool = true) {
         var ds = danhSachBangXuongCan
-        if let idx = ds.firstIndex(where: { $0.id == bang.id }) {
+        if let idx = ds.firstIndex(where: { /usr/bin/bash.id == bang.id }) {
             ds[idx] = bang
         } else {
             ds.append(bang)
@@ -976,7 +1072,6 @@ enum TienIchLich {
             }
         }
 
-        // Trích xuất chuỗi dạng dd/MM/yyyy hoặc dd-MM-yyyy nếu nằm lẫn trong chữ
         if let regex = try? NSRegularExpression(pattern: "\\b(\\d{1,2})[/-](\\d{1,2})[/-](\\d{2,4})\\b"),
            let match = regex.firstMatch(in: raw, range: NSRange(raw.startIndex..., in: raw)),
            let r0 = Range(match.range, in: raw) {
@@ -1108,7 +1203,7 @@ enum TienIchLich {
     static func capNhatTatCaThongBaoLich() {
         let trungTam = UNUserNotificationCenter.current()
         trungTam.getPendingNotificationRequests { ds in
-            let cacIdLich = ds.map(\.identifier).filter { $0.hasPrefix("LICH_") }
+            let cacIdLich = ds.map(\.identifier).filter { /usr/bin/bash.hasPrefix("LICH_") }
             if !cacIdLich.isEmpty {
                 trungTam.removePendingNotificationRequests(withIdentifiers: cacIdLich)
             }
@@ -1129,7 +1224,7 @@ enum TienIchLich {
         let danhSach = KhoDuLieu.dungChung.duLieuThucDon.danhSachNgay
 
         trungTam.getPendingNotificationRequests { dsHienTai in
-            let cacIdThucDon = dsHienTai.map(\.identifier).filter { $0.hasPrefix("THUCDON_") }
+            let cacIdThucDon = dsHienTai.map(\.identifier).filter { /usr/bin/bash.hasPrefix("THUCDON_") }
             if !cacIdThucDon.isEmpty {
                 trungTam.removePendingNotificationRequests(withIdentifiers: cacIdThucDon)
             }
@@ -1168,7 +1263,7 @@ enum TienIchLich {
                 cacYeuCauSapToi.append((thoiDiem, req))
             }
 
-            cacYeuCauSapToi.sort { $0.thoiDiem < $1.thoiDiem }
+            cacYeuCauSapToi.sort { /usr/bin/bash.thoiDiem < $1.thoiDiem }
             let gioiHan = Array(cacYeuCauSapToi.prefix(45))
             for item in gioiHan {
                 trungTam.add(item.req)

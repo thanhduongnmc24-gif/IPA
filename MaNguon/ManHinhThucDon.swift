@@ -55,7 +55,6 @@ final class BoDocTapTinThucDon {
             }
             return try docTuChuoiCSV(vanBan, tenTep: tenTep, locTheoChuKyCaiDat: locTheoChuKyCaiDat)
         } else {
-            // Thử đọc dạng JSON nếu người dùng nhập file backup .json
             if let td = ThuMucDuLieu.dungChung.giaiMaDuLieu(DuLieuThucDon.self, tu: data),
                !td.danhSachNgay.isEmpty {
                 return td
@@ -76,13 +75,11 @@ final class BoDocTapTinThucDon {
             throw LoiDocThucDon.dinhDangKhongHopLe("Không thể giải nén cấu trúc Excel (.xlsx).")
         }
 
-        // 1. Đọc bảng chuỗi dùng chung (xl/sharedStrings.xml)
         var sharedStrings: [String] = []
         if let sstData = cacTepZip["xl/sharedStrings.xml"] {
             sharedStrings = BoPhanTichSharedStrings().phanTich(data: sstData)
         }
 
-        // 2. Đọc danh sách tên sheet từ xl/workbook.xml và đường dẫn từ xl/_rels/workbook.xml.rels
         let danhSachSheet = BoPhanTichWorkbook().phanTich(
             workbookData: cacTepZip["xl/workbook.xml"],
             relsData: cacTepZip["xl/_rels/workbook.xml.rels"],
@@ -100,7 +97,6 @@ final class BoDocTapTinThucDon {
         }
 
         if cacBangTheoSheet.isEmpty {
-            // Fallback quét mọi xl/worksheets/sheet*.xml
             let cacKhoaSheet = cacTepZip.keys.filter { $0.hasPrefix("xl/worksheets/sheet") && $0.hasSuffix(".xml") }.sorted()
             for (idx, khoa) in cacKhoaSheet.enumerated() {
                 if let xmlData = cacTepZip[khoa] {
@@ -126,10 +122,10 @@ final class BoDocTapTinThucDon {
         guard !bang.isEmpty else {
             throw LoiDocThucDon.khongTimThayDongThucDon
         }
-        return try trichXuatDuLieuThucDon(tu: [(" Thực đơn", bang)], tenTep: tenTep, locTheoChuKyCaiDat: locTheoChuKyCaiDat)
+        return try trichXuatDuLieuThucDon(tu: [("Thực đơn", bang)], tenTep: tenTep, locTheoChuKyCaiDat: locTheoChuKyCaiDat)
     }
 
-    // MARK: - Trích xuất & Lọc Thực Đơn từ các Bảng
+    // MARK: - Trích xuất & Lọc Thực Đơn từ các Bảng (Chuẩn 11 cột)
 
     static func trichXuatDuLieuThucDon(
         tu cacSheet: [(tenSheet: String, bang: [[String]])],
@@ -143,7 +139,7 @@ final class BoDocTapTinThucDon {
         for (tenSheet, bang) in cacSheet {
             let tenSheetThuong = boDau(tenSheet).lowercased()
 
-            // Kiểm tra xem sheet này có phải là sheet "Quy tắc lọc" riêng biệt không
+            // Kiểm tra sheet "Quy tắc lọc" riêng biệt
             if tenSheetThuong.contains("quy tac") || (bang.first?.count == 2 && boDau(bang.first?.first ?? "").lowercased().contains("noi dung")) {
                 for dong in bang.dropFirst() {
                     let c0 = dong.indices.contains(0) ? dong[0].trimmingCharacters(in: .whitespacesAndNewlines) : ""
@@ -160,7 +156,7 @@ final class BoDocTapTinThucDon {
             var anhXaCot = AnhXaCotThucDon()
             for (idx, dong) in bang.prefix(10).enumerated() {
                 let ghep = boDau(dong.joined(separator: " ")).lowercased()
-                if ghep.contains("ngay vao ca") || (ghep.contains("ngay") && (ghep.contains("trua") || ghep.contains("chieu") || ghep.contains("an dem") || ghep.contains("cai thien"))) {
+                if ghep.contains("ngay vao ca") || (ghep.contains("ngay") && (ghep.contains("trua") || ghep.contains("td1") || ghep.contains("chieu") || ghep.contains("an dem") || ghep.contains("cai thien"))) {
                     chiSoTieuDe = idx
                     anhXaCot = AnhXaCotThucDon(dongTieuDe: dong)
                     tenSheetChinh = tenSheet.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -189,9 +185,7 @@ final class BoDocTapTinThucDon {
                 let chuoiNgay = layGiaTri(dong, anhXaCot.ngayVaoCa)
                 guard !chuoiNgay.isEmpty else { continue }
 
-                // Kiểm tra xem cột đầu có phải là một ngày hợp lệ không
                 guard let ngayChuan = TienIchLich.chuanHoaNgayThucDon(chuoiNgay) else {
-                    // Nếu dòng có đúng 2 cột thông tin ở cuối bảng (như Chu kỳ kíp A, Ca ngày, Ca đêm, Nguồn)
                     let cacO = dong.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
                     if cacO.count == 2 && !c0.isEmpty && !c1.isEmpty {
                         quyTacLoc.append(QuyTacThucDon(noiDung: c0, quyTac: c1))
@@ -201,17 +195,18 @@ final class BoDocTapTinThucDon {
 
                 let caGoc = layGiaTri(dong, anhXaCot.ca)
                 let truaCT = layGiaTri(dong, anhXaCot.truaCaiThien)
-                let truaMC = layGiaTri(dong, anhXaCot.truaMonChinh)
-                let truaM2 = layGiaTri(dong, anhXaCot.truaMonThuHai)
+                let td1Chinh = layGiaTri(dong, anhXaCot.td1MonChinh)
+                let td1Phu = layGiaTri(dong, anhXaCot.td1MonPhu)
+                let td2Chinh = layGiaTri(dong, anhXaCot.td2MonChinh)
+                let td2Phu = layGiaTri(dong, anhXaCot.td2MonPhu)
                 let chieu = layGiaTri(dong, anhXaCot.chieuToi)
                 let dem = layGiaTri(dong, anhXaCot.anDem)
                 let sang = layGiaTri(dong, anhXaCot.sangHomSau)
                 let ghiChu = layGiaTri(dong, anhXaCot.ghiChu)
 
-                let tatCaRong = [truaCT, truaMC, truaM2, chieu, dem, sang, ghiChu].allSatisfy { $0.isEmpty }
+                let tatCaRong = [truaCT, td1Chinh, td1Phu, td2Chinh, td2Phu, chieu, dem, sang, ghiChu].allSatisfy { $0.isEmpty }
                 if tatCaRong && caGoc.isEmpty { continue }
 
-                // Chuẩn hóa tên Ca ("Ngày" / "Đêm")
                 let caHienThi: String
                 let caKhongDau = boDau(caGoc).lowercased()
                 if caKhongDau.contains("dem") || caKhongDau.contains("toi") {
@@ -220,7 +215,7 @@ final class BoDocTapTinThucDon {
                     caHienThi = "Ngày"
                 } else if caKhongDau.contains("nghi") {
                     caHienThi = "Nghỉ"
-                } else if (!dem.isEmpty || !sang.isEmpty) && truaCT.isEmpty && truaMC.isEmpty && chieu.isEmpty {
+                } else if (!dem.isEmpty || !sang.isEmpty) && truaCT.isEmpty && td1Chinh.isEmpty && td2Chinh.isEmpty && chieu.isEmpty {
                     caHienThi = "Đêm"
                 } else {
                     caHienThi = caGoc.isEmpty ? "Ngày" : caGoc
@@ -231,8 +226,10 @@ final class BoDocTapTinThucDon {
                     khoaNgay: ngayChuan.khoa,
                     ca: caHienThi,
                     truaCaiThien: truaCT,
-                    truaMonChinh: truaMC,
-                    truaMonThuHai: truaM2,
+                    td1MonChinh: td1Chinh,
+                    td1MonPhu: td1Phu,
+                    td2MonChinh: td2Chinh,
+                    td2MonPhu: td2Phu,
                     chieuToi: chieu,
                     anDem: dem,
                     sangHomSau: sang,
@@ -259,7 +256,10 @@ final class BoDocTapTinThucDon {
         )
     }
 
-    /// Áp dụng quy tắc lọc theo Chu kỳ ca làm việc trong Cài đặt (Ca ngày lấy Trưa + Chiều/Tối; Ca đêm lấy Ăn đêm + Sáng hôm sau; Ngày nghỉ bỏ qua)
+    /// Áp dụng quy tắc lọc theo Chu kỳ ca làm việc:
+    /// - Ca ngày: lấy bữa trưa (Cải thiện + TĐ1 chính/phụ + TĐ2 chính/phụ) và Chiều/Tối (1 thực đơn).
+    /// - Ca đêm: lấy Ăn đêm ngày vào ca và Sáng hôm sau.
+    /// - Ngày nghỉ: bỏ qua.
     static func apDungLocTheoChuKyCa(_ danhSachGoc: [MucThucDonNgay]) -> [MucThucDonNgay] {
         var ketQua: [MucThucDonNgay] = []
         for (idx, muc) in danhSachGoc.enumerated() {
@@ -273,8 +273,7 @@ final class BoDocTapTinThucDon {
             } else if caTuDong == "ngay" {
                 var banSao = muc
                 banSao.ca = "Ngày"
-                // Nếu dòng gốc có cả món ăn đêm lẫn món trưa, chỉ giữ bữa trưa + chiều/tối cho Ca Ngày
-                if !banSao.truaCaiThien.isEmpty || !banSao.truaMonChinh.isEmpty || !banSao.chieuToi.isEmpty {
+                if !banSao.truaCaiThien.isEmpty || !banSao.td1MonChinh.isEmpty || !banSao.td2MonChinh.isEmpty || !banSao.chieuToi.isEmpty {
                     banSao.anDem = ""
                     banSao.sangHomSau = ""
                 }
@@ -284,11 +283,12 @@ final class BoDocTapTinThucDon {
                 banSao.ca = "Đêm"
                 if !banSao.anDem.isEmpty || !banSao.sangHomSau.isEmpty {
                     banSao.truaCaiThien = ""
-                    banSao.truaMonChinh = ""
-                    banSao.truaMonThuHai = ""
+                    banSao.td1MonChinh = ""
+                    banSao.td1MonPhu = ""
+                    banSao.td2MonChinh = ""
+                    banSao.td2MonPhu = ""
                     banSao.chieuToi = ""
                 }
-                // Nếu sáng hôm sau đang trống và dòng kế tiếp có thông tin sáng, giữ nguyên hoặc bổ sung
                 if banSao.sangHomSau.isEmpty && idx + 1 < danhSachGoc.count {
                     let keTiep = danhSachGoc[idx + 1]
                     if !keTiep.sangHomSau.isEmpty {
@@ -314,28 +314,50 @@ final class BoDocTapTinThucDon {
             .replacingOccurrences(of: "Đ", with: "D")
     }
 
-    // MARK: - Bộ Ánh Xạ Cột Linh Hoạt
+    // MARK: - Bộ Ánh Xạ Cột 11 Cột Chuẩn (Hỗ trợ cả bảng 11 cột có TĐ1/TĐ2 và bảng 9 cột cũ)
 
     private struct AnhXaCotThucDon {
         var ngayVaoCa: Int? = 0
         var ca: Int? = 1
         var truaCaiThien: Int? = 2
-        var truaMonChinh: Int? = 3
-        var truaMonThuHai: Int? = 4
-        var chieuToi: Int? = 5
-        var anDem: Int? = 6
-        var sangHomSau: Int? = 7
-        var ghiChu: Int? = 8
+        var td1MonChinh: Int? = 3
+        var td1MonPhu: Int? = 4
+        var td2MonChinh: Int? = 5
+        var td2MonPhu: Int? = 6
+        var chieuToi: Int? = 7
+        var anDem: Int? = 8
+        var sangHomSau: Int? = 9
+        var ghiChu: Int? = 10
 
         init() {}
 
         init(dongTieuDe: [String]) {
+            // Nếu bảng có 9 cột kiểu cũ (không có TĐ2)
+            if dongTieuDe.count == 9 {
+                let ghep = BoDocTapTinThucDon.boDau(dongTieuDe.joined(separator: " ")).lowercased()
+                if !ghep.contains("td2") && !ghep.contains("thuc don 2") {
+                    self.ngayVaoCa = 0
+                    self.ca = 1
+                    self.truaCaiThien = 2
+                    self.td1MonChinh = 3
+                    self.td1MonPhu = 4
+                    self.td2MonChinh = nil
+                    self.td2MonPhu = nil
+                    self.chieuToi = 5
+                    self.anDem = 6
+                    self.sangHomSau = 7
+                    self.ghiChu = 8
+                }
+            }
+
             var timThay = false
             var tNgay: Int?
             var tCa: Int?
             var tCaiThien: Int?
-            var tMonChinh: Int?
-            var tMon2: Int?
+            var tTD1Chinh: Int?
+            var tTD1Phu: Int?
+            var tTD2Chinh: Int?
+            var tTD2Phu: Int?
             var tChieu: Int?
             var tDem: Int?
             var tSang: Int?
@@ -351,40 +373,58 @@ final class BoDocTapTinThucDon {
                 } else if (ten == "ca" || ten.hasPrefix("ca ") || ten.contains("kip")) && !ten.contains("ca ngay") && !ten.contains("ca dem") && tCa == nil {
                     tCa = idx
                     timThay = true
-                } else if (ten.contains("cai thien") || (ten.contains("trua") && tCaiThien == nil && !ten.contains("chinh") && !ten.contains("thu 2"))) && tCaiThien == nil {
+                } else if ten.contains("cai thien") && tCaiThien == nil {
                     tCaiThien = idx
                     timThay = true
-                } else if ten.contains("mon chinh") || (ten.contains("chinh") && tMonChinh == nil) {
-                    tMonChinh = idx
+                } else if (ten.contains("td1") || ten.contains("thuc don 1")) && ten.contains("chinh") {
+                    tTD1Chinh = idx
                     timThay = true
-                } else if ten.contains("thu 2") || ten.contains("mon phu") || ten.contains("thu hai") {
-                    tMon2 = idx
+                } else if (ten.contains("td1") || ten.contains("thuc don 1")) && (ten.contains("phu") || ten.contains("thu 2")) {
+                    tTD1Phu = idx
                     timThay = true
-                } else if ten.contains("chieu") || ten.contains("toi") {
+                } else if (ten.contains("td2") || ten.contains("thuc don 2")) && ten.contains("chinh") {
+                    tTD2Chinh = idx
+                    timThay = true
+                } else if (ten.contains("td2") || ten.contains("thuc don 2")) && (ten.contains("phu") || ten.contains("thu 2")) {
+                    tTD2Phu = idx
+                    timThay = true
+                } else if ten.contains("mon chinh") && tTD1Chinh == nil {
+                    tTD1Chinh = idx
+                    timThay = true
+                } else if (ten.contains("mon phu") || ten.contains("mon thu 2") || ten.contains("thu 2")) && tTD1Phu == nil {
+                    tTD1Phu = idx
+                    timThay = true
+                } else if (ten.contains("chieu") || ten.contains("toi")) && tChieu == nil {
                     tChieu = idx
                     timThay = true
-                } else if ten.contains("an dem") || (ten.contains("dem") && tDem == nil) {
+                } else if (ten.contains("an dem") || (ten.contains("dem") && !ten.contains("chieu"))) && tDem == nil {
                     tDem = idx
                     timThay = true
-                } else if ten.contains("sang hom sau") || ten.contains("an sang") || ten.contains("sang") {
+                } else if (ten.contains("sang hom sau") || ten.contains("an sang") || ten.contains("sang")) && tSang == nil {
                     tSang = idx
                     timThay = true
-                } else if ten.contains("ghi chu") || ten.contains("luu y") {
+                } else if (ten.contains("ghi chu") || ten.contains("luu y")) && tGhiChu == nil {
                     tGhiChu = idx
                     timThay = true
                 }
             }
 
             if timThay {
-                self.ngayVaoCa = tNgay ?? 0
-                self.ca = tCa ?? 1
-                self.truaCaiThien = tCaiThien ?? 2
-                self.truaMonChinh = tMonChinh ?? 3
-                self.truaMonThuHai = tMon2 ?? 4
-                self.chieuToi = tChieu ?? 5
-                self.anDem = tDem ?? 6
-                self.sangHomSau = tSang ?? 7
-                self.ghiChu = tGhiChu ?? 8
+                self.ngayVaoCa = tNgay ?? self.ngayVaoCa
+                self.ca = tCa ?? self.ca
+                self.truaCaiThien = tCaiThien ?? self.truaCaiThien
+                self.td1MonChinh = tTD1Chinh ?? self.td1MonChinh
+                self.td1MonPhu = tTD1Phu ?? self.td1MonPhu
+                if tTD2Chinh != nil || dongTieuDe.count >= 11 {
+                    self.td2MonChinh = tTD2Chinh ?? 5
+                }
+                if tTD2Phu != nil || dongTieuDe.count >= 11 {
+                    self.td2MonPhu = tTD2Phu ?? 6
+                }
+                self.chieuToi = tChieu ?? self.chieuToi
+                self.anDem = tDem ?? self.anDem
+                self.sangHomSau = tSang ?? self.sangHomSau
+                self.ghiChu = tGhiChu ?? self.ghiChu
             }
         }
     }
@@ -496,7 +536,6 @@ final class BoDocTapTinThucDon {
         var ketQua: [String: Data] = [:]
         guard data.count >= 22 else { return ketQua }
 
-        // 1. Tìm End of Central Directory (0x06054b50) từ cuối file
         var viTriEOCD: Int?
         let gioiHanTim = max(0, data.count - 65558)
         for pos in stride(from: data.count - 22, through: gioiHanTim, by: -1) {
@@ -545,7 +584,6 @@ final class BoDocTapTinThucDon {
             }
         }
 
-        // 2. Fallback quét tuần tự Local File Header nếu không tìm thấy EOCD
         if ketQua.isEmpty {
             var pos = 0
             while pos + 30 <= data.count {
@@ -788,11 +826,11 @@ final class ManHinhThucDon: UIViewController, UITableViewDataSource, UITableView
 
         let theoBoLoc = tatCa.filter { muc in
             switch chonBoLoc.selectedSegmentIndex {
-            case 1: // Sắp tới (từ hôm nay trở đi)
+            case 1:
                 return muc.khoaNgay.isEmpty || muc.khoaNgay >= homNayKhoa
-            case 2: // Ca Ngày
+            case 2:
                 return muc.laCaNgay
-            case 3: // Ca Đêm
+            case 3:
                 return muc.laCaDem
             default:
                 return true
@@ -807,8 +845,10 @@ final class ManHinhThucDon: UIViewController, UITableViewDataSource, UITableView
                 muc.ngayVaoCa,
                 muc.ca,
                 muc.truaCaiThien,
-                muc.truaMonChinh,
-                muc.truaMonThuHai,
+                muc.td1MonChinh,
+                muc.td1MonPhu,
+                muc.td2MonChinh,
+                muc.td2MonPhu,
                 muc.chieuToi,
                 muc.anDem,
                 muc.sangHomSau,
@@ -1074,11 +1114,11 @@ final class ManHinhThucDon: UIViewController, UITableViewDataSource, UITableView
             self?.bamThuThongBao()
         })
 
-        sheet.addAction(UIAlertAction(title: "🔁 Khôi phục thực đơn mẫu Kíp A Tháng 11/2026", style: .default) { [weak self] _ in
+        sheet.addAction(UIAlertAction(title: "🔁 Khôi phục thực đơn chuẩn Kíp A Tháng 11/2026", style: .default) { [weak self] _ in
             let mau = DuLieuThucDon.duLieuMauThang11()
             KhoDuLieu.dungChung.luuDuLieuThucDon(mau)
             self?.capNhatGiaoDien()
-            self?.hienThongBao("Đã khôi phục", "Đã nạp lại thực đơn mẫu Kíp A Tháng 11/2026 (16 ngày ca).")
+            self?.hienThongBao("Đã khôi phục", "Đã nạp lại thực đơn chuẩn Kíp A Tháng 11/2026 (16 ngày ca, đầy đủ TĐ1 & TĐ2).")
         })
 
         sheet.addAction(UIAlertAction(title: "🗑️ Xóa toàn bộ danh sách thực đơn", style: .destructive) { [weak self] _ in
@@ -1099,8 +1139,8 @@ final class ManHinhThucDon: UIViewController, UITableViewDataSource, UITableView
         let noiDung: String
         if qt.isEmpty {
             noiDung = """
-            • Ca ngày: Lấy bữa trưa (món cải thiện + món chính + món thứ 2) và bữa chiều/tối cùng ngày.
-            • Ca đêm: Lấy món ăn đêm ngày vào ca và món ăn sáng của ngày kế tiếp.
+            • Ca ngày: bữa trưa gồm món cải thiện, Thực đơn 1 (món chính + món phụ), Thực đơn 2 (món chính + món phụ); bữa chiều chỉ có 1 thực đơn.
+            • Ca đêm: lấy món ăn đêm ngày vào ca và món ăn sáng của ngày kế tiếp.
             • Hỗ trợ nhập file .xlsx hoặc .csv có tên bất kỳ.
             """
         } else {
@@ -1116,7 +1156,7 @@ final class ManHinhThucDon: UIViewController, UITableViewDataSource, UITableView
         TienIchLich.guiThongBaoThuThucDon(muc: mucSapToi)
         hienThongBao(
             "Đã hẹn thông báo thử 🔔",
-            "Thông báo thực đơn sẽ hiển thị trên màn hình sau khoảng 1.5 giây (bạn có thể giữ nguyên hoặc vuốt thông báo ở đầu màn hình)."
+            "Thông báo thực đơn sẽ hiển thị trên màn hình sau khoảng 1.5 giây."
         )
     }
 
@@ -1246,10 +1286,29 @@ final class ManHinhThucDon: UIViewController, UITableViewDataSource, UITableView
             nganMonAn.addArrangedSubview(lb)
         }
 
+        // Bữa trưa: Cải thiện + Thực đơn 1 (món chính + món phụ) + Thực đơn 2 (món chính + món phụ)
         themDongMon(nhan: "🍱 Trưa - Cải thiện", giaTri: muc.truaCaiThien, mauNhan: mau.primary)
-        themDongMon(nhan: "🥩 Trưa - Món chính", giaTri: muc.truaMonChinh, mauNhan: mau.primary)
-        themDongMon(nhan: "🥘 Trưa - Món thứ 2", giaTri: muc.truaMonThuHai, mauNhan: mau.primary)
-        themDongMon(nhan: "🍲 Chiều/Tối (ca ngày)", giaTri: muc.chieuToi, mauNhan: UIColor(red: 0.90, green: 0.45, blue: 0.05, alpha: 1))
+
+        if !muc.td1MonChinh.isEmpty || !muc.td1MonPhu.isEmpty {
+            let chiTietTD1 = [
+                muc.td1MonChinh.isEmpty ? nil : "Chính: \(muc.td1MonChinh)",
+                muc.td1MonPhu.isEmpty ? nil : "Phụ: \(muc.td1MonPhu)"
+            ].compactMap { $0 }.joined(separator: "  •  ")
+            themDongMon(nhan: "🍛 Trưa - Thực đơn 1", giaTri: chiTietTD1, mauNhan: mau.primary)
+        }
+
+        if !muc.td2MonChinh.isEmpty || !muc.td2MonPhu.isEmpty {
+            let chiTietTD2 = [
+                muc.td2MonChinh.isEmpty ? nil : "Chính: \(muc.td2MonChinh)",
+                muc.td2MonPhu.isEmpty ? nil : "Phụ: \(muc.td2MonPhu)"
+            ].compactMap { $0 }.joined(separator: "  •  ")
+            themDongMon(nhan: "🍛 Trưa - Thực đơn 2", giaTri: chiTietTD2, mauNhan: UIColor(red: 0.05, green: 0.60, blue: 0.55, alpha: 1))
+        }
+
+        // Bữa chiều/tối (1 thực đơn)
+        themDongMon(nhan: "🍲 Chiều/Tối (1 thực đơn)", giaTri: muc.chieuToi, mauNhan: UIColor(red: 0.90, green: 0.45, blue: 0.05, alpha: 1))
+
+        // Ca đêm: Ăn đêm + Sáng hôm sau
         themDongMon(nhan: "🍜 Ăn đêm (ca đêm)", giaTri: muc.anDem, mauNhan: UIColor(red: 0.42, green: 0.40, blue: 0.95, alpha: 1))
         themDongMon(nhan: "🥖 Sáng hôm sau", giaTri: muc.sangHomSau, mauNhan: mau.success)
 
@@ -1319,7 +1378,7 @@ final class ManHinhThucDon: UIViewController, UITableViewDataSource, UITableView
     }
 }
 
-// MARK: - 4. Màn Hình Xem & Chỉnh Sửa Chi Tiết Thực Đơn 1 Ngày
+// MARK: - 4. Màn Hình Xem & Chỉnh Sửa Chi Tiết Thực Đơn 1 Ngày (Chuẩn 11 cột)
 
 final class ManHinhChiTietThucDonNgay: UIViewController {
     private let mucCu: MucThucDonNgay?
@@ -1328,8 +1387,10 @@ final class ManHinhChiTietThucDonNgay: UIViewController {
     private let chonNgay = UIDatePicker()
     private let chonCa = UISegmentedControl(items: ["Ca Ngày ☀️", "Ca Đêm 🌙"])
     private let oTruaCaiThien = UITextField()
-    private let oTruaMonChinh = UITextField()
-    private let oTruaMonThuHai = UITextField()
+    private let oTD1MonChinh = UITextField()
+    private let oTD1MonPhu = UITextField()
+    private let oTD2MonChinh = UITextField()
+    private let oTD2MonPhu = UITextField()
     private let oChieuToi = UITextView()
     private let oAnDem = UITextField()
     private let oSangHomSau = UITextField()
@@ -1383,7 +1444,7 @@ final class ManHinhChiTietThucDonNgay: UIViewController {
 
         chonCa.selectedSegmentIndex = (mucCu?.laCaDem == true) ? 1 : 0
 
-        [oTruaCaiThien, oTruaMonChinh, oTruaMonThuHai, oAnDem, oSangHomSau, oGhiChu].forEach {
+        [oTruaCaiThien, oTD1MonChinh, oTD1MonPhu, oTD2MonChinh, oTD2MonPhu, oAnDem, oSangHomSau, oGhiChu].forEach {
             $0.borderStyle = .roundedRect
             $0.backgroundColor = mau.iconBg
             $0.textColor = mau.text
@@ -1393,11 +1454,17 @@ final class ManHinhChiTietThucDonNgay: UIViewController {
         oTruaCaiThien.placeholder = "VD: Bánh canh chả tôm / Sữa tươi Ba Vì"
         oTruaCaiThien.text = mucCu?.truaCaiThien ?? ""
 
-        oTruaMonChinh.placeholder = "VD: Bò nấu lagu"
-        oTruaMonChinh.text = mucCu?.truaMonChinh ?? ""
+        oTD1MonChinh.placeholder = "VD: Bò nấu lagu"
+        oTD1MonChinh.text = mucCu?.td1MonChinh ?? ""
 
-        oTruaMonThuHai.placeholder = "VD: Đậu khuôn chiên sốt cà"
-        oTruaMonThuHai.text = mucCu?.truaMonThuHai ?? ""
+        oTD1MonPhu.placeholder = "VD: Đậu khuôn chiên sốt cà"
+        oTD1MonPhu.text = mucCu?.td1MonPhu ?? ""
+
+        oTD2MonChinh.placeholder = "VD: Thịt kho trứng"
+        oTD2MonChinh.text = mucCu?.td2MonChinh ?? ""
+
+        oTD2MonPhu.placeholder = "VD: Đậu khuôn chiên sốt cà"
+        oTD2MonPhu.text = mucCu?.td2MonPhu ?? ""
 
         oChieuToi.backgroundColor = mau.iconBg
         oChieuToi.textColor = mau.text
@@ -1438,9 +1505,11 @@ final class ManHinhChiTietThucDonNgay: UIViewController {
             hangNgay,
             chonCa,
             taoMuc("🍱 Trưa - Cải thiện:", oTruaCaiThien),
-            taoMuc("🥩 Trưa - Món chính:", oTruaMonChinh),
-            taoMuc("🥘 Trưa - Món thứ 2:", oTruaMonThuHai),
-            taoMuc("🍲 Chiều/Tối (ca ngày):", oChieuToi),
+            taoMuc("🍛 TĐ1 - Món chính:", oTD1MonChinh),
+            taoMuc("🥘 TĐ1 - Món phụ:", oTD1MonPhu),
+            taoMuc("🍛 TĐ2 - Món chính:", oTD2MonChinh),
+            taoMuc("🥘 TĐ2 - Món phụ:", oTD2MonPhu),
+            taoMuc("🍲 Chiều/Tối (1 thực đơn):", oChieuToi),
             taoMuc("🍜 Ăn đêm (ca đêm):", oAnDem),
             taoMuc("🥖 Sáng hôm sau:", oSangHomSau),
             taoMuc("📝 Ghi chú:", oGhiChu),
@@ -1470,8 +1539,10 @@ final class ManHinhChiTietThucDonNgay: UIViewController {
             khoaNgay: khoaStr,
             ca: caStr,
             truaCaiThien: oTruaCaiThien.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
-            truaMonChinh: oTruaMonChinh.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
-            truaMonThuHai: oTruaMonThuHai.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
+            td1MonChinh: oTD1MonChinh.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
+            td1MonPhu: oTD1MonPhu.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
+            td2MonChinh: oTD2MonChinh.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
+            td2MonPhu: oTD2MonPhu.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
             chieuToi: oChieuToi.text.trimmingCharacters(in: .whitespacesAndNewlines),
             anDem: oAnDem.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
             sangHomSau: oSangHomSau.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
