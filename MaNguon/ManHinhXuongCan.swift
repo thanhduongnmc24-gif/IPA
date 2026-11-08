@@ -287,7 +287,7 @@ final class ManHinhXuongCan: UIViewController, UIImagePickerControllerDelegate, 
 
         if cacDongHienThi.isEmpty {
             let oTrong = UILabel()
-            oTrong.text = "Không có dòng nào chứa "\(tk)" ở cột đầu tiên."
+            oTrong.text = "Không có dòng nào chứa '\(tk)' ở cột đầu tiên."
             oTrong.font = .italicSystemFont(ofSize: 12.5)
             oTrong.textColor = mau.subText
             oTrong.textAlignment = .center
