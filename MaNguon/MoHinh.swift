@@ -265,15 +265,15 @@ struct MucThucDonNgay: Codable, Hashable, Identifiable {
 
     var chuoiThucDon1: String {
         [td1MonChinh, td1MonPhu]
-            .map { /usr/bin/bash.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !/usr/bin/bash.isEmpty }
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
             .joined(separator: " + ")
     }
 
     var chuoiThucDon2: String {
         [td2MonChinh, td2MonPhu]
-            .map { /usr/bin/bash.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !/usr/bin/bash.isEmpty }
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
             .joined(separator: " + ")
     }
 
@@ -936,10 +936,10 @@ final class KhoDuLieu {
     func luuDuLieuThucDon(_ moi: DuLieuThucDon, dongBoSupabase: Bool = true) {
         var banLuu = moi
         banLuu.danhSachNgay.sort {
-            if /usr/bin/bash.khoaNgay != $1.khoaNgay {
-                return /usr/bin/bash.khoaNgay < $1.khoaNgay
+            if $0.khoaNgay != $1.khoaNgay {
+                return $0.khoaNgay < $1.khoaNgay
             }
-            return /usr/bin/bash.ngayVaoCa < $1.ngayVaoCa
+            return $0.ngayVaoCa < $1.ngayVaoCa
         }
         duLieuThucDon = banLuu
         ThuMucDuLieu.dungChung.ghi(banLuu, vao: ThuMucDuLieu.dungChung.tepThucDon)
@@ -980,7 +980,7 @@ final class KhoDuLieu {
 
     func capNhatMotBangXuongCan(_ bang: BangXuongCan, dongBoSupabase: Bool = true) {
         var ds = danhSachBangXuongCan
-        if let idx = ds.firstIndex(where: { /usr/bin/bash.id == bang.id }) {
+        if let idx = ds.firstIndex(where: { $0.id == bang.id }) {
             ds[idx] = bang
         } else {
             ds.append(bang)
@@ -1203,7 +1203,7 @@ enum TienIchLich {
     static func capNhatTatCaThongBaoLich() {
         let trungTam = UNUserNotificationCenter.current()
         trungTam.getPendingNotificationRequests { ds in
-            let cacIdLich = ds.map(\.identifier).filter { /usr/bin/bash.hasPrefix("LICH_") }
+            let cacIdLich = ds.map(\.identifier).filter { $0.hasPrefix("LICH_") }
             if !cacIdLich.isEmpty {
                 trungTam.removePendingNotificationRequests(withIdentifiers: cacIdLich)
             }
@@ -1224,7 +1224,7 @@ enum TienIchLich {
         let danhSach = KhoDuLieu.dungChung.duLieuThucDon.danhSachNgay
 
         trungTam.getPendingNotificationRequests { dsHienTai in
-            let cacIdThucDon = dsHienTai.map(\.identifier).filter { /usr/bin/bash.hasPrefix("THUCDON_") }
+            let cacIdThucDon = dsHienTai.map(\.identifier).filter { $0.hasPrefix("THUCDON_") }
             if !cacIdThucDon.isEmpty {
                 trungTam.removePendingNotificationRequests(withIdentifiers: cacIdThucDon)
             }
@@ -1263,7 +1263,7 @@ enum TienIchLich {
                 cacYeuCauSapToi.append((thoiDiem, req))
             }
 
-            cacYeuCauSapToi.sort { /usr/bin/bash.thoiDiem < $1.thoiDiem }
+            cacYeuCauSapToi.sort { $0.thoiDiem < $1.thoiDiem }
             let gioiHan = Array(cacYeuCauSapToi.prefix(45))
             for item in gioiHan {
                 trungTam.add(item.req)
