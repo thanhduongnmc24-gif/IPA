@@ -150,6 +150,7 @@ final class ManHinhLich: UIViewController, UICollectionViewDataSource, UICollect
 
         NotificationCenter.default.addObserver(self, selector: #selector(napDuLieu), name: .caiDatThayDoi, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(napDuLieu), name: .duLieuDongBoXong, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(napDuLieu), name: .thucDonCapNhat, object: nil)
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -525,6 +526,33 @@ final class ManHinhChiTietNgayLich: UIViewController {
 
         [chonCa, danhSachONhap, nutThemDong].forEach { noiDung.addArrangedSubview($0) }
 
+        // Hiển thị Thực đơn của ngày này (nếu có trong dữ liệu Thực đơn)
+        let cacMucThucDon = KhoDuLieu.dungChung.duLieuThucDon.danhSachNgay.filter { $0.khoaNgay == khoa }
+        for mucTD in cacMucThucDon {
+            let khungTD = UIView()
+            khungTD.backgroundColor = mau.iconBg
+            khungTD.layer.cornerRadius = 10
+            khungTD.layer.borderWidth = 1
+            khungTD.layer.borderColor = mau.border.cgColor
+
+            let lbTD = UILabel()
+            lbTD.numberOfLines = 0
+            lbTD.font = .systemFont(ofSize: 13)
+            lbTD.textColor = mau.text
+            let tenCaTD = mucTD.laCaDem ? "Ca Đêm 🌙" : "Ca Ngày ☀️"
+            lbTD.text = "🍱 Thực đơn \(tenCaTD):\n\(mucTD.tomTatThongBao)"
+            lbTD.translatesAutoresizingMaskIntoConstraints = false
+            khungTD.addSubview(lbTD)
+
+            NSLayoutConstraint.activate([
+                lbTD.topAnchor.constraint(equalTo: khungTD.topAnchor, constant: 10),
+                lbTD.bottomAnchor.constraint(equalTo: khungTD.bottomAnchor, constant: -10),
+                lbTD.leadingAnchor.constraint(equalTo: khungTD.leadingAnchor, constant: 12),
+                lbTD.trailingAnchor.constraint(equalTo: khungTD.trailingAnchor, constant: -12)
+            ])
+            noiDung.addArrangedSubview(khungTD)
+        }
+
         NSLayoutConstraint.activate([
             cuon.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             cuon.bottomAnchor.constraint(equalTo: view.bottomAnchor),
@@ -598,9 +626,7 @@ final class ManHinhChiTietNgayLich: UIViewController {
             tatCa[khoa] = GhiChuNgay(type: caChon, noteLines: cacDong)
         }
         KhoDuLieu.dungChung.luuGhiChuLich(tatCa)
-        if !cacDong.isEmpty {
-            TienIchLich.datThongBaoLich(ngay: ngay, dongGhiChu: cacDong, loaiCa: caChon)
-        }
+        TienIchLich.datThongBaoLich(ngay: ngay, dongGhiChu: cacDong, loaiCa: caChon)
         dismiss(animated: true, completion: khiLuu)
     }
 }

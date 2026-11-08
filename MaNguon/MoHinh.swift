@@ -137,6 +137,266 @@ struct MucAnhSheet: Codable, Hashable, Identifiable {
     var base64: String? = nil
 }
 
+// MARK: - 1B. Mô hình Thực Đơn Theo Ca / Ngày
+
+struct MucThucDonNgay: Codable, Hashable, Identifiable {
+    var id: String = UUID().uuidString
+    var ngayVaoCa: String       // VD: "08/11/2026"
+    var khoaNgay: String        // VD: "2026-11-08"
+    var ca: String              // VD: "Ngày" hoặc "Đêm"
+    var truaCaiThien: String    // Cột 3: Trưa - Cải thiện
+    var truaMonChinh: String    // Cột 4: Trưa - Món chính
+    var truaMonThuHai: String   // Cột 5: Trưa - Món thứ 2
+    var chieuToi: String        // Cột 6: Chiều/Tối (ca ngày)
+    var anDem: String           // Cột 7: Ăn đêm (ca đêm)
+    var sangHomSau: String      // Cột 8: Sáng hôm sau
+    var ghiChu: String          // Cột 9: Ghi chú
+
+    init(
+        id: String = UUID().uuidString,
+        ngayVaoCa: String,
+        khoaNgay: String = "",
+        ca: String,
+        truaCaiThien: String = "",
+        truaMonChinh: String = "",
+        truaMonThuHai: String = "",
+        chieuToi: String = "",
+        anDem: String = "",
+        sangHomSau: String = "",
+        ghiChu: String = ""
+    ) {
+        self.id = id
+        if let chuan = TienIchLich.chuanHoaNgayThucDon(ngayVaoCa) {
+            self.ngayVaoCa = chuan.hienThi
+            self.khoaNgay = khoaNgay.isEmpty ? chuan.khoa : khoaNgay
+        } else {
+            self.ngayVaoCa = ngayVaoCa
+            self.khoaNgay = khoaNgay
+        }
+        self.ca = ca
+        self.truaCaiThien = truaCaiThien
+        self.truaMonChinh = truaMonChinh
+        self.truaMonThuHai = truaMonThuHai
+        self.chieuToi = chieuToi
+        self.anDem = anDem
+        self.sangHomSau = sangHomSau
+        self.ghiChu = ghiChu
+    }
+
+    var laCaDem: Bool {
+        let c = ca.folding(options: .diacriticInsensitive, locale: .current).lowercased()
+        if c.contains("dem") || c.contains("đêm") || c.contains("toi") { return true }
+        if c.contains("ngay") || c.contains("ngày") || c.contains("sang") { return false }
+        return (!anDem.isEmpty || !sangHomSau.isEmpty) && truaCaiThien.isEmpty && truaMonChinh.isEmpty
+    }
+
+    var laCaNgay: Bool {
+        let c = ca.folding(options: .diacriticInsensitive, locale: .current).lowercased()
+        if c.contains("ngay") || c.contains("ngày") || c.contains("sang") { return true }
+        if laCaDem { return false }
+        return !truaCaiThien.isEmpty || !truaMonChinh.isEmpty || !truaMonThuHai.isEmpty || !chieuToi.isEmpty
+    }
+
+    var caChuan: String {
+        if laCaDem { return "dem" }
+        if laCaNgay { return "ngay" }
+        return "khac"
+    }
+
+    var tomTatThongBao: String {
+        var cacDong: [String] = []
+        if laCaNgay {
+            let cacMonTrua = [truaCaiThien, truaMonChinh, truaMonThuHai]
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+            if !cacMonTrua.isEmpty {
+                cacDong.append("🍱 Trưa: \(cacMonTrua.joined(separator: " • "))")
+            }
+            let ct = chieuToi.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !ct.isEmpty {
+                cacDong.append("🍲 Chiều/Tối: \(ct)")
+            }
+        }
+        if laCaDem || (!anDem.isEmpty || !sangHomSau.isEmpty) {
+            let ad = anDem.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !ad.isEmpty {
+                cacDong.append("🍜 Ăn đêm: \(ad)")
+            }
+            let shs = sangHomSau.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !shs.isEmpty {
+                cacDong.append("🥖 Sáng hôm sau: \(shs)")
+            }
+        }
+        let gc = ghiChu.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !gc.isEmpty && cacDong.isEmpty {
+            cacDong.append("📝 \(gc)")
+        }
+        return cacDong.isEmpty ? "Thực đơn ngày \(ngayVaoCa)" : cacDong.joined(separator: "\n")
+    }
+}
+
+struct QuyTacThucDon: Codable, Hashable, Identifiable {
+    var id: String = UUID().uuidString
+    var noiDung: String
+    var quyTac: String
+}
+
+struct DuLieuThucDon: Codable, Hashable {
+    var tenTepNguon: String
+    var tenSheetChinh: String
+    var capNhatLuc: Date
+    var danhSachNgay: [MucThucDonNgay]
+    var quyTacLoc: [QuyTacThucDon]
+
+    init(
+        tenTepNguon: String = "",
+        tenSheetChinh: String = "",
+        capNhatLuc: Date = Date(),
+        danhSachNgay: [MucThucDonNgay] = [],
+        quyTacLoc: [QuyTacThucDon] = []
+    ) {
+        self.tenTepNguon = tenTepNguon
+        self.tenSheetChinh = tenSheetChinh
+        self.capNhatLuc = capNhatLuc
+        self.danhSachNgay = danhSachNgay
+        self.quyTacLoc = quyTacLoc
+    }
+
+    static func duLieuMauThang11() -> DuLieuThucDon {
+        let ds: [MucThucDonNgay] = [
+            MucThucDonNgay(
+                ngayVaoCa: "08/11/2026",
+                ca: "Ngày",
+                truaCaiThien: "Bánh canh chả tôm / Sữa tươi Ba Vì",
+                truaMonChinh: "Bò nấu lagu",
+                truaMonThuHai: "Đậu khuôn chiên sốt cà",
+                chieuToi: "Cotlet rim; Chả cá rim tiêu; Cơm trắng; Cà tím xào mỡ hành; Canh dưa chua thịt bò"
+            ),
+            MucThucDonNgay(
+                ngayVaoCa: "09/11/2026",
+                ca: "Đêm",
+                anDem: "Hủ tiếu giò heo / Sữa tươi Vinamilk",
+                sangHomSau: "10/11: Bánh mì cà ri gà / Sữa tươi Ba Vì"
+            ),
+            MucThucDonNgay(
+                ngayVaoCa: "11/11/2026",
+                ca: "Ngày",
+                truaCaiThien: "Cơm chiên Dương Châu / Sữa tươi Ba Vì / Táo",
+                truaMonChinh: "Cá diêu hồng chiên mắm",
+                truaMonThuHai: "Gỏi dưa leo chả lụa",
+                chieuToi: "Cotlet nướng mỡ hành; Trứng chiên hành; Cơm trắng; Cải thảo xào; Canh dưa chua thịt bò"
+            ),
+            MucThucDonNgay(
+                ngayVaoCa: "12/11/2026",
+                ca: "Đêm",
+                anDem: "Bánh mì bò áp chảo / Sữa Yomost",
+                sangHomSau: "13/11: Cháo gà kiến / Sữa tươi Vinamilk"
+            ),
+            MucThucDonNgay(
+                ngayVaoCa: "14/11/2026",
+                ca: "Ngày",
+                truaCaiThien: "Bún gà nấu ớt hiểm / Sữa Yomost",
+                truaMonChinh: "Tỏi gà rôty",
+                truaMonThuHai: "Thịt xào dưa cải",
+                chieuToi: "Giò kho sả ớt; Ốc om chuối đậu; Cơm trắng; Bầu xào; Canh mồng tơi nấu cua/ghẹ"
+            ),
+            MucThucDonNgay(
+                ngayVaoCa: "15/11/2026",
+                ca: "Đêm",
+                anDem: "Mì tôm, tôm, trứng vịt lộn / Sữa tươi Vinamilk",
+                sangHomSau: "16/11: Bún giò heo / Sữa tươi Ba Vì"
+            ),
+            MucThucDonNgay(
+                ngayVaoCa: "17/11/2026",
+                ca: "Ngày",
+                truaCaiThien: "Mì tôm thịt bò, trứng ốp la / Sữa tươi Ba Vì",
+                truaMonChinh: "Tỏi gà chiên mắm",
+                truaMonThuHai: "Trứng gà luộc",
+                chieuToi: "Cotlet nướng mỡ hành; Đậu khuôn chiên sốt cà; Cơm trắng; Bầu luộc; Canh chua chả cá"
+            ),
+            MucThucDonNgay(
+                ngayVaoCa: "18/11/2026",
+                ca: "Đêm",
+                anDem: "Mì quảng thập cẩm / Sữa tươi Kun",
+                sangHomSau: "19/11: Hủ tiếu thập cẩm / Sữa tươi Kun"
+            ),
+            MucThucDonNgay(
+                ngayVaoCa: "20/11/2026",
+                ca: "Ngày",
+                truaCaiThien: "Hủ tiếu bò / Sữa tươi Ba Vì",
+                truaMonChinh: "Sườn sốt chua ngọt",
+                truaMonThuHai: "Thịt xào dưa cải",
+                chieuToi: "Bò xào hành cần; Cá cơm khô rang đậu phộng; Cơm trắng; Rau cải luộc; Canh khổ qua nấu thịt"
+            ),
+            MucThucDonNgay(
+                ngayVaoCa: "21/11/2026",
+                ca: "Đêm",
+                anDem: "Bánh canh chả cá / Sữa tươi Vinamilk",
+                sangHomSau: "22/11: Bánh mì thịt, xúc xích, trứng ốp la / Sữa Yomost"
+            ),
+            MucThucDonNgay(
+                ngayVaoCa: "23/11/2026",
+                ca: "Ngày",
+                truaCaiThien: "Cơm tấm / Sữa (tên món bị OCR thiếu một phần)",
+                truaMonChinh: "Cánh gà chiên mắm",
+                truaMonThuHai: "Chả cá chiên sốt cà",
+                chieuToi: "Tôm rim; Cá biển kho; Cơm trắng; Bầu luộc; Canh bí đỏ nấu thịt",
+                ghiChu: "[Suy luận] Tên món cải thiện 23/11 dựa theo vị trí cột và chu kỳ món; PDF trích xuất thiếu chữ."
+            ),
+            MucThucDonNgay(
+                ngayVaoCa: "24/11/2026",
+                ca: "Đêm",
+                anDem: "Mì quảng thập cẩm / Sữa tươi Kun",
+                sangHomSau: "25/11: Cháo lươn hoặc cháo ngao, trứng vịt lộn (tùy bếp) / Sữa tươi Vinamilk"
+            ),
+            MucThucDonNgay(
+                ngayVaoCa: "26/11/2026",
+                ca: "Ngày",
+                truaCaiThien: "Bún Thái hải sản / Sữa Yomost",
+                truaMonChinh: "Bò xào hành cần",
+                truaMonThuHai: "Thịt viên chiên sốt cà",
+                chieuToi: "Gà kho sả ớt; Thịt xào dưa cải; Cơm trắng; Mít xào lá lốt; Canh cải nấu thịt"
+            ),
+            MucThucDonNgay(
+                ngayVaoCa: "27/11/2026",
+                ca: "Đêm",
+                anDem: "Mì tôm thịt bò, trứng ốp la / Sữa chua Ba Vì và Chuối",
+                sangHomSau: "28/11: Bún măng vịt / Sữa tươi Ba Vì"
+            ),
+            MucThucDonNgay(
+                ngayVaoCa: "29/11/2026",
+                ca: "Ngày",
+                truaCaiThien: "Phở bò / Sữa tươi Vinamilk",
+                truaMonChinh: "Sườn kho sả",
+                truaMonThuHai: "Trứng gà luộc",
+                chieuToi: "Cá lóc chiên mắm xoài; Chả lụa xào nấm hành tây; Cơm trắng; Rau cải, giá luộc; Canh bí xanh nấu chả cá"
+            ),
+            MucThucDonNgay(
+                ngayVaoCa: "30/11/2026",
+                ca: "Đêm",
+                anDem: "Bún sườn chua / Sữa tươi Ba Vì",
+                sangHomSau: "01/12: Không có trong thực đơn tháng 11",
+                ghiChu: "Cần thực đơn tháng 12 để bổ sung bữa sáng sau ca đêm 30/11."
+            )
+        ]
+
+        let qt: [QuyTacThucDon] = [
+            QuyTacThucDon(noiDung: "Chu kỳ kíp A", quyTac: "Ngày → Đêm → Nghỉ, lặp lại từ 08/11/2026"),
+            QuyTacThucDon(noiDung: "Ca ngày", quyTac: "Lấy bữa trưa: món cải thiện + món chính + món thứ 2; lấy thêm bữa chiều/tối cùng ngày"),
+            QuyTacThucDon(noiDung: "Ca đêm", quyTac: "Lấy món ăn đêm ngày vào ca và món ăn sáng của ngày kế tiếp"),
+            QuyTacThucDon(noiDung: "Nguồn", quyTac: "Thực đơn tháng 11/2026 do Anh Hai cung cấp")
+        ]
+
+        return DuLieuThucDon(
+            tenTepNguon: "thuc_don_kip_A_thang_11_2026.xlsx",
+            tenSheetChinh: "Kíp A tháng 11",
+            capNhatLuc: Date(),
+            danhSachNgay: ds,
+            quyTacLoc: qt
+        )
+    }
+}
+
 // MARK: - 2. Mô hình Xưởng Cán (Chỉ lưu siêu dữ liệu & ID ảnh Google Drive lên Supabase, KHÔNG lưu dữ liệu ảnh lên Supabase)
 
 enum LoaiCotXuongCan: String, Codable, CaseIterable {
@@ -202,10 +462,44 @@ struct BangXuongCan: Codable, Hashable, Identifiable {
 struct TrangThaiTab: Codable, Hashable {
     var xuongCan: Bool = true
     var calendar: Bool = true
+    var thucDon: Bool = true
     var notes: Bool = true
     var sheets: Bool = true
     var media: Bool = true
     var reminders: Bool = true
+
+    init(
+        xuongCan: Bool = true,
+        calendar: Bool = true,
+        thucDon: Bool = true,
+        notes: Bool = true,
+        sheets: Bool = true,
+        media: Bool = true,
+        reminders: Bool = true
+    ) {
+        self.xuongCan = xuongCan
+        self.calendar = calendar
+        self.thucDon = thucDon
+        self.notes = notes
+        self.sheets = sheets
+        self.media = media
+        self.reminders = reminders
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case xuongCan, calendar, thucDon, notes, sheets, media, reminders
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.xuongCan = (try? c.decodeIfPresent(Bool.self, forKey: .xuongCan)) ?? true
+        self.calendar = (try? c.decodeIfPresent(Bool.self, forKey: .calendar)) ?? true
+        self.thucDon = (try? c.decodeIfPresent(Bool.self, forKey: .thucDon)) ?? true
+        self.notes = (try? c.decodeIfPresent(Bool.self, forKey: .notes)) ?? true
+        self.sheets = (try? c.decodeIfPresent(Bool.self, forKey: .sheets)) ?? true
+        self.media = (try? c.decodeIfPresent(Bool.self, forKey: .media)) ?? true
+        self.reminders = (try? c.decodeIfPresent(Bool.self, forKey: .reminders)) ?? true
+    }
 }
 
 struct CaiDatUngDung: Codable {
@@ -219,16 +513,57 @@ struct CaiDatUngDung: Codable {
     var gioCaDem: Date = TienIchLich.taoGio(gio: 18, phut: 0)
     var gioNgayNghi: Date = TienIchLich.taoGio(gio: 8, phut: 0)
     var gioBinhThuong: Date = TienIchLich.taoGio(gio: 7, phut: 0)
+
+    // Thông báo Thực đơn (giống thông báo nghỉ luân phiên, chỉnh giờ ở Cài đặt)
+    var batThongBaoThucDon: Bool = true
+    var gioThongBaoThucDonNgay: Date = TienIchLich.taoGio(gio: 6, phut: 30)
+    var gioThongBaoThucDonDem: Date = TienIchLich.taoGio(gio: 17, phut: 30)
+
     var geminiApiKey: String = ""
     var sheetWebhookUrl: String = "https://script.google.com/macros/s/AKfycbwmGmcshrvrCsfmqXmj1qlyERulh0CtawveADAMK8rwR4g-Oa5h4NMEo73EiSrIiNcK/exec"
 
-    // Cấu hình Google Drive OAuth 2.0 cho Xưởng Cán (Luôn có sẵn key mặc định của bạn)
+    // Cấu hình Google Drive OAuth 2.0 cho Xưởng Cán
     var driveKey: String = ""
     var driveFolderId: String = ""
     var driveScriptUrl: String = ""
     var driveClientId: String = HangSoDriveMacDinh.clientId
     var driveClientSecret: String = HangSoDriveMacDinh.clientSecret
     var driveRefreshToken: String = HangSoDriveMacDinh.refreshToken
+
+    init() {}
+
+    enum CodingKeys: String, CodingKey {
+        case giaoDienToi, trangThaiTab, ngayBatDauChuKy, daChonNgayBatDau, chuKyLamViec
+        case batThongBao, gioCaNgay, gioCaDem, gioNgayNghi, gioBinhThuong
+        case batThongBaoThucDon, gioThongBaoThucDonNgay, gioThongBaoThucDonDem
+        case geminiApiKey, sheetWebhookUrl
+        case driveKey, driveFolderId, driveScriptUrl, driveClientId, driveClientSecret, driveRefreshToken
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.giaoDienToi = (try? c.decodeIfPresent(Bool.self, forKey: .giaoDienToi)) ?? false
+        self.trangThaiTab = (try? c.decodeIfPresent(TrangThaiTab.self, forKey: .trangThaiTab)) ?? TrangThaiTab()
+        self.ngayBatDauChuKy = (try? c.decodeIfPresent(Date.self, forKey: .ngayBatDauChuKy)) ?? Date()
+        self.daChonNgayBatDau = (try? c.decodeIfPresent(Bool.self, forKey: .daChonNgayBatDau)) ?? true
+        self.chuKyLamViec = (try? c.decodeIfPresent([String].self, forKey: .chuKyLamViec)) ?? ["ngay", "dem", "nghi"]
+        self.batThongBao = (try? c.decodeIfPresent(Bool.self, forKey: .batThongBao)) ?? false
+        self.gioCaNgay = (try? c.decodeIfPresent(Date.self, forKey: .gioCaNgay)) ?? TienIchLich.taoGio(gio: 6, phut: 0)
+        self.gioCaDem = (try? c.decodeIfPresent(Date.self, forKey: .gioCaDem)) ?? TienIchLich.taoGio(gio: 18, phut: 0)
+        self.gioNgayNghi = (try? c.decodeIfPresent(Date.self, forKey: .gioNgayNghi)) ?? TienIchLich.taoGio(gio: 8, phut: 0)
+        self.gioBinhThuong = (try? c.decodeIfPresent(Date.self, forKey: .gioBinhThuong)) ?? TienIchLich.taoGio(gio: 7, phut: 0)
+        self.batThongBaoThucDon = (try? c.decodeIfPresent(Bool.self, forKey: .batThongBaoThucDon)) ?? true
+        self.gioThongBaoThucDonNgay = (try? c.decodeIfPresent(Date.self, forKey: .gioThongBaoThucDonNgay)) ?? TienIchLich.taoGio(gio: 6, phut: 30)
+        self.gioThongBaoThucDonDem = (try? c.decodeIfPresent(Date.self, forKey: .gioThongBaoThucDonDem)) ?? TienIchLich.taoGio(gio: 17, phut: 30)
+        self.geminiApiKey = (try? c.decodeIfPresent(String.self, forKey: .geminiApiKey)) ?? ""
+        self.sheetWebhookUrl = (try? c.decodeIfPresent(String.self, forKey: .sheetWebhookUrl)) ?? "https://script.google.com/macros/s/AKfycbwmGmcshrvrCsfmqXmj1qlyERulh0CtawveADAMK8rwR4g-Oa5h4NMEo73EiSrIiNcK/exec"
+        self.driveKey = (try? c.decodeIfPresent(String.self, forKey: .driveKey)) ?? ""
+        self.driveFolderId = (try? c.decodeIfPresent(String.self, forKey: .driveFolderId)) ?? ""
+        self.driveScriptUrl = (try? c.decodeIfPresent(String.self, forKey: .driveScriptUrl)) ?? ""
+        self.driveClientId = (try? c.decodeIfPresent(String.self, forKey: .driveClientId)) ?? HangSoDriveMacDinh.clientId
+        self.driveClientSecret = (try? c.decodeIfPresent(String.self, forKey: .driveClientSecret)) ?? HangSoDriveMacDinh.clientSecret
+        self.driveRefreshToken = (try? c.decodeIfPresent(String.self, forKey: .driveRefreshToken)) ?? HangSoDriveMacDinh.refreshToken
+    }
 
     mutating func chuanHoaKeyDrive() {
         let ud = UserDefaults.standard
@@ -284,6 +619,7 @@ extension Notification.Name {
     static let caiDatThayDoi = Notification.Name("CaiDatUngDungThayDoi")
     static let duLieuDongBoXong = Notification.Name("DuLieuDongBoXong")
     static let xuongCanCapNhat = Notification.Name("XuongCanCapNhat")
+    static let thucDonCapNhat = Notification.Name("ThucDonCapNhat")
     static let trangThaiDongBoThayDoi = Notification.Name("TrangThaiDongBoThayDoi")
 }
 
@@ -299,6 +635,7 @@ final class ThuMucDuLieu {
     let tepNhacNho: URL
     let tepCaiDat: URL
     let tepXuongCan: URL
+    let tepThucDon: URL
 
     private let maHoa: JSONEncoder = {
         let bo = JSONEncoder()
@@ -329,6 +666,7 @@ final class ThuMucDuLieu {
         tepNhacNho = thuMuc.appendingPathComponent("nhac-nho.json")
         tepCaiDat = thuMuc.appendingPathComponent("cai-dat.json")
         tepXuongCan = thuMuc.appendingPathComponent("xuong-can.json")
+        tepThucDon = thuMuc.appendingPathComponent("thuc-don.json")
 
         try? FileManager.default.createDirectory(at: thuMuc, withIntermediateDirectories: true)
         try? FileManager.default.createDirectory(at: thuMucAnhCache, withIntermediateDirectories: true)
@@ -363,6 +701,7 @@ final class KhoDuLieu {
     private(set) var ghiChuNhanh: [GhiChuNhanh] = []
     private(set) var nhacNho: [SuKienNhacNho] = []
     private(set) var danhSachBangXuongCan: [BangXuongCan] = []
+    private(set) var duLieuThucDon: DuLieuThucDon = DuLieuThucDon.duLieuMauThang11()
     var caiDat: CaiDatUngDung = CaiDatUngDung()
 
     var mauSac: BangMauChuDe {
@@ -414,6 +753,13 @@ final class KhoDuLieu {
             )
             danhSachBangXuongCan = [bangMau]
             tm.ghi(danhSachBangXuongCan, vao: tm.tepXuongCan)
+        }
+
+        if let td = tm.doc(DuLieuThucDon.self, tu: tm.tepThucDon) {
+            duLieuThucDon = td
+        } else {
+            duLieuThucDon = DuLieuThucDon.duLieuMauThang11()
+            tm.ghi(duLieuThucDon, vao: tm.tepThucDon)
         }
     }
 
@@ -491,6 +837,23 @@ final class KhoDuLieu {
         ThuMucDuLieu.dungChung.ghi(moi, vao: ThuMucDuLieu.dungChung.tepNhacNho)
     }
 
+    func luuDuLieuThucDon(_ moi: DuLieuThucDon, dongBoSupabase: Bool = true) {
+        var banLuu = moi
+        banLuu.danhSachNgay.sort {
+            if $0.khoaNgay != $1.khoaNgay {
+                return $0.khoaNgay < $1.khoaNgay
+            }
+            return $0.ngayVaoCa < $1.ngayVaoCa
+        }
+        duLieuThucDon = banLuu
+        ThuMucDuLieu.dungChung.ghi(banLuu, vao: ThuMucDuLieu.dungChung.tepThucDon)
+        TienIchLich.capNhatTatCaThongBaoThucDon()
+        NotificationCenter.default.post(name: .thucDonCapNhat, object: nil)
+        if dongBoSupabase {
+            DichVuSupabase.dungChung.dongBoDuLieuTuDong()
+        }
+    }
+
     func luuCaiDat(_ moi: CaiDatUngDung, thongBao: Bool = true) {
         var banChuan = moi
         banChuan.chuanHoaKeyDrive()
@@ -503,6 +866,8 @@ final class KhoDuLieu {
         ud.setValue(banChuan.driveFolderId, forKey: "DRIVE_OAUTH_FOLDER_ID")
 
         ThuMucDuLieu.dungChung.ghi(banChuan, vao: ThuMucDuLieu.dungChung.tepCaiDat)
+        TienIchLich.capNhatTatCaThongBaoLich()
+        TienIchLich.capNhatTatCaThongBaoThucDon()
         if thongBao {
             NotificationCenter.default.post(name: .caiDatThayDoi, object: nil)
         }
@@ -582,6 +947,69 @@ enum TienIchLich {
         return nil
     }
 
+    static func docNgayThucDon(_ chuoi: String) -> Date? {
+        let raw = chuoi.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty else { return nil }
+
+        // Kiểm tra nếu là số serial ngày của Excel (VD: 46334 -> 08/11/2026)
+        if let serialDouble = Double(raw), serialDouble >= 35000 && serialDouble <= 70000 {
+            let soNgay = Int(serialDouble.rounded(.down))
+            var comp = DateComponents()
+            comp.year = 1899
+            comp.month = 12
+            comp.day = 30
+            if let mocExcel = lich.date(from: comp),
+               let ngay = lich.date(byAdding: .day, value: soNgay, to: mocExcel) {
+                return ngay
+            }
+        }
+
+        let cacDinhDang = ["dd/MM/yyyy", "d/M/yyyy", "dd-MM-yyyy", "d-M-yyyy", "yyyy-MM-dd", "dd/MM/yy", "d/M/yy"]
+        let df = DateFormatter()
+        df.calendar = lich
+        df.locale = Locale(identifier: "vi_VN")
+
+        for fmt in cacDinhDang {
+            df.dateFormat = fmt
+            if let d = df.date(from: raw) {
+                return d
+            }
+        }
+
+        // Trích xuất chuỗi dạng dd/MM/yyyy hoặc dd-MM-yyyy nếu nằm lẫn trong chữ
+        if let regex = try? NSRegularExpression(pattern: "\\b(\\d{1,2})[/-](\\d{1,2})[/-](\\d{2,4})\\b"),
+           let match = regex.firstMatch(in: raw, range: NSRange(raw.startIndex..., in: raw)),
+           let r0 = Range(match.range, in: raw) {
+            let trichXuat = String(raw[r0])
+            for fmt in ["dd/MM/yyyy", "d/M/yyyy", "dd-MM-yyyy", "d-M-yyyy", "dd/MM/yy", "d/M/yy"] {
+                df.dateFormat = fmt
+                if let d = df.date(from: trichXuat) {
+                    return d
+                }
+            }
+        }
+        return nil
+    }
+
+    static func chuanHoaNgayThucDon(_ chuoi: String) -> (hienThi: String, khoa: String)? {
+        guard let d = docNgayThucDon(chuoi) else { return nil }
+        return (dinhDangNgayViet.string(from: d), dinhDangKhoaNgay.string(from: d))
+    }
+
+    static func thuVietNam(_ ngay: Date) -> String {
+        let wd = lich.component(.weekday, from: ngay)
+        switch wd {
+        case 1: return "Chủ Nhật"
+        case 2: return "Thứ Hai"
+        case 3: return "Thứ Ba"
+        case 4: return "Thứ Tư"
+        case 5: return "Thứ Năm"
+        case 6: return "Thứ Sáu"
+        case 7: return "Thứ Bảy"
+        default: return ""
+        }
+    }
+
     static func taoGio(gio: Int, phut: Int) -> Date {
         lich.date(bySettingHour: gio, minute: phut, second: 0, of: Date()) ?? Date()
     }
@@ -642,6 +1070,8 @@ enum TienIchLich {
 
     static func datThongBaoLich(ngay: Date, dongGhiChu: [String], loaiCa: String) {
         let cd = KhoDuLieu.dungChung.caiDat
+        let id = "LICH_\(dinhDangKhoaNgay.string(from: ngay))"
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [id])
         guard cd.batThongBao, !dongGhiChu.isEmpty else { return }
 
         let gioChon: Date
@@ -672,9 +1102,99 @@ enum TienIchLich {
 
         let tpTrigger = lich.dateComponents([.year, .month, .day, .hour, .minute], from: thoiDiem)
         let trigger = UNCalendarNotificationTrigger(dateMatching: tpTrigger, repeats: false)
-        let id = "LICH_\(dinhDangKhoaNgay.string(from: ngay))"
-        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [id])
         UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: id, content: noiDung, trigger: trigger))
+    }
+
+    static func capNhatTatCaThongBaoLich() {
+        let trungTam = UNUserNotificationCenter.current()
+        trungTam.getPendingNotificationRequests { ds in
+            let cacIdLich = ds.map(\.identifier).filter { $0.hasPrefix("LICH_") }
+            if !cacIdLich.isEmpty {
+                trungTam.removePendingNotificationRequests(withIdentifiers: cacIdLich)
+            }
+            let cd = KhoDuLieu.dungChung.caiDat
+            guard cd.batThongBao else { return }
+            let tatCa = KhoDuLieu.dungChung.ghiChuLich
+            for (khoa, gc) in tatCa where !gc.noteLines.isEmpty {
+                guard let ngay = dinhDangKhoaNgay.date(from: khoa) else { continue }
+                let loaiCa = gc.type.isEmpty ? (tinhCaTuDong(cho: ngay) ?? "") : gc.type
+                datThongBaoLich(ngay: ngay, dongGhiChu: gc.noteLines, loaiCa: loaiCa)
+            }
+        }
+    }
+
+    static func capNhatTatCaThongBaoThucDon(hoanThanh: ((Int) -> Void)? = nil) {
+        let trungTam = UNUserNotificationCenter.current()
+        let cd = KhoDuLieu.dungChung.caiDat
+        let danhSach = KhoDuLieu.dungChung.duLieuThucDon.danhSachNgay
+
+        trungTam.getPendingNotificationRequests { dsHienTai in
+            let cacIdThucDon = dsHienTai.map(\.identifier).filter { $0.hasPrefix("THUCDON_") }
+            if !cacIdThucDon.isEmpty {
+                trungTam.removePendingNotificationRequests(withIdentifiers: cacIdThucDon)
+            }
+
+            guard cd.batThongBaoThucDon, !danhSach.isEmpty else {
+                DispatchQueue.main.async { hoanThanh?(0) }
+                return
+            }
+
+            let tpGioNgay = lich.dateComponents([.hour, .minute], from: cd.gioThongBaoThucDonNgay)
+            let tpGioDem = lich.dateComponents([.hour, .minute], from: cd.gioThongBaoThucDonDem)
+            let bayGio = Date()
+
+            var cacYeuCauSapToi: [(thoiDiem: Date, req: UNNotificationRequest)] = []
+
+            for muc in danhSach {
+                guard let ngay = docNgayThucDon(muc.ngayVaoCa) ?? docNgayISO(muc.khoaNgay) else { continue }
+                let laDem = muc.laCaDem
+                let gio = laDem ? (tpGioDem.hour ?? 17) : (tpGioNgay.hour ?? 6)
+                let phut = laDem ? (tpGioDem.minute ?? 30) : (tpGioNgay.minute ?? 30)
+
+                guard let thoiDiem = lich.date(bySettingHour: gio, minute: phut, second: 0, of: ngay),
+                      thoiDiem > bayGio else { continue }
+
+                let noiDung = UNMutableNotificationContent()
+                let tenCa = laDem ? "Ca Đêm 🌙" : "Ca Ngày ☀️"
+                noiDung.title = "🍱 Thực đơn \(tenCa) (\(muc.ngayVaoCa))"
+                noiDung.body = muc.tomTatThongBao
+                noiDung.sound = .default
+
+                let tpTrigger = lich.dateComponents([.year, .month, .day, .hour, .minute], from: thoiDiem)
+                let trigger = UNCalendarNotificationTrigger(dateMatching: tpTrigger, repeats: false)
+                let khoa = muc.khoaNgay.isEmpty ? dinhDangKhoaNgay.string(from: ngay) : muc.khoaNgay
+                let id = "THUCDON_\(khoa)_\(muc.caChuan)"
+                let req = UNNotificationRequest(identifier: id, content: noiDung, trigger: trigger)
+                cacYeuCauSapToi.append((thoiDiem, req))
+            }
+
+            cacYeuCauSapToi.sort { $0.thoiDiem < $1.thoiDiem }
+            let gioiHan = Array(cacYeuCauSapToi.prefix(45))
+            for item in gioiHan {
+                trungTam.add(item.req)
+            }
+            DispatchQueue.main.async {
+                hoanThanh?(gioiHan.count)
+            }
+        }
+    }
+
+    static func guiThongBaoThuThucDon(muc: MucThucDonNgay?) {
+        xinQuyenThongBao()
+        let noiDung = UNMutableNotificationContent()
+        if let muc {
+            let tenCa = muc.laCaDem ? "Ca Đêm 🌙" : "Ca Ngày ☀️"
+            noiDung.title = "🍱 Thực đơn \(tenCa) (\(muc.ngayVaoCa))"
+            noiDung.body = muc.tomTatThongBao
+        } else {
+            noiDung.title = "🍱 Thông báo Thực đơn"
+            noiDung.body = "Thông báo thực đơn đã hoạt động! Bạn sẽ nhận được thực đơn đúng giờ cài đặt."
+        }
+        noiDung.sound = .default
+
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1.5, repeats: false)
+        let req = UNNotificationRequest(identifier: "THUCDON_TEST_\(UUID().uuidString)", content: noiDung, trigger: trigger)
+        UNUserNotificationCenter.current().add(req)
     }
 
     static func datThongBaoNhacNho(_ suKien: SuKienNhacNho) {

@@ -666,6 +666,7 @@ final class DichVuSupabase {
         let calDict = (try? JSONSerialization.jsonObject(with: encoder.encode(kho.ghiChuLich))) ?? [:]
         let remArr = (try? JSONSerialization.jsonObject(with: encoder.encode(kho.nhacNho))) ?? []
         let xuongCanArr = (try? JSONSerialization.jsonObject(with: encoder.encode(kho.danhSachBangXuongCan))) ?? []
+        let thucDonObj = (try? JSONSerialization.jsonObject(with: encoder.encode(kho.duLieuThucDon))) ?? [:]
 
         let backupData: [String: Any] = [
             "QUICK_NOTES": notesArr,
@@ -673,6 +674,10 @@ final class DichVuSupabase {
             "USER_REMINDERS": remArr,
             "CYCLE_START_DATE": ISO8601DateFormatter().string(from: kho.caiDat.ngayBatDauChuKy),
             "NOTIF_ENABLED": kho.caiDat.batThongBao,
+            "MENU_NOTIF_ENABLED": kho.caiDat.batThongBaoThucDon,
+            "MENU_NOTIF_DAY_TIME": ISO8601DateFormatter().string(from: kho.caiDat.gioThongBaoThucDonNgay),
+            "MENU_NOTIF_NIGHT_TIME": ISO8601DateFormatter().string(from: kho.caiDat.gioThongBaoThucDonDem),
+            "MENU_DATA": thucDonObj,
             "GEMINI_API_KEY": kho.caiDat.geminiApiKey,
             "WORK_CYCLE_PATTERN": kho.caiDat.chuKyLamViec,
             "XUONG_CAN_TABLES": xuongCanArr,
@@ -842,8 +847,23 @@ final class DichVuSupabase {
            let list = tm.giaiMaDuLieu([BangXuongCan].self, tu: d), !list.isEmpty {
             kho.luuBangXuongCan(list, dongBoSupabase: false)
         }
+        if let d = layDataJSON(tu: backup["MENU_DATA"]),
+           let td = tm.giaiMaDuLieu(DuLieuThucDon.self, tu: d), !td.danhSachNgay.isEmpty {
+            kho.luuDuLieuThucDon(td, dongBoSupabase: false)
+        }
 
         var cd = kho.caiDat
+        if let menuNotif = backup["MENU_NOTIF_ENABLED"] as? Bool {
+            cd.batThongBaoThucDon = menuNotif
+        }
+        if let sDayTime = backup["MENU_NOTIF_DAY_TIME"] as? String,
+           let dDay = TienIchLich.docNgayISO(sDayTime) {
+            cd.gioThongBaoThucDonNgay = dDay
+        }
+        if let sNightTime = backup["MENU_NOTIF_NIGHT_TIME"] as? String,
+           let dNight = TienIchLich.docNgayISO(sNightTime) {
+            cd.gioThongBaoThucDonDem = dNight
+        }
         if let sDate = backup["CYCLE_START_DATE"] as? String,
            let d = TienIchLich.docNgayISO(sDate) {
             cd.ngayBatDauChuKy = d

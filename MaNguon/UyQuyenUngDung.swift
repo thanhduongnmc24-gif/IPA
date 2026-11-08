@@ -11,6 +11,8 @@ final class UyQuyenUngDung: UIResponder, UIApplicationDelegate, UNUserNotificati
     ) -> Bool {
         UNUserNotificationCenter.current().delegate = self
         TienIchLich.xinQuyenThongBao()
+        TienIchLich.capNhatTatCaThongBaoLich()
+        TienIchLich.capNhatTatCaThongBaoThucDon()
 
         let w = UIWindow(frame: UIScreen.main.bounds)
         let manHinhGoc = ManHinhGocTabBar()

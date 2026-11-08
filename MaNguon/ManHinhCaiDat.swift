@@ -10,6 +10,7 @@ final class ManHinhCaiDat: UIViewController {
     private let oGemini = UITextField()
     private let nhanChuKy = UILabel()
     private let nganGioThongBao = UIStackView()
+    private let nganGioThongBaoThucDon = UIStackView()
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -77,7 +78,7 @@ final class ManHinhCaiDat: UIViewController {
         banNhap.geminiApiKey = oGemini.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         KhoDuLieu.dungChung.luuCaiDat(banNhap, thongBao: true)
         veGiaoDien()
-        hienThongBao("Đã lưu cài đặt", "Các thay đổi của bạn đã được áp dụng!")
+        hienThongBao("Đã lưu cài đặt", "Các thay đổi của bạn và lịch hẹn giờ thông báo (ca làm việc & thực đơn) đã được áp dụng!")
     }
 
     private func veGiaoDien() {
@@ -180,6 +181,9 @@ final class ManHinhCaiDat: UIViewController {
         nganTab.addArrangedSubview(taoHangCongTac(ten: "Tab Lịch làm việc", dangBat: banNhap.trangThaiTab.calendar) { [weak self] bat in
             self?.banNhap.trangThaiTab.calendar = bat
         })
+        nganTab.addArrangedSubview(taoHangCongTac(ten: "Tab Thực đơn 🍱", dangBat: banNhap.trangThaiTab.thucDon) { [weak self] bat in
+            self?.banNhap.trangThaiTab.thucDon = bat
+        })
         nganTab.addArrangedSubview(taoHangCongTac(ten: "Tab Ghi chú", dangBat: banNhap.trangThaiTab.notes) { [weak self] bat in
             self?.banNhap.trangThaiTab.notes = bat
         })
@@ -194,8 +198,8 @@ final class ManHinhCaiDat: UIViewController {
         })
         nganChinh.addArrangedSubview(theTab)
 
-        // 4. Chu kỳ ca làm việc & Thông báo
-        nganChinh.addArrangedSubview(taoTieuDeMuc("⚙️ CHU KỲ CA & THÔNG BÁO"))
+        // 4. Chu kỳ ca làm việc & Thông báo (Nghỉ luân phiên + Thực đơn)
+        nganChinh.addArrangedSubview(taoTieuDeMuc("⚙️ CHU KỲ CA & THÔNG BÁO (NGHỈ LUÂN PHIÊN & THỰC ĐƠN)"))
         let theChuKy = taoThe()
         let nganChuKy = taoNganBenTrong(theChuKy)
 
@@ -249,8 +253,9 @@ final class ManHinhCaiDat: UIViewController {
         hangNgayBD.alignment = .center
         nganChuKy.addArrangedSubview(hangNgayBD)
 
+        // 4A. Thông báo nhắc ca / nghỉ luân phiên
         nganChuKy.addArrangedSubview(taoVachNgan())
-        nganChuKy.addArrangedSubview(taoHangCongTac(ten: "Bật thông báo nhắc ca", dangBat: banNhap.batThongBao) { [weak self] bat in
+        nganChuKy.addArrangedSubview(taoHangCongTac(ten: "Bật thông báo nhắc ca (Nghỉ luân phiên)", dangBat: banNhap.batThongBao) { [weak self] bat in
             self?.banNhap.batThongBao = bat
             self?.nganGioThongBao.isHidden = !bat
         })
@@ -272,6 +277,29 @@ final class ManHinhCaiDat: UIViewController {
         })
         nganGioThongBao.isHidden = !banNhap.batThongBao
         nganChuKy.addArrangedSubview(nganGioThongBao)
+
+        // 4B. Thông báo Thực đơn các ngày
+        nganChuKy.addArrangedSubview(taoVachNgan())
+        nganChuKy.addArrangedSubview(taoHangCongTac(ten: "Bật thông báo Thực đơn 🍱", dangBat: banNhap.batThongBaoThucDon) { [weak self] bat in
+            self?.banNhap.batThongBaoThucDon = bat
+            self?.nganGioThongBaoThucDon.isHidden = !bat
+        })
+
+        nganGioThongBaoThucDon.axis = .vertical
+        nganGioThongBaoThucDon.spacing = 6
+        nganGioThongBaoThucDon.arrangedSubviews.forEach {
+            nganGioThongBaoThucDon.removeArrangedSubview($0)
+            $0.removeFromSuperview()
+        }
+        nganGioThongBaoThucDon.addArrangedSubview(taoHangGioNhac("Giờ báo thực đơn Ca Ngày ☀️", gio: banNhap.gioThongBaoThucDonNgay) { [weak self] d in
+            self?.banNhap.gioThongBaoThucDonNgay = d
+        })
+        nganGioThongBaoThucDon.addArrangedSubview(taoHangGioNhac("Giờ báo thực đơn Ca Đêm 🌙", gio: banNhap.gioThongBaoThucDonDem) { [weak self] d in
+            self?.banNhap.gioThongBaoThucDonDem = d
+        })
+        nganGioThongBaoThucDon.isHidden = !banNhap.batThongBaoThucDon
+        nganChuKy.addArrangedSubview(nganGioThongBaoThucDon)
+
         nganChinh.addArrangedSubview(theChuKy)
 
         // 5. Gemini API Key

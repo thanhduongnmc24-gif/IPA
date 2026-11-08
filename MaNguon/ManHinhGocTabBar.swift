@@ -76,37 +76,44 @@ final class ManHinhGocTabBar: UITabBarController {
             danhSach.append(vc)
         }
 
-        // 3. Tab Ghi chú
+        // 3. Tab Thực đơn
+        if tt.thucDon {
+            let vc = UINavigationController(rootViewController: ManHinhThucDon())
+            vc.tabBarItem = UITabBarItem(title: "Thực đơn", image: UIImage(systemName: "fork.knife"), tag: 2)
+            danhSach.append(vc)
+        }
+
+        // 4. Tab Ghi chú
         if tt.notes {
             let vc = UINavigationController(rootViewController: ManHinhGhiChu())
-            vc.tabBarItem = UITabBarItem(title: "Ghi chú", image: UIImage(systemName: "doc.text"), tag: 2)
+            vc.tabBarItem = UITabBarItem(title: "Ghi chú", image: UIImage(systemName: "doc.text"), tag: 3)
             danhSach.append(vc)
         }
 
-        // 4. Tab Sheets
+        // 5. Tab Sheets
         if tt.sheets {
             let vc = UINavigationController(rootViewController: ManHinhSheets())
-            vc.tabBarItem = UITabBarItem(title: "Sheets", image: UIImage(systemName: "square.grid.2x2"), tag: 3)
+            vc.tabBarItem = UITabBarItem(title: "Sheets", image: UIImage(systemName: "square.grid.2x2"), tag: 4)
             danhSach.append(vc)
         }
 
-        // 5. Tab Media
+        // 6. Tab Media
         if tt.media {
             let vc = UINavigationController(rootViewController: ManHinhMedia())
-            vc.tabBarItem = UITabBarItem(title: "Media", image: UIImage(systemName: "sparkles.tv"), tag: 4)
+            vc.tabBarItem = UITabBarItem(title: "Media", image: UIImage(systemName: "sparkles.tv"), tag: 5)
             danhSach.append(vc)
         }
 
-        // 6. Tab Nhắc nhở
+        // 7. Tab Nhắc nhở
         if tt.reminders {
             let vc = UINavigationController(rootViewController: ManHinhNhacNho())
-            vc.tabBarItem = UITabBarItem(title: "Nhắc nhở", image: UIImage(systemName: "alarm"), tag: 5)
+            vc.tabBarItem = UITabBarItem(title: "Nhắc nhở", image: UIImage(systemName: "alarm"), tag: 6)
             danhSach.append(vc)
         }
 
-        // 7. Tab Cài đặt luôn hiển thị ở cuối
+        // 8. Tab Cài đặt luôn hiển thị ở cuối
         let caiDatVC = caiDatHienTai ?? UINavigationController(rootViewController: ManHinhCaiDat())
-        caiDatVC.tabBarItem = UITabBarItem(title: "Cài đặt", image: UIImage(systemName: "gearshape"), tag: 6)
+        caiDatVC.tabBarItem = UITabBarItem(title: "Cài đặt", image: UIImage(systemName: "gearshape"), tag: 7)
         danhSach.append(caiDatVC)
 
         setViewControllers(danhSach, animated: false)
