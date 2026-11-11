@@ -177,6 +177,9 @@ final class ManHinhCaiDat: UIViewController {
         nganTab.addArrangedSubview(taoHangCongTac(ten: "Tab Xưởng Cán (Đầu tiên)", dangBat: banNhap.trangThaiTab.xuongCan) { [weak self] bat in
             self?.banNhap.trangThaiTab.xuongCan = bat
         })
+        nganTab.addArrangedSubview(taoHangCongTac(ten: "Tab Lệnh sản xuất (OCR)", dangBat: banNhap.trangThaiTab.lenhSanXuat) { [weak self] bat in
+            self?.banNhap.trangThaiTab.lenhSanXuat = bat
+        })
         nganTab.addArrangedSubview(taoHangCongTac(ten: "Tab Lịch làm việc", dangBat: banNhap.trangThaiTab.calendar) { [weak self] bat in
             self?.banNhap.trangThaiTab.calendar = bat
         })

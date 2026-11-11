@@ -137,6 +137,214 @@ struct MucAnhSheet: Codable, Hashable, Identifiable {
     var base64: String? = nil
 }
 
+// MARK: - 1D. Mô hình Lệnh Sản Xuất (Hòa Phát Dung Quất / Xưởng Cán)
+
+struct MucDongLenhSX: Codable, Hashable, Identifiable {
+    var id: String = UUID().uuidString
+    var stt: Int
+    var thoiGianDuKien: String    // Cột 1: Thời gian dự kiến sản xuất (VD: "08h00 10/11 - 08h00 12/11")
+    var kichCo: String           // Cột 2: Kích cỡ (VD: "D18", "D16")
+    var macThep: String          // Cột 3: Mác thép (VD: "CB400V", "CB500V", "Gr40", "Gr60")
+    var sanLuong: String         // Cột 4: Sản lượng tấn (VD: "3,500", "40")
+    var coTinh: String           // Cột 5: Cơ tính (VD: "40.2025/YCCN - P.CN")
+    var macPhoi: String          // Cột 6: Mác phôi (VD: "CT5", "CT5V", "Gr80-1")
+    var loaiPhoi: String         // Cột 7: Loại phôi (VD: "1+(*)")
+    var kichThuocPhoi: String    // Cột 8: Kích thước phôi (VD: "150x150, 165x165")
+    var sanLuongPhoi: String     // Cột 9: Sản lượng phôi tấn (VD: "3,605", "41")
+    var hinhThucPhoi: String     // Cột 10: Hình thức (VD: "Phôi nóng / Phôi nguội")
+    var soOrder: String          // Cột 11: Số Order (VD: "1040004620")
+    var soBatch: String          // Cột 12: Số Batch (VD: "1111261117")
+    var ghiChu: String           // Cột 13: Ghi chú (VD: "(1) Nội địa")
+
+    init(
+        id: String = UUID().uuidString,
+        stt: Int = 1,
+        thoiGianDuKien: String = "",
+        kichCo: String = "",
+        macThep: String = "",
+        sanLuong: String = "",
+        coTinh: String = "",
+        macPhoi: String = "",
+        loaiPhoi: String = "1+(*)",
+        kichThuocPhoi: String = "150x150, 165x165",
+        sanLuongPhoi: String = "",
+        hinhThucPhoi: String = "Phôi nóng / Phôi nguội",
+        soOrder: String = "",
+        soBatch: String = "",
+        ghiChu: String = ""
+    ) {
+        self.id = id
+        self.stt = stt
+        self.thoiGianDuKien = thoiGianDuKien
+        self.kichCo = kichCo
+        self.macThep = macThep
+        self.sanLuong = sanLuong
+        self.coTinh = coTinh
+        self.macPhoi = macPhoi
+        self.loaiPhoi = loaiPhoi
+        self.kichThuocPhoi = kichThuocPhoi
+        self.sanLuongPhoi = sanLuongPhoi
+        self.hinhThucPhoi = hinhThucPhoi
+        self.soOrder = soOrder
+        self.soBatch = soBatch
+        self.ghiChu = ghiChu
+    }
+}
+
+struct DuLieuLenhSanXuat: Codable, Hashable, Identifiable {
+    var id: String = UUID().uuidString
+    var tieuDe: String = "LỆNH SẢN XUẤT"
+    var tenDonVi: String = "CÔNG TY CỔ PHẦN THÉP HÒA PHÁT DUNG QUẤT"
+    var soLenh: String = "01.10.2026/LSX-XC-NM.CT DAI"
+    var boPhan: String = "XC#1-XC-NM.CT DAI"
+    var thoiGianHieuLuc: String = "Từ 08h00 , ngày 01/10/2026 Đến 08h00 , ngày 01/11/2026"
+    var ngayBanHanh: String = "Quảng Ngãi, ngày 09 tháng 11 năm 2026"
+    var maAnhLuuTru: String = ""
+    var capNhatLuc: Date = Date()
+    var danhSachMuc: [MucDongLenhSX] = []
+    var ghiChuChanTrang: String = ""
+
+    var tongSanLuongSanPham: String {
+        var tong: Double = 0
+        for m in danhSachMuc {
+            let s = m.sanLuong.replacingOccurrences(of: ",", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if let d = Double(s) { tong += d }
+        }
+        let f = NumberFormatter()
+        f.numberStyle = .decimal
+        f.maximumFractionDigits = 3
+        return f.string(from: NSNumber(value: tong)) ?? "\(tong)"
+    }
+
+    var tongSanLuongPhoi: String {
+        var tong: Double = 0
+        for m in danhSachMuc {
+            let s = m.sanLuongPhoi.replacingOccurrences(of: ",", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if let d = Double(s) { tong += d }
+        }
+        let f = NumberFormatter()
+        f.numberStyle = .decimal
+        f.maximumFractionDigits = 3
+        return f.string(from: NSNumber(value: tong)) ?? "\(tong)"
+    }
+
+    static func mauHoaPhatDungQuat() -> DuLieuLenhSanXuat {
+        let cacMuc: [MucDongLenhSX] = [
+            MucDongLenhSX(
+                stt: 1,
+                thoiGianDuKien: "08h00 10/11 - 08h00 12/11",
+                kichCo: "D18",
+                macThep: "CB400V",
+                sanLuong: "3,500",
+                coTinh: "40.2025/YCCN - P.CN",
+                macPhoi: "CT5",
+                loaiPhoi: "1+(*)",
+                kichThuocPhoi: "150x150, 165x165",
+                sanLuongPhoi: "3,605",
+                hinhThucPhoi: "Phôi nóng / Phôi nguội",
+                soOrder: "1040004620",
+                soBatch: "1111261117",
+                ghiChu: "(1) Nội địa"
+            ),
+            MucDongLenhSX(
+                stt: 2,
+                thoiGianDuKien: "08h00 10/11 - 08h00 12/11",
+                kichCo: "D18",
+                macThep: "CB500V",
+                sanLuong: "3,500",
+                coTinh: "40.2025/YCCN - P.CN",
+                macPhoi: "CT5V",
+                loaiPhoi: "1+(*)",
+                kichThuocPhoi: "150x150, 165x165",
+                sanLuongPhoi: "3,605",
+                hinhThucPhoi: "Phôi nóng / Phôi nguội",
+                soOrder: "1040004621",
+                soBatch: "1111261118",
+                ghiChu: "(1) Nội địa"
+            ),
+            MucDongLenhSX(
+                stt: 3,
+                thoiGianDuKien: "08h00 10/11 - 08h00 12/11",
+                kichCo: "D16",
+                macThep: "CB400V",
+                sanLuong: "3,500",
+                coTinh: "40.2025/YCCN - P.CN",
+                macPhoi: "CT5",
+                loaiPhoi: "1+(*)",
+                kichThuocPhoi: "150x150, 165x165",
+                sanLuongPhoi: "3,605",
+                hinhThucPhoi: "Phôi nóng / Phôi nguội",
+                soOrder: "1040004617",
+                soBatch: "1111261114",
+                ghiChu: "(1) Nội địa"
+            ),
+            MucDongLenhSX(
+                stt: 4,
+                thoiGianDuKien: "08h00 12/11 - 08h00 15/11",
+                kichCo: "D16",
+                macThep: "CB500V",
+                sanLuong: "3,500",
+                coTinh: "40.2025/YCCN - P.CN",
+                macPhoi: "CT5V",
+                loaiPhoi: "1+(*)",
+                kichThuocPhoi: "150x150, 165x165",
+                sanLuongPhoi: "3,605",
+                hinhThucPhoi: "Phôi nóng / Phôi nguội",
+                soOrder: "1040004618",
+                soBatch: "1111261115",
+                ghiChu: "(1) Nội địa"
+            ),
+            MucDongLenhSX(
+                stt: 5,
+                thoiGianDuKien: "08h00 12/11 - 08h00 15/11",
+                kichCo: "D16",
+                macThep: "Gr40",
+                sanLuong: "3,500",
+                coTinh: "40.2025/YCCN - P.CN",
+                macPhoi: "B500B2/ CT5/ W 60 3/11 loại 1+2/ S60 3/11 loại 2",
+                loaiPhoi: "1+(*)",
+                kichThuocPhoi: "150x150, 165x165",
+                sanLuongPhoi: "3,605",
+                hinhThucPhoi: "Phôi nóng / Phôi nguội",
+                soOrder: "1040004615",
+                soBatch: "1111261112",
+                ghiChu: "(1) Nội địa"
+            ),
+            MucDongLenhSX(
+                stt: 6,
+                thoiGianDuKien: "08h00 12/11 - 08h00 15/11",
+                kichCo: "D16",
+                macThep: "Gr60 (L=12m)",
+                sanLuong: "40",
+                coTinh: "158.2026/YCTN-P.CNLT",
+                macPhoi: "Gr80-1",
+                loaiPhoi: "1+(*)",
+                kichThuocPhoi: "150x150, 165x165",
+                sanLuongPhoi: "41",
+                hinhThucPhoi: "Phôi nóng / Phôi nguội",
+                soOrder: "1040004616",
+                soBatch: "1111261113",
+                ghiChu: "YCTN: 158.2026/YCTN-P.CNLT"
+            )
+        ]
+
+        let gc = "• P.QLCL cấp danh mục mè phôi, thực hiện phân loại theo đơn trọng bó, đơn trọng mẫu kiểm tra. Kí hiệu: I = Mè loại 1. (*) = Mè loại 2 khuyết tật đúc... (1) Thép sản xuất nội địa. Đơn trọng sản xuất theo QĐ.10.2024 và YCCN: 40.2025/YCCN - P.CN."
+
+        return DuLieuLenhSanXuat(
+            tieuDe: "LỆNH SẢN XUẤT",
+            tenDonVi: "CÔNG TY CỔ PHẦN THÉP HÒA PHÁT DUNG QUẤT",
+            soLenh: "01.10.2026/LSX-XC-NM.CT DAI",
+            boPhan: "XC#1-XC-NM.CT DAI",
+            thoiGianHieuLuc: "Từ 08h00 , ngày 01/10/2026 Đến 08h00 , ngày 01/11/2026",
+            ngayBanHanh: "Quảng Ngãi, ngày 09 tháng 11 năm 2026",
+            maAnhLuuTru: "",
+            capNhatLuc: Date(),
+            danhSachMuc: cacMuc,
+            ghiChuChanTrang: gc
+        )
+    }
+}
+
 // MARK: - 1B. Mô hình Thực Đơn Theo Ca / Ngày (Chuẩn 11 cột: Cải thiện, TĐ1, TĐ2, Chiều/Tối, Ăn đêm, Sáng hôm sau, Ghi chú)
 
 struct MucThucDonNgay: Codable, Hashable, Identifiable {
@@ -577,6 +785,7 @@ struct BangXuongCan: Codable, Hashable, Identifiable {
 
 struct TrangThaiTab: Codable, Hashable {
     var xuongCan: Bool = true
+    var lenhSanXuat: Bool = true
     var calendar: Bool = true
     var thucDon: Bool = true
     var notes: Bool = true
@@ -586,6 +795,7 @@ struct TrangThaiTab: Codable, Hashable {
 
     init(
         xuongCan: Bool = true,
+        lenhSanXuat: Bool = true,
         calendar: Bool = true,
         thucDon: Bool = true,
         notes: Bool = true,
@@ -594,6 +804,7 @@ struct TrangThaiTab: Codable, Hashable {
         reminders: Bool = true
     ) {
         self.xuongCan = xuongCan
+        self.lenhSanXuat = lenhSanXuat
         self.calendar = calendar
         self.thucDon = thucDon
         self.notes = notes
@@ -603,12 +814,13 @@ struct TrangThaiTab: Codable, Hashable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case xuongCan, calendar, thucDon, notes, sheets, media, reminders
+        case xuongCan, lenhSanXuat, calendar, thucDon, notes, sheets, media, reminders
     }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.xuongCan = (try? c.decodeIfPresent(Bool.self, forKey: .xuongCan)) ?? true
+        self.lenhSanXuat = (try? c.decodeIfPresent(Bool.self, forKey: .lenhSanXuat)) ?? true
         self.calendar = (try? c.decodeIfPresent(Bool.self, forKey: .calendar)) ?? true
         self.thucDon = (try? c.decodeIfPresent(Bool.self, forKey: .thucDon)) ?? true
         self.notes = (try? c.decodeIfPresent(Bool.self, forKey: .notes)) ?? true
@@ -768,6 +980,7 @@ extension Notification.Name {
     static let duLieuDongBoXong = Notification.Name("DuLieuDongBoXong")
     static let xuongCanCapNhat = Notification.Name("XuongCanCapNhat")
     static let thucDonCapNhat = Notification.Name("ThucDonCapNhat")
+    static let lenhSanXuatCapNhat = Notification.Name("LenhSanXuatCapNhat")
     static let trangThaiDongBoThayDoi = Notification.Name("TrangThaiDongBoThayDoi")
 }
 
@@ -784,6 +997,7 @@ final class ThuMucDuLieu {
     let tepCaiDat: URL
     let tepXuongCan: URL
     let tepThucDon: URL
+    let tepLenhSanXuat: URL
 
     private let maHoa: JSONEncoder = {
         let bo = JSONEncoder()
@@ -815,6 +1029,7 @@ final class ThuMucDuLieu {
         tepCaiDat = thuMuc.appendingPathComponent("cai-dat.json")
         tepXuongCan = thuMuc.appendingPathComponent("xuong-can.json")
         tepThucDon = thuMuc.appendingPathComponent("thuc-don.json")
+        tepLenhSanXuat = thuMuc.appendingPathComponent("lenh-san-xuat.json")
 
         try? FileManager.default.createDirectory(at: thuMuc, withIntermediateDirectories: true)
         try? FileManager.default.createDirectory(at: thuMucAnhCache, withIntermediateDirectories: true)
@@ -850,6 +1065,7 @@ final class KhoDuLieu {
     private(set) var nhacNho: [SuKienNhacNho] = []
     private(set) var danhSachBangXuongCan: [BangXuongCan] = []
     private(set) var duLieuThucDon: DuLieuThucDon = DuLieuThucDon.duLieuMauThang11()
+    private(set) var duLieuLenhSX: DuLieuLenhSanXuat = DuLieuLenhSanXuat.mauHoaPhatDungQuat()
     var caiDat: CaiDatUngDung = CaiDatUngDung()
 
     var mauSac: BangMauChuDe {
@@ -909,6 +1125,13 @@ final class KhoDuLieu {
         } else {
             duLieuThucDon = DuLieuThucDon.duLieuMauThang11()
             tm.ghi(duLieuThucDon, vao: tm.tepThucDon)
+        }
+
+        if let lsx = tm.doc(DuLieuLenhSanXuat.self, tu: tm.tepLenhSanXuat) {
+            duLieuLenhSX = lsx
+        } else {
+            duLieuLenhSX = DuLieuLenhSanXuat.mauHoaPhatDungQuat()
+            tm.ghi(duLieuLenhSX, vao: tm.tepLenhSanXuat)
         }
     }
 
@@ -998,6 +1221,15 @@ final class KhoDuLieu {
         ThuMucDuLieu.dungChung.ghi(banLuu, vao: ThuMucDuLieu.dungChung.tepThucDon)
         TienIchLich.capNhatTatCaThongBaoThucDon()
         NotificationCenter.default.post(name: .thucDonCapNhat, object: nil)
+        if dongBoSupabase {
+            DichVuSupabase.dungChung.dongBoDuLieuTuDong()
+        }
+    }
+
+    func luuDuLieuLenhSX(_ moi: DuLieuLenhSanXuat, dongBoSupabase: Bool = true) {
+        duLieuLenhSX = moi
+        ThuMucDuLieu.dungChung.ghi(moi, vao: ThuMucDuLieu.dungChung.tepLenhSanXuat)
+        NotificationCenter.default.post(name: .lenhSanXuatCapNhat, object: nil)
         if dongBoSupabase {
             DichVuSupabase.dungChung.dongBoDuLieuTuDong()
         }

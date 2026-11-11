@@ -69,10 +69,17 @@ final class ManHinhGocTabBar: UITabBarController {
             danhSach.append(vc)
         }
 
-        // 2. Tab Lịch
+        // 2. Tab Lệnh sản xuất (Quét OCR ảnh / AI)
+        if tt.lenhSanXuat {
+            let vc = UINavigationController(rootViewController: ManHinhLenhSanXuat())
+            vc.tabBarItem = UITabBarItem(title: "Lệnh SX", image: UIImage(systemName: "doc.text.viewfinder"), tag: 1)
+            danhSach.append(vc)
+        }
+
+        // 3. Tab Lịch
         if tt.calendar {
             let vc = UINavigationController(rootViewController: ManHinhLich())
-            vc.tabBarItem = UITabBarItem(title: "Lịch", image: UIImage(systemName: "calendar"), tag: 1)
+            vc.tabBarItem = UITabBarItem(title: "Lịch", image: UIImage(systemName: "calendar"), tag: 2)
             danhSach.append(vc)
         }
 

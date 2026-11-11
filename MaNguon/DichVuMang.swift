@@ -667,8 +667,10 @@ final class DichVuSupabase {
         let remArr = (try? JSONSerialization.jsonObject(with: encoder.encode(kho.nhacNho))) ?? []
         let xuongCanArr = (try? JSONSerialization.jsonObject(with: encoder.encode(kho.danhSachBangXuongCan))) ?? []
         let thucDonObj = (try? JSONSerialization.jsonObject(with: encoder.encode(kho.duLieuThucDon))) ?? [:]
+        let lenhSXObj = (try? JSONSerialization.jsonObject(with: encoder.encode(kho.duLieuLenhSX))) ?? [:]
 
         let backupData: [String: Any] = [
+            "LENH_SAN_XUAT": lenhSXObj,
             "QUICK_NOTES": notesArr,
             "CALENDAR_NOTES": calDict,
             "USER_REMINDERS": remArr,
@@ -853,6 +855,10 @@ final class DichVuSupabase {
            let td = tm.giaiMaDuLieu(DuLieuThucDon.self, tu: d), !td.danhSachNgay.isEmpty {
             kho.luuDuLieuThucDon(td, dongBoSupabase: false)
         }
+        if let d = layDataJSON(tu: backup["LENH_SAN_XUAT"]),
+           let lsx = tm.giaiMaDuLieu(DuLieuLenhSanXuat.self, tu: d) {
+            kho.luuDuLieuLenhSX(lsx, dongBoSupabase: false)
+        }
 
         var cd = kho.caiDat
         if let menuNotif = backup["MENU_NOTIF_ENABLED"] as? Bool {
@@ -967,6 +973,99 @@ final class DichVuGemini {
                 DispatchQueue.main.async {
                     hoanThanh(.failure(NSError(domain: "Gemini", code: -2, userInfo: [NSLocalizedDescriptionKey: "Không nhận được nội dung từ Gemini."])))
                 }
+            }
+        }.resume()
+    }
+
+    func phanTichLenhSanXuat(anh: UIImage, hoanThanh: @escaping (Result<DuLieuLenhSanXuat, Error>) -> Void) {
+        guard let jpegData = anh.jpegData(compressionQuality: 0.8) else {
+            hoanThanh(.failure(NSError(domain: "Gemini", code: -1, userInfo: [NSLocalizedDescriptionKey: "Không thể nén ảnh JPEG."])))
+            return
+        }
+        let b64 = jpegData.base64EncodedString()
+        let prompt = """
+        Hãy phân tích ảnh Lệnh sản xuất thép và trích xuất thành JSON hợp lệ theo đúng cấu trúc:
+        {
+          "tieuDe": "LỆNH SẢN XUẤT",
+          "tenDonVi": "CÔNG TY CỔ PHẦN THÉP HÒA PHÁT DUNG QUẤT",
+          "soLenh": "01.10.2026/LSX-XC-NM.CT DAI",
+          "boPhan": "XC#1-XC-NM.CT DAI",
+          "thoiGianHieuLuc": "Từ 08h00 , ngày 01/10/2026 Đến 08h00 , ngày 01/11/2026",
+          "ngayBanHanh": "Quảng Ngãi, ngày 09 tháng 11 năm 2026",
+          "danhSachMuc": [
+            {
+              "stt": 1,
+              "thoiGianDuKien": "08h00 10/11 - 08h00 12/11",
+              "kichCo": "D18",
+              "macThep": "CB400V",
+              "sanLuong": "3,500",
+              "coTinh": "40.2025/YCCN - P.CN",
+              "macPhoi": "CT5",
+              "loaiPhoi": "1+(*)",
+              "kichThuocPhoi": "150x150, 165x165",
+              "sanLuongPhoi": "3,605",
+              "hinhThucPhoi": "Phôi nóng / Phôi nguội",
+              "soOrder": "1040004620",
+              "soBatch": "1111261117",
+              "ghiChu": "(1) Nội địa"
+            }
+          ]
+        }
+        Chỉ trả về JSON thuần trong cặp dấu ```json ... ```, không thêm lời chào.
+        """
+        let key = KhoDuLieu.dungChung.caiDat.geminiApiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else {
+            hoanThanh(.failure(NSError(domain: "Gemini", code: 401, userInfo: [NSLocalizedDescriptionKey: "Chưa có Gemini API Key. Hãy vào Cài đặt để nhập Key!"])))
+            return
+        }
+        guard let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=\(key)") else { return }
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body: [String: Any] = [
+            "contents": [
+                [
+                    "parts": [
+                        ["text": prompt],
+                        ["inline_data": ["mime_type": "image/jpeg", "data": b64]]
+                    ]
+                ]
+            ]
+        ]
+        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        URLSession.shared.dataTask(with: req) { data, _, error in
+            if let error {
+                DispatchQueue.main.async { hoanThanh(.failure(error)) }
+                return
+            }
+            guard let data,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let candidates = json["candidates"] as? [[String: Any]],
+                  let content = candidates.first?["content"] as? [String: Any],
+                  let parts = content["parts"] as? [[String: Any]],
+                  let text = parts.first?["text"] as? String else {
+                DispatchQueue.main.async {
+                    hoanThanh(.failure(NSError(domain: "Gemini", code: -2, userInfo: [NSLocalizedDescriptionKey: "Không nhận được nội dung từ Gemini."])))
+                }
+                return
+            }
+            var clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if clean.hasPrefix("```json") { clean = String(clean.dropFirst(7)) }
+            else if clean.hasPrefix("```") { clean = String(clean.dropFirst(3)) }
+            if clean.hasSuffix("```") { clean = String(clean.dropLast(3)) }
+            clean = clean.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            guard let jsonData = clean.data(using: .utf8),
+                  let duLieu = try? JSONDecoder().decode(DuLieuLenhSanXuat.self, from: jsonData) else {
+                DispatchQueue.main.async {
+                    hoanThanh(.failure(NSError(domain: "Gemini", code: -3, userInfo: [NSLocalizedDescriptionKey: "Cấu trúc phản hồi AI không đúng định dạng Lệnh SX."])))
+                }
+                return
+            }
+            DispatchQueue.main.async {
+                hoanThanh(.success(duLieu))
             }
         }.resume()
     }
