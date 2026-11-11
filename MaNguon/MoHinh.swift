@@ -141,20 +141,14 @@ struct MucAnhSheet: Codable, Hashable, Identifiable {
 
 struct MucDongLenhSX: Codable, Hashable, Identifiable {
     var id: String = UUID().uuidString
-    var stt: Int
-    var thoiGianDuKien: String    // Cột 1: Thời gian dự kiến sản xuất (VD: "08h00 10/11 - 08h00 12/11")
-    var kichCo: String           // Cột 2: Kích cỡ (VD: "D18", "D16")
-    var macThep: String          // Cột 3: Mác thép (VD: "CB400V", "CB500V", "Gr40", "Gr60")
-    var sanLuong: String         // Cột 4: Sản lượng tấn (VD: "3,500", "40")
-    var coTinh: String           // Cột 5: Cơ tính (VD: "40.2025/YCCN - P.CN")
-    var macPhoi: String          // Cột 6: Mác phôi (VD: "CT5", "CT5V", "Gr80-1")
-    var loaiPhoi: String         // Cột 7: Loại phôi (VD: "1+(*)")
-    var kichThuocPhoi: String    // Cột 8: Kích thước phôi (VD: "150x150, 165x165")
-    var sanLuongPhoi: String     // Cột 9: Sản lượng phôi tấn (VD: "3,605", "41")
-    var hinhThucPhoi: String     // Cột 10: Hình thức (VD: "Phôi nóng / Phôi nguội")
-    var soOrder: String          // Cột 11: Số Order (VD: "1040004620")
-    var soBatch: String          // Cột 12: Số Batch (VD: "1111261117")
-    var ghiChu: String           // Cột 13: Ghi chú (VD: "(1) Nội địa")
+    var stt: Int                     // Cột 1: TT (1, 2, 3...)
+    var thoiGianDuKien: String       // Cột 2: Thời gian dự kiến sản xuất (VD: "08h00 10/11 - 08h00 12/11")
+    var kichCo: String              // Cột 3: Kích cỡ (VD: "D18", "D16")
+    var macThep: String             // Cột 4: Mác thép (VD: "CB400V", "CB500V", "Gr40", "Gr60 (L=12m)")
+    var sanLuong: String            // Cột 5: Sản lượng (tấn) (VD: "3,500", "40")
+    var coTinh: String              // Cột 6: Cơ tính (VD: "40.2025/YCCN - P.CN", "158.2026/YCTN-P.CNLT")
+    var macPhoi: String             // Cột 7: Mác phôi cán (VD: "CT5", "CT5V", "B500B2...", "Gr80-1")
+    var soOrder: String             // Cột 8: Số Order (VD: "1040004620")
 
     init(
         id: String = UUID().uuidString,
@@ -165,13 +159,7 @@ struct MucDongLenhSX: Codable, Hashable, Identifiable {
         sanLuong: String = "",
         coTinh: String = "",
         macPhoi: String = "",
-        loaiPhoi: String = "1+(*)",
-        kichThuocPhoi: String = "150x150, 165x165",
-        sanLuongPhoi: String = "",
-        hinhThucPhoi: String = "Phôi nóng / Phôi nguội",
-        soOrder: String = "",
-        soBatch: String = "",
-        ghiChu: String = ""
+        soOrder: String = ""
     ) {
         self.id = id
         self.stt = stt
@@ -181,45 +169,20 @@ struct MucDongLenhSX: Codable, Hashable, Identifiable {
         self.sanLuong = sanLuong
         self.coTinh = coTinh
         self.macPhoi = macPhoi
-        self.loaiPhoi = loaiPhoi
-        self.kichThuocPhoi = kichThuocPhoi
-        self.sanLuongPhoi = sanLuongPhoi
-        self.hinhThucPhoi = hinhThucPhoi
         self.soOrder = soOrder
-        self.soBatch = soBatch
-        self.ghiChu = ghiChu
     }
 }
 
 struct DuLieuLenhSanXuat: Codable, Hashable, Identifiable {
     var id: String = UUID().uuidString
-    var tieuDe: String = "LỆNH SẢN XUẤT"
-    var tenDonVi: String = "CÔNG TY CỔ PHẦN THÉP HÒA PHÁT DUNG QUẤT"
-    var soLenh: String = "01.10.2026/LSX-XC-NM.CT DAI"
-    var boPhan: String = "XC#1-XC-NM.CT DAI"
-    var thoiGianHieuLuc: String = "Từ 08h00 , ngày 01/10/2026 Đến 08h00 , ngày 01/11/2026"
-    var ngayBanHanh: String = "Quảng Ngãi, ngày 09 tháng 11 năm 2026"
-    var maAnhLuuTru: String = ""
+    var tieuDe: String = "BẢNG LỆNH SẢN XUẤT"
     var capNhatLuc: Date = Date()
     var danhSachMuc: [MucDongLenhSX] = []
-    var ghiChuChanTrang: String = ""
 
-    var tongSanLuongSanPham: String {
+    var tongSanLuong: String {
         var tong: Double = 0
         for m in danhSachMuc {
             let s = m.sanLuong.replacingOccurrences(of: ",", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
-            if let d = Double(s) { tong += d }
-        }
-        let f = NumberFormatter()
-        f.numberStyle = .decimal
-        f.maximumFractionDigits = 3
-        return f.string(from: NSNumber(value: tong)) ?? "\(tong)"
-    }
-
-    var tongSanLuongPhoi: String {
-        var tong: Double = 0
-        for m in danhSachMuc {
-            let s = m.sanLuongPhoi.replacingOccurrences(of: ",", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
             if let d = Double(s) { tong += d }
         }
         let f = NumberFormatter()
@@ -238,13 +201,7 @@ struct DuLieuLenhSanXuat: Codable, Hashable, Identifiable {
                 sanLuong: "3,500",
                 coTinh: "40.2025/YCCN - P.CN",
                 macPhoi: "CT5",
-                loaiPhoi: "1+(*)",
-                kichThuocPhoi: "150x150, 165x165",
-                sanLuongPhoi: "3,605",
-                hinhThucPhoi: "Phôi nóng / Phôi nguội",
-                soOrder: "1040004620",
-                soBatch: "1111261117",
-                ghiChu: "(1) Nội địa"
+                soOrder: "1040004620"
             ),
             MucDongLenhSX(
                 stt: 2,
@@ -254,13 +211,7 @@ struct DuLieuLenhSanXuat: Codable, Hashable, Identifiable {
                 sanLuong: "3,500",
                 coTinh: "40.2025/YCCN - P.CN",
                 macPhoi: "CT5V",
-                loaiPhoi: "1+(*)",
-                kichThuocPhoi: "150x150, 165x165",
-                sanLuongPhoi: "3,605",
-                hinhThucPhoi: "Phôi nóng / Phôi nguội",
-                soOrder: "1040004621",
-                soBatch: "1111261118",
-                ghiChu: "(1) Nội địa"
+                soOrder: "1040004621"
             ),
             MucDongLenhSX(
                 stt: 3,
@@ -270,13 +221,7 @@ struct DuLieuLenhSanXuat: Codable, Hashable, Identifiable {
                 sanLuong: "3,500",
                 coTinh: "40.2025/YCCN - P.CN",
                 macPhoi: "CT5",
-                loaiPhoi: "1+(*)",
-                kichThuocPhoi: "150x150, 165x165",
-                sanLuongPhoi: "3,605",
-                hinhThucPhoi: "Phôi nóng / Phôi nguội",
-                soOrder: "1040004617",
-                soBatch: "1111261114",
-                ghiChu: "(1) Nội địa"
+                soOrder: "1040004617"
             ),
             MucDongLenhSX(
                 stt: 4,
@@ -286,13 +231,7 @@ struct DuLieuLenhSanXuat: Codable, Hashable, Identifiable {
                 sanLuong: "3,500",
                 coTinh: "40.2025/YCCN - P.CN",
                 macPhoi: "CT5V",
-                loaiPhoi: "1+(*)",
-                kichThuocPhoi: "150x150, 165x165",
-                sanLuongPhoi: "3,605",
-                hinhThucPhoi: "Phôi nóng / Phôi nguội",
-                soOrder: "1040004618",
-                soBatch: "1111261115",
-                ghiChu: "(1) Nội địa"
+                soOrder: "1040004618"
             ),
             MucDongLenhSX(
                 stt: 5,
@@ -302,13 +241,7 @@ struct DuLieuLenhSanXuat: Codable, Hashable, Identifiable {
                 sanLuong: "3,500",
                 coTinh: "40.2025/YCCN - P.CN",
                 macPhoi: "B500B2/ CT5/ W 60 3/11 loại 1+2/ S60 3/11 loại 2",
-                loaiPhoi: "1+(*)",
-                kichThuocPhoi: "150x150, 165x165",
-                sanLuongPhoi: "3,605",
-                hinhThucPhoi: "Phôi nóng / Phôi nguội",
-                soOrder: "1040004615",
-                soBatch: "1111261112",
-                ghiChu: "(1) Nội địa"
+                soOrder: "1040004615"
             ),
             MucDongLenhSX(
                 stt: 6,
@@ -318,410 +251,19 @@ struct DuLieuLenhSanXuat: Codable, Hashable, Identifiable {
                 sanLuong: "40",
                 coTinh: "158.2026/YCTN-P.CNLT",
                 macPhoi: "Gr80-1",
-                loaiPhoi: "1+(*)",
-                kichThuocPhoi: "150x150, 165x165",
-                sanLuongPhoi: "41",
-                hinhThucPhoi: "Phôi nóng / Phôi nguội",
-                soOrder: "1040004616",
-                soBatch: "1111261113",
-                ghiChu: "YCTN: 158.2026/YCTN-P.CNLT"
+                soOrder: "1040004616"
             )
         ]
-
-        let gc = "• P.QLCL cấp danh mục mè phôi, thực hiện phân loại theo đơn trọng bó, đơn trọng mẫu kiểm tra. Kí hiệu: I = Mè loại 1. (*) = Mè loại 2 khuyết tật đúc... (1) Thép sản xuất nội địa. Đơn trọng sản xuất theo QĐ.10.2024 và YCCN: 40.2025/YCCN - P.CN."
 
         return DuLieuLenhSanXuat(
-            tieuDe: "LỆNH SẢN XUẤT",
-            tenDonVi: "CÔNG TY CỔ PHẦN THÉP HÒA PHÁT DUNG QUẤT",
-            soLenh: "01.10.2026/LSX-XC-NM.CT DAI",
-            boPhan: "XC#1-XC-NM.CT DAI",
-            thoiGianHieuLuc: "Từ 08h00 , ngày 01/10/2026 Đến 08h00 , ngày 01/11/2026",
-            ngayBanHanh: "Quảng Ngãi, ngày 09 tháng 11 năm 2026",
-            maAnhLuuTru: "",
+            tieuDe: "BẢNG LỆNH SẢN XUẤT",
             capNhatLuc: Date(),
-            danhSachMuc: cacMuc,
-            ghiChuChanTrang: gc
+            danhSachMuc: cacMuc
         )
     }
 }
 
-// MARK: - 1B. Mô hình Thực Đơn Theo Ca / Ngày (Chuẩn 11 cột: Cải thiện, TĐ1, TĐ2, Chiều/Tối, Ăn đêm, Sáng hôm sau, Ghi chú)
-
-struct MucThucDonNgay: Codable, Hashable, Identifiable {
-    var id: String = UUID().uuidString
-    var ngayVaoCa: String       // Cột 1: Ngày vào ca (VD: "08/11/2026")
-    var khoaNgay: String        // Khóa chuẩn: "2026-11-08"
-    var ca: String              // Cột 2: Ca ("Ngày" hoặc "Đêm")
-    var truaCaiThien: String    // Cột 3: Trưa - Cải thiện
-    var td1MonChinh: String     // Cột 4: TĐ1 - Món chính
-    var td1MonPhu: String       // Cột 5: TĐ1 - Món phụ
-    var td2MonChinh: String     // Cột 6: TĐ2 - Món chính
-    var td2MonPhu: String       // Cột 7: TĐ2 - Món phụ
-    var chieuToi: String        // Cột 8: Chiều/Tối (1 thực đơn)
-    var anDem: String           // Cột 9: Ăn đêm (ca đêm)
-    var sangHomSau: String      // Cột 10: Sáng hôm sau
-    var ghiChu: String          // Cột 11: Ghi chú
-
-    init(
-        id: String = UUID().uuidString,
-        ngayVaoCa: String,
-        khoaNgay: String = "",
-        ca: String,
-        truaCaiThien: String = "",
-        td1MonChinh: String = "",
-        td1MonPhu: String = "",
-        td2MonChinh: String = "",
-        td2MonPhu: String = "",
-        chieuToi: String = "",
-        anDem: String = "",
-        sangHomSau: String = "",
-        ghiChu: String = ""
-    ) {
-        self.id = id
-        if let chuan = TienIchLich.chuanHoaNgayThucDon(ngayVaoCa) {
-            self.ngayVaoCa = chuan.hienThi
-            self.khoaNgay = khoaNgay.isEmpty ? chuan.khoa : khoaNgay
-        } else {
-            self.ngayVaoCa = ngayVaoCa
-            self.khoaNgay = khoaNgay
-        }
-        self.ca = ca
-        self.truaCaiThien = truaCaiThien
-        self.td1MonChinh = td1MonChinh
-        self.td1MonPhu = td1MonPhu
-        self.td2MonChinh = td2MonChinh
-        self.td2MonPhu = td2MonPhu
-        self.chieuToi = chieuToi
-        self.anDem = anDem
-        self.sangHomSau = sangHomSau
-        self.ghiChu = ghiChu
-    }
-
-    enum CodingKeys: String, CodingKey {
-        case id, ngayVaoCa, khoaNgay, ca, truaCaiThien
-        case td1MonChinh, td1MonPhu, td2MonChinh, td2MonPhu
-        case truaMonChinh, truaMonThuHai
-        case chieuToi, anDem, sangHomSau, ghiChu
-    }
-
-    init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.id = (try? c.decodeIfPresent(String.self, forKey: .id)) ?? UUID().uuidString
-        let rawNgay = (try? c.decodeIfPresent(String.self, forKey: .ngayVaoCa)) ?? ""
-        let rawKhoa = (try? c.decodeIfPresent(String.self, forKey: .khoaNgay)) ?? ""
-        if let chuan = TienIchLich.chuanHoaNgayThucDon(rawNgay) {
-            self.ngayVaoCa = chuan.hienThi
-            self.khoaNgay = rawKhoa.isEmpty ? chuan.khoa : rawKhoa
-        } else {
-            self.ngayVaoCa = rawNgay
-            self.khoaNgay = rawKhoa
-        }
-        self.ca = (try? c.decodeIfPresent(String.self, forKey: .ca)) ?? ""
-        self.truaCaiThien = (try? c.decodeIfPresent(String.self, forKey: .truaCaiThien)) ?? ""
-        let m1Chinh = (try? c.decodeIfPresent(String.self, forKey: .td1MonChinh)) ?? ""
-        let m1Cu = (try? c.decodeIfPresent(String.self, forKey: .truaMonChinh)) ?? ""
-        self.td1MonChinh = m1Chinh.isEmpty ? m1Cu : m1Chinh
-
-        let m1Phu = (try? c.decodeIfPresent(String.self, forKey: .td1MonPhu)) ?? ""
-        let m2Cu = (try? c.decodeIfPresent(String.self, forKey: .truaMonThuHai)) ?? ""
-        self.td1MonPhu = m1Phu.isEmpty ? m2Cu : m1Phu
-
-        self.td2MonChinh = (try? c.decodeIfPresent(String.self, forKey: .td2MonChinh)) ?? ""
-        self.td2MonPhu = (try? c.decodeIfPresent(String.self, forKey: .td2MonPhu)) ?? ""
-        self.chieuToi = (try? c.decodeIfPresent(String.self, forKey: .chieuToi)) ?? ""
-        self.anDem = (try? c.decodeIfPresent(String.self, forKey: .anDem)) ?? ""
-        self.sangHomSau = (try? c.decodeIfPresent(String.self, forKey: .sangHomSau)) ?? ""
-        self.ghiChu = (try? c.decodeIfPresent(String.self, forKey: .ghiChu)) ?? ""
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var c = encoder.container(keyedBy: CodingKeys.self)
-        try c.encode(id, forKey: .id)
-        try c.encode(ngayVaoCa, forKey: .ngayVaoCa)
-        try c.encode(khoaNgay, forKey: .khoaNgay)
-        try c.encode(ca, forKey: .ca)
-        try c.encode(truaCaiThien, forKey: .truaCaiThien)
-        try c.encode(td1MonChinh, forKey: .td1MonChinh)
-        try c.encode(td1MonPhu, forKey: .td1MonPhu)
-        try c.encode(td2MonChinh, forKey: .td2MonChinh)
-        try c.encode(td2MonPhu, forKey: .td2MonPhu)
-        try c.encode(chieuToi, forKey: .chieuToi)
-        try c.encode(anDem, forKey: .anDem)
-        try c.encode(sangHomSau, forKey: .sangHomSau)
-        try c.encode(ghiChu, forKey: .ghiChu)
-    }
-
-    var laCaDem: Bool {
-        let c = ca.folding(options: .diacriticInsensitive, locale: .current).lowercased()
-        if c.contains("dem") || c.contains("đêm") || c.contains("toi") { return true }
-        if c.contains("ngay") || c.contains("ngày") || c.contains("sang") { return false }
-        return (!anDem.isEmpty || !sangHomSau.isEmpty) && truaCaiThien.isEmpty && td1MonChinh.isEmpty && td2MonChinh.isEmpty
-    }
-
-    var laCaNgay: Bool {
-        let c = ca.folding(options: .diacriticInsensitive, locale: .current).lowercased()
-        if c.contains("ngay") || c.contains("ngày") || c.contains("sang") { return true }
-        if laCaDem { return false }
-        return !truaCaiThien.isEmpty || !td1MonChinh.isEmpty || !td1MonPhu.isEmpty || !td2MonChinh.isEmpty || !td2MonPhu.isEmpty || !chieuToi.isEmpty
-    }
-
-    var caChuan: String {
-        if laCaDem { return "dem" }
-        if laCaNgay { return "ngay" }
-        return "khac"
-    }
-
-    var chuoiThucDon1: String {
-        [td1MonChinh, td1MonPhu]
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-            .joined(separator: " + ")
-    }
-
-    var chuoiThucDon2: String {
-        [td2MonChinh, td2MonPhu]
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-            .joined(separator: " + ")
-    }
-
-    var tomTatBuaSang: String {
-        sangHomSau.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    var tomTatBuaTrua: String {
-        var cacDong: [String] = []
-        let ct = truaCaiThien.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !ct.isEmpty {
-            cacDong.append("🍱 Cải thiện: \(ct)")
-        }
-        let td1 = chuoiThucDon1
-        if !td1.isEmpty {
-            cacDong.append("🍛 TĐ1: \(td1)")
-        }
-        let td2 = chuoiThucDon2
-        if !td2.isEmpty {
-            cacDong.append("🍛 TĐ2: \(td2)")
-        }
-        return cacDong.joined(separator: "\n")
-    }
-
-    var tomTatBuaChieu: String {
-        chieuToi.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    var tomTatBuaDem: String {
-        anDem.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    var tomTatThongBao: String {
-        var cacDong: [String] = []
-        if laCaNgay {
-            let trua = tomTatBuaTrua
-            if !trua.isEmpty {
-                cacDong.append(trua)
-            }
-            let chieu = tomTatBuaChieu
-            if !chieu.isEmpty {
-                cacDong.append("🍲 Chiều/Tối: \(chieu)")
-            }
-        }
-        if laCaDem || (!anDem.isEmpty || !sangHomSau.isEmpty) {
-            let ad = tomTatBuaDem
-            if !ad.isEmpty {
-                cacDong.append("🍜 Ăn đêm: \(ad)")
-            }
-            let shs = tomTatBuaSang
-            if !shs.isEmpty {
-                cacDong.append("🥖 Sáng hôm sau: \(shs)")
-            }
-        }
-        let gc = ghiChu.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !gc.isEmpty && cacDong.isEmpty {
-            cacDong.append("📝 \(gc)")
-        }
-        return cacDong.isEmpty ? "Thực đơn ngày \(ngayVaoCa)" : cacDong.joined(separator: "\n")
-    }
-}
-
-struct QuyTacThucDon: Codable, Hashable, Identifiable {
-    var id: String = UUID().uuidString
-    var noiDung: String
-    var quyTac: String
-}
-
-struct DuLieuThucDon: Codable, Hashable {
-    var tenTepNguon: String
-    var tenSheetChinh: String
-    var capNhatLuc: Date
-    var danhSachNgay: [MucThucDonNgay]
-    var quyTacLoc: [QuyTacThucDon]
-
-    init(
-        tenTepNguon: String = "",
-        tenSheetChinh: String = "",
-        capNhatLuc: Date = Date(),
-        danhSachNgay: [MucThucDonNgay] = [],
-        quyTacLoc: [QuyTacThucDon] = []
-    ) {
-        self.tenTepNguon = tenTepNguon
-        self.tenSheetChinh = tenSheetChinh
-        self.capNhatLuc = capNhatLuc
-        self.danhSachNgay = danhSachNgay
-        self.quyTacLoc = quyTacLoc
-    }
-
-    static func duLieuMauThang11() -> DuLieuThucDon {
-        let ds: [MucThucDonNgay] = [
-            MucThucDonNgay(
-                ngayVaoCa: "08/11/2026",
-                ca: "Ngày",
-                truaCaiThien: "Bánh canh chả tôm / Sữa tươi Ba Vì",
-                td1MonChinh: "Bò nấu lagu",
-                td1MonPhu: "Đậu khuôn chiên sốt cà",
-                td2MonChinh: "Thịt kho trứng",
-                td2MonPhu: "Đậu khuôn chiên sốt cà",
-                chieuToi: "Cotlet rim; Chả cá rim tiêu; Cơm trắng; Cà tím xào mỡ hành; Canh dưa chua thịt bò"
-            ),
-            MucThucDonNgay(
-                ngayVaoCa: "09/11/2026",
-                ca: "Đêm",
-                anDem: "Hủ tiếu giò heo / Sữa tươi Vinamilk",
-                sangHomSau: "10/11: Bánh mì cà ri gà / Sữa tươi Ba Vì"
-            ),
-            MucThucDonNgay(
-                ngayVaoCa: "11/11/2026",
-                ca: "Ngày",
-                truaCaiThien: "Cơm chiên Dương Châu / Sữa tươi Ba Vì / Táo",
-                td1MonChinh: "Cá diêu hồng chiên mắm",
-                td1MonPhu: "Gỏi dưa leo chả lụa",
-                td2MonChinh: "Thịt kho tàu",
-                td2MonPhu: "Gỏi dưa leo chả lụa",
-                chieuToi: "Cotlet nướng mỡ hành; Trứng chiên hành; Cơm trắng; Cải thảo xào; Canh dưa chua thịt bò"
-            ),
-            MucThucDonNgay(
-                ngayVaoCa: "12/11/2026",
-                ca: "Đêm",
-                anDem: "Bánh mì bò áp chảo / Sữa Yomost",
-                sangHomSau: "13/11: Cháo gà kiến / Sữa tươi Vinamilk"
-            ),
-            MucThucDonNgay(
-                ngayVaoCa: "14/11/2026",
-                ca: "Ngày",
-                truaCaiThien: "Bún gà nấu ớt hiểm / Sữa Yomost",
-                td1MonChinh: "Tỏi gà rôty",
-                td1MonPhu: "Thịt xào dưa cải",
-                td2MonChinh: "Cá biển kho",
-                td2MonPhu: "Thịt xào dưa cải",
-                chieuToi: "Giò kho sả ớt; Ốc om chuối đậu; Cơm trắng; Bầu xào; Canh mồng tơi nấu cua/ghẹ"
-            ),
-            MucThucDonNgay(
-                ngayVaoCa: "15/11/2026",
-                ca: "Đêm",
-                anDem: "Mì tôm, tôm, trứng vịt lộn / Sữa tươi Vinamilk",
-                sangHomSau: "16/11: Bún giò heo / Sữa tươi Ba Vì"
-            ),
-            MucThucDonNgay(
-                ngayVaoCa: "17/11/2026",
-                ca: "Ngày",
-                truaCaiThien: "Mì tôm thịt bò, trứng ốp la / Sữa tươi Ba Vì",
-                td1MonChinh: "Tỏi gà chiên mắm",
-                td1MonPhu: "Trứng gà luộc",
-                td2MonChinh: "Tôm rim thịt",
-                td2MonPhu: "Trứng gà luộc",
-                chieuToi: "Cotlet nướng mỡ hành; Đậu khuôn chiên sốt cà; Cơm trắng; Bầu luộc; Canh chua chả cá"
-            ),
-            MucThucDonNgay(
-                ngayVaoCa: "18/11/2026",
-                ca: "Đêm",
-                anDem: "Mì quảng thập cẩm / Sữa tươi Kun",
-                sangHomSau: "19/11: Hủ tiếu thập cẩm / Sữa tươi Kun"
-            ),
-            MucThucDonNgay(
-                ngayVaoCa: "20/11/2026",
-                ca: "Ngày",
-                truaCaiThien: "Hủ tiếu bò / Sữa tươi Ba Vì",
-                td1MonChinh: "Sườn sốt chua ngọt",
-                td1MonPhu: "Thịt xào dưa cải",
-                td2MonChinh: "Cá biển chiên mắm",
-                td2MonPhu: "Thịt xào dưa cải",
-                chieuToi: "Bò xào hành cần; Cá cơm khô rang đậu phộng; Cơm trắng; Rau cải luộc; Canh khổ qua nấu thịt"
-            ),
-            MucThucDonNgay(
-                ngayVaoCa: "21/11/2026",
-                ca: "Đêm",
-                anDem: "Bánh canh chả cá / Sữa tươi Vinamilk",
-                sangHomSau: "22/11: Bánh mì thịt, xúc xích, trứng ốp la / Sữa Yomost"
-            ),
-            MucThucDonNgay(
-                ngayVaoCa: "23/11/2026",
-                ca: "Ngày",
-                truaCaiThien: "Cơm tấm / Sữa Yomost / Chuối",
-                td1MonChinh: "Cánh gà chiên mắm",
-                td1MonPhu: "Chả cá chiên sốt cà",
-                td2MonChinh: "Thịt rim mặn",
-                td2MonPhu: "Chả cá chiên sốt cà",
-                chieuToi: "Tôm rim; Cá biển kho; Cơm trắng; Bầu luộc; Canh bí đỏ nấu thịt"
-            ),
-            MucThucDonNgay(
-                ngayVaoCa: "24/11/2026",
-                ca: "Đêm",
-                anDem: "Mì quảng thập cẩm / Sữa tươi Kun",
-                sangHomSau: "25/11: Cháo lươn hoặc cháo ngao, trứng vịt lộn (tùy bếp) / Sữa tươi Vinamilk"
-            ),
-            MucThucDonNgay(
-                ngayVaoCa: "26/11/2026",
-                ca: "Ngày",
-                truaCaiThien: "Bún Thái hải sản / Sữa Yomost",
-                td1MonChinh: "Bò xào hành cần",
-                td1MonPhu: "Thịt viên chiên sốt cà",
-                td2MonChinh: "Cá biển kho tiêu",
-                td2MonPhu: "Thịt viên chiên sốt cà",
-                chieuToi: "Gà kho sả ớt; Thịt xào dưa cải; Cơm trắng; Mít xào lá lốt; Canh cải nấu thịt"
-            ),
-            MucThucDonNgay(
-                ngayVaoCa: "27/11/2026",
-                ca: "Đêm",
-                anDem: "Mì tôm thịt bò, trứng ốp la / Sữa chua Ba Vì và Chuối",
-                sangHomSau: "28/11: Bún măng vịt / Sữa tươi Ba Vì"
-            ),
-            MucThucDonNgay(
-                ngayVaoCa: "29/11/2026",
-                ca: "Ngày",
-                truaCaiThien: "Phở bò / Sữa tươi Vinamilk",
-                td1MonChinh: "Sườn kho sả",
-                td1MonPhu: "Trứng gà luộc",
-                td2MonChinh: "Cơm gà",
-                td2MonPhu: "Trứng gà luộc",
-                chieuToi: "Cá lóc chiên mắm xoài; Chả lụa xào nấm hành tây; Cơm trắng; Rau cải, giá luộc; Canh bí xanh nấu chả cá"
-            ),
-            MucThucDonNgay(
-                ngayVaoCa: "30/11/2026",
-                ca: "Đêm",
-                anDem: "Bún sườn chua / Sữa tươi Ba Vì",
-                sangHomSau: "01/12: Không có trong thực đơn tháng 11",
-                ghiChu: "Cần thực đơn tháng 12 để bổ sung bữa sáng sau ca đêm 30/11."
-            )
-        ]
-
-        let qt: [QuyTacThucDon] = [
-            QuyTacThucDon(noiDung: "Chu kỳ kíp A", quyTac: "Ngày → Đêm → Nghỉ, lặp lại từ 08/11/2026"),
-            QuyTacThucDon(noiDung: "Ca ngày", quyTac: "Ca ngày: bữa trưa gồm món cải thiện, Thực đơn 1 (món chính + món phụ), Thực đơn 2 (món chính + món phụ); bữa chiều chỉ có 1 thực đơn."),
-            QuyTacThucDon(noiDung: "Ca đêm", quyTac: "Ca đêm: lấy món ăn đêm ngày vào ca và món ăn sáng của ngày kế tiếp."),
-            QuyTacThucDon(noiDung: "Nguồn", quyTac: "Thực đơn tháng 11/2026 do Anh Hai cung cấp")
-        ]
-
-        return DuLieuThucDon(
-            tenTepNguon: "thuc_don_kip_A_thang_11_2026_da_kiem_tra.xlsx",
-            tenSheetChinh: "Kíp A tháng 11",
-            capNhatLuc: Date(),
-            danhSachNgay: ds,
-            quyTacLoc: qt
-        )
-    }
-}
-
-// MARK: - 2. Mô hình Xưởng Cán
+// MARK: - 2. Mô hình Xưởng Cán (Chỉ lưu siêu dữ liệu & ID ảnh Google Drive lên Supabase, KHÔNG lưu dữ liệu ảnh lên Supabase)
 
 enum LoaiCotXuongCan: String, Codable, CaseIterable {
     case chu = "text"

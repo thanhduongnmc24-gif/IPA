@@ -984,14 +984,9 @@ final class DichVuGemini {
         }
         let b64 = jpegData.base64EncodedString()
         let prompt = """
-        Hãy phân tích ảnh Lệnh sản xuất thép và trích xuất thành JSON hợp lệ theo đúng cấu trúc:
+        Hãy phân tích ảnh bảng Lệnh sản xuất thép và trích xuất đúng 8 cột sau thành JSON:
         {
-          "tieuDe": "LỆNH SẢN XUẤT",
-          "tenDonVi": "CÔNG TY CỔ PHẦN THÉP HÒA PHÁT DUNG QUẤT",
-          "soLenh": "01.10.2026/LSX-XC-NM.CT DAI",
-          "boPhan": "XC#1-XC-NM.CT DAI",
-          "thoiGianHieuLuc": "Từ 08h00 , ngày 01/10/2026 Đến 08h00 , ngày 01/11/2026",
-          "ngayBanHanh": "Quảng Ngãi, ngày 09 tháng 11 năm 2026",
+          "tieuDe": "BẢNG LỆNH SẢN XUẤT",
           "danhSachMuc": [
             {
               "stt": 1,
@@ -1001,16 +996,11 @@ final class DichVuGemini {
               "sanLuong": "3,500",
               "coTinh": "40.2025/YCCN - P.CN",
               "macPhoi": "CT5",
-              "loaiPhoi": "1+(*)",
-              "kichThuocPhoi": "150x150, 165x165",
-              "sanLuongPhoi": "3,605",
-              "hinhThucPhoi": "Phôi nóng / Phôi nguội",
-              "soOrder": "1040004620",
-              "soBatch": "1111261117",
-              "ghiChu": "(1) Nội địa"
+              "soOrder": "1040004620"
             }
           ]
         }
+        Lưu ý: Thời gian dự kiến sản xuất ở cột 2 thường được hợp nhất theo nhóm dòng (ví dụ 3 dòng đầu là 08h00 10/11 - 08h00 12/11, 3 dòng sau là 08h00 12/11 - 08h00 15/11), hãy gán đúng thời gian sản xuất cho từng dòng tương ứng.
         Chỉ trả về JSON thuần trong cặp dấu ```json ... ```, không thêm lời chào.
         """
         let key = KhoDuLieu.dungChung.caiDat.geminiApiKey.trimmingCharacters(in: .whitespacesAndNewlines)

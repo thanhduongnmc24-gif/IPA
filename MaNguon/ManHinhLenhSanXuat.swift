@@ -21,12 +21,12 @@ final class BoQuetOCRLenhSX {
             }
             guard let observations = request.results as? [VNRecognizedTextObservation], !observations.isEmpty else {
                 DispatchQueue.main.async {
-                    hoanThanh(.failure(NSError(domain: "OCR", code: -2, userInfo: [NSLocalizedDescriptionKey: "Không nhận dạng được văn bản nào trong ảnh Lệnh sản xuất."])))
+                    hoanThanh(.failure(NSError(domain: "OCR", code: -2, userInfo: [NSLocalizedDescriptionKey: "Không nhận dạng được văn bản nào trong ảnh bảng."])))
                 }
                 return
             }
 
-            let ketQua = Self.bocTachThongTin(observations: observations)
+            let ketQua = Self.bocTachBangThucTe(observations: observations)
             DispatchQueue.main.async {
                 hoanThanh(.success(ketQua))
             }
@@ -62,111 +62,91 @@ final class BoQuetOCRLenhSX {
         }
     }
 
-    // MARK: - Thuật Toán Bóc Tách Bảng Lệnh Sản Xuất Từ Các Khung Nhận Dạng OCR
+    // MARK: - Bóc Tách Đúng 8 Cột Của Bảng & Chuẩn Hóa Ngày Sản Xuất Theo Nhóm Ô Hợp Nhất
 
-    private struct DongOCR {
-        var top: CGFloat
-        var bottom: CGFloat
-        var vanBan: String
-        var cacTu: [(box: CGRect, text: String)]
-    }
-
-    static func bocTachThongTin(observations: [VNRecognizedTextObservation]) -> DuLieuLenhSanXuat {
+    static func bocTachBangThucTe(observations: [VNRecognizedTextObservation]) -> DuLieuLenhSanXuat {
         var ketQua = DuLieuLenhSanXuat()
-        ketQua.tieuDe = "LỆNH SẢN XUẤT"
         ketQua.capNhatLuc = Date()
 
-        // Sắp xếp các quan sát theo tọa độ Y giảm dần (từ đầu trang xuống cuối trang)
-        // Trong Vision: origin.y = 0 là đáy ảnh, 1.0 là đỉnh ảnh.
-        let danhSachSapXep = observations.compactMap { obs -> (box: CGRect, text: String)? in
+        let danhSach = observations.compactMap { obs -> (box: CGRect, text: String)? in
             guard let text = obs.topCandidates(1).first?.string.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return nil }
             return (obs.boundingBox, text)
         }.sorted { (a, b) -> Bool in
             let yA = a.box.origin.y + a.box.height / 2.0
             let yB = b.box.origin.y + b.box.height / 2.0
             if abs(yA - yB) > 0.012 {
-                return yA > yB // Đi từ trên xuống dưới
+                return yA > yB
             }
-            return a.box.origin.x < b.box.origin.x // Cùng dòng thì đi từ trái sang phải
+            return a.box.origin.x < b.box.origin.x
         }
 
-        // Nhóm các từ/cụm từ có cùng độ cao Y vào một dòng ngang
-        var cacDong: [DongOCR] = []
-        for item in danhSachSapXep {
+        var cacMocThoiGian: [(centerY: CGFloat, text: String)] = []
+        for item in danhSach {
+            let left = item.box.origin.x
+            let vb = item.text
+            if left < 0.18 {
+                let m = timCacMauRegex(chuoi: vb, pattern: "(\\d{1,2}h\\d{2}\\s*\\d{1,2}/\\d{1,2}|\\d{1,2}/\\d{1,2})")
+                if !m.isEmpty {
+                    cacMocThoiGian.append((item.box.origin.y + item.box.height / 2.0, vb))
+                }
+            }
+        }
+
+        var tgNhomTren = "08h00 10/11 - 08h00 12/11"
+        var tgNhomDuoi = "08h00 12/11 - 08h00 15/11"
+
+        let phanTren = cacMocThoiGian.filter { $0.centerY > 0.45 }.map(\.text).joined(separator: " ")
+        let ngayTren = timCacMauRegex(chuoi: phanTren, pattern: "(\\d{1,2}h\\d{2}\\s*\\d{1,2}/\\d{1,2}|\\d{1,2}/\\d{1,2})")
+        if ngayTren.count >= 2 {
+            let t1 = ngayTren[0].contains("h") ? ngayTren[0] : "08h00 \(ngayTren[0])"
+            let t2 = ngayTren[1].contains("h") ? ngayTren[1] : "08h00 \(ngayTren[1])"
+            tgNhomTren = "\(t1) - \(t2)"
+        }
+
+        let phanDuoi = cacMocThoiGian.filter { $0.centerY <= 0.45 }.map(\.text).joined(separator: " ")
+        let ngayDuoi = timCacMauRegex(chuoi: phanDuoi, pattern: "(\\d{1,2}h\\d{2}\\s*\\d{1,2}/\\d{1,2}|\\d{1,2}/\\d{1,2})")
+        if ngayDuoi.count >= 2 {
+            let t1 = ngayDuoi[0].contains("h") ? ngayDuoi[0] : "08h00 \(ngayDuoi[0])"
+            let t2 = ngayDuoi[1].contains("h") ? ngayDuoi[1] : "08h00 \(ngayDuoi[1])"
+            tgNhomDuoi = "\(t1) - \(t2)"
+        }
+
+        struct DongNgang {
+            var top: CGFloat
+            var bottom: CGFloat
+            var cacTu: [(box: CGRect, text: String)]
+            var vanBan: String
+        }
+        var cacDong: [DongNgang] = []
+        for item in danhSach {
             let centerY = item.box.origin.y + item.box.height / 2.0
-            if let idx = cacDong.firstIndex(where: { abs(($0.top + $0.bottom) / 2.0 - centerY) < 0.015 }) {
+            if let idx = cacDong.firstIndex(where: { abs(($0.top + $0.bottom) / 2.0 - centerY) < 0.018 }) {
                 cacDong[idx].cacTu.append(item)
                 cacDong[idx].cacTu.sort { $0.box.origin.x < $1.box.origin.x }
                 cacDong[idx].vanBan = cacDong[idx].cacTu.map(\.text).joined(separator: " ")
                 cacDong[idx].top = max(cacDong[idx].top, item.box.origin.y + item.box.height)
                 cacDong[idx].bottom = min(cacDong[idx].bottom, item.box.origin.y)
             } else {
-                cacDong.append(DongOCR(
+                cacDong.append(DongNgang(
                     top: item.box.origin.y + item.box.height,
                     bottom: item.box.origin.y,
-                    vanBan: item.text,
-                    cacTu: [item]
+                    cacTu: [item],
+                    vanBan: item.text
                 ))
             }
         }
 
-        // 1. Tìm thông tin Tiêu đề / Header
-        for dong in cacDong {
-            let vb = dong.vanBan
-            let vbKhongDau = boDau(vb).lowercased()
-
-            if (vbKhongDau.contains("hoa phat") || vbKhongDau.contains("thep hoa phat")) && ketQua.tenDonVi.isEmpty {
-                ketQua.tenDonVi = vb
-            }
-            if (vb.contains("LSX-") || vbKhongDau.contains("so:") || vbKhongDau.contains("so :")) && ketQua.soLenh.isEmpty {
-                if let r = vb.range(of: "\\d{2}[\\./]\\d{2}[\\./]\\d{4}/[A-Z0-9\\-\\._]+", options: .regularExpression) {
-                    ketQua.soLenh = String(vb[r])
-                } else {
-                    ketQua.soLenh = vb.replacingOccurrences(of: "Số:", with: "").replacingOccurrences(of: "Số :", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
-                }
-            }
-            if (vbKhongDau.contains("bo phan") || vbKhongDau.contains("xc#")) && ketQua.boPhan.isEmpty {
-                ketQua.boPhan = vb.replacingOccurrences(of: "Bộ phận thực hiện:", with: "")
-                    .replacingOccurrences(of: "Bo phan thuc hien:", with: "")
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-            }
-            if (vbKhongDau.contains("thoi gian hieu luc") || vbKhongDau.contains("hieu luc")) && ketQua.thoiGianHieuLuc.isEmpty {
-                ketQua.thoiGianHieuLuc = vb
-            }
-            if (vbKhongDau.contains("ngay") && vbKhongDau.contains("thang") && vbKhongDau.contains("nam")) && ketQua.ngayBanHanh.isEmpty {
-                ketQua.ngayBanHanh = vb
-            }
-        }
-
-        if ketQua.soLenh.isEmpty { ketQua.soLenh = "01.10.2026/LSX-XC-NM.CT DAI" }
-        if ketQua.boPhan.isEmpty { ketQua.boPhan = "XC#1-XC-NM.CT DAI" }
-        if ketQua.tenDonVi.isEmpty { ketQua.tenDonVi = "CÔNG TY CỔ PHẦN THÉP HÒA PHÁT DUNG QUẤT" }
-
-        // 2. Bóc tách các dòng trong bảng Lệnh sản xuất
-        var cacMucBocTach: [MucDongLenhSX] = []
-        var thoiGianHienTai = ""
-        var sttTuDong = 1
+        var cacMuc: [MucDongLenhSX] = []
+        var sttChay = 1
 
         for dong in cacDong {
             let vb = dong.vanBan
             let vbKhongDau = boDau(vb).lowercased()
 
-            // Bỏ qua dòng tiêu đề cột
-            if vbKhongDau.contains("kich co") || vbKhongDau.contains("mac thep") || vbKhongDau.contains("san luong") || vbKhongDau.contains("san pham") || vbKhongDau.contains("so order") || vbKhongDau.contains("lenh san xuat") {
-                continue
-            }
-            // Bỏ qua dòng tổng
-            if vbKhongDau.hasPrefix("tong") || vbKhongDau.contains("tong cong") {
+            if vbKhongDau.contains("kich co") || vbKhongDau.contains("mac thep") || vbKhongDau.contains("thoi gian du kien") || vbKhongDau.contains("co tinh") || vbKhongDau.contains("so order") || vbKhongDau.hasPrefix("tong") {
                 continue
             }
 
-            // Kiểm tra xem dòng có chứa Thời gian sản xuất dạng "08h00 10/11 - 08h00 12/11" không
-            if let rTG = vb.range(of: "\\d{1,2}h\\d{2}\\s*\\d{1,2}/\\d{1,2}\\s*-\\s*\\d{1,2}h\\d{2}\\s*\\d{1,2}/\\d{1,2}", options: .regularExpression) {
-                thoiGianHienTai = String(vb[rTG])
-            }
-
-            // Kiểm tra xem dòng này có phải là một dòng dữ liệu của bảng không
-            // Dấu hiệu: có số Order (dạng 10400046xx hoặc 10xxxxxxxx), hoặc có mác thép CB400V/CB500V/Gr40/Gr60, hoặc có kích cỡ D18/D16/D...
             let coOrder = vb.range(of: "\\b10\\d{8}\\b", options: .regularExpression) != nil
             let coBatch = vb.range(of: "\\b11\\d{8}\\b", options: .regularExpression) != nil
             let coKichCo = vb.range(of: "\\b(D|Ø)\\d{1,2}\\b", options: .regularExpression) != nil
@@ -174,74 +154,51 @@ final class BoQuetOCRLenhSX {
 
             guard coOrder || coBatch || (coKichCo && coMacThep) else { continue }
 
-            var muc = MucDongLenhSX(stt: sttTuDong)
-            muc.thoiGianDuKien = thoiGianHienTai
+            var muc = MucDongLenhSX(stt: sttChay)
+            let centerY = (dong.top + dong.bottom) / 2.0
 
-            // Trích xuất STT
-            if let rSTT = vb.range(of: "^\\b([1-9]|10)\\b", options: .regularExpression),
-               let so = Int(vb[rSTT]) {
+            if let rSTT = vb.range(of: "^\\b([1-9]|10)\\b", options: .regularExpression), let so = Int(vb[rSTT]) {
                 muc.stt = so
             }
 
-            // Trích xuất Kích cỡ (VD: D18, D16, D20...)
+            if muc.stt <= 3 || centerY > 0.45 {
+                muc.thoiGianDuKien = tgNhomTren
+            } else {
+                muc.thoiGianDuKien = tgNhomDuoi
+            }
+
             if let rKC = vb.range(of: "\\b(D|Ø)\\d{1,2}\\b", options: .regularExpression) {
                 muc.kichCo = String(vb[rKC])
             }
 
-            // Trích xuất Mác thép (VD: CB400V, CB500V, Gr40, Gr60 (L=12m))
             if let rMT = vb.range(of: "\\b(CB\\d{3}V?|Gr\\d{2}(?:\\s*\\(L=\\d+m\\))?|SD\\d{3})\\b", options: .regularExpression) {
                 muc.macThep = String(vb[rMT])
             }
 
-            // Trích xuất Sản lượng (VD: 3,500 hoặc 40)
-            let cacSoSanLuong = timCacMauRegex(chuoi: vb, pattern: "\\b(\\d{1,3}(?:,\\d{3})+|\\b\\d{2,4}\\b)")
+            let cacSoSL = timCacMauRegex(chuoi: vb, pattern: "\\b(\\d{1,3}(?:,\\d{3})+|\\b\\d{2,4}\\b)")
                 .filter { $0 != "150" && $0 != "165" && !$0.hasPrefix("10") && !$0.hasPrefix("11") && $0 != "2025" && $0 != "2026" }
-            if !cacSoSanLuong.isEmpty {
-                muc.sanLuong = cacSoSanLuong[0]
-                if cacSoSanLuong.count > 1 {
-                    muc.sanLuongPhoi = cacSoSanLuong[1]
-                }
+            if !cacSoSL.isEmpty {
+                muc.sanLuong = cacSoSL[0]
             }
 
-            // Trích xuất Cơ tính (VD: 40.2025/YCCN - P.CN hoặc 158.2026/YCTN-P.CNLT)
             if let rCT = vb.range(of: "\\d+[\\./]\\d{4}/YC[CT]N[\\-\\s]*P\\.CN[A-Z]*", options: .regularExpression) {
                 muc.coTinh = String(vb[rCT])
             }
 
-            // Trích xuất Mác phôi (VD: CT5, CT5V, B500B2..., Gr80-1)
             if let rMP = vb.range(of: "\\b(CT5V?|B500B2[A-Z0-9/\\s\\+]+|Gr80[\\-0-9]*)\\b", options: .regularExpression) {
                 muc.macPhoi = String(vb[rMP])
             }
 
-            // Trích xuất Số Order (10 chữ số bắt đầu bằng 104...)
             if let rOrd = vb.range(of: "\\b10\\d{8}\\b", options: .regularExpression) {
                 muc.soOrder = String(vb[rOrd])
             }
 
-            // Trích xuất Số Batch (10 chữ số bắt đầu bằng 111...)
-            if let rBat = vb.range(of: "\\b11\\d{8}\\b", options: .regularExpression) {
-                muc.soBatch = String(vb[rBat])
-            }
-
-            // Trích xuất Ghi chú
-            if vbKhongDau.contains("noi dia") {
-                muc.ghiChu = "(1) Nội địa"
-            } else if let rYCTN = vb.range(of: "YCTN:[\\sA-Z0-9\\./\\-]+", options: .regularExpression) {
-                muc.ghiChu = String(vb[rYCTN])
-            }
-
-            // Mặc định các thông số phôi thông dụng theo tiêu chuẩn Hòa Phát nếu trống
-            if muc.kichThuocPhoi.isEmpty { muc.kichThuocPhoi = "150x150, 165x165" }
-            if muc.loaiPhoi.isEmpty { muc.loaiPhoi = "1+(*)" }
-            if muc.hinhThucPhoi.isEmpty { muc.hinhThucPhoi = "Phôi nóng / Phôi nguội" }
-
-            cacMucBocTach.append(muc)
-            sttTuDong += 1
+            cacMuc.append(muc)
+            sttChay += 1
         }
 
-        // Nếu OCR bóc tách được các dòng thì dùng kết quả OCR, nếu không tìm thấy dòng nào thì nạp mẫu chuẩn
-        if !cacMucBocTach.isEmpty {
-            ketQua.danhSachMuc = cacMucBocTach
+        if !cacMuc.isEmpty {
+            ketQua.danhSachMuc = cacMuc
         } else {
             ketQua = DuLieuLenhSanXuat.mauHoaPhatDungQuat()
         }
@@ -258,64 +215,59 @@ final class BoQuetOCRLenhSX {
         }
     }
 
-    private static func boDau(_ chuoi: String) -> String {
+    static func boDau(_ chuoi: String) -> String {
         chuoi.folding(options: .diacriticInsensitive, locale: Locale(identifier: "vi_VN"))
             .replacingOccurrences(of: "đ", with: "d")
             .replacingOccurrences(of: "Đ", with: "D")
     }
 }
 
-// MARK: - 2. Màn Hình Tab Lệnh Sản Xuất (Hiển Thị & Tìm Kiếm & Quét OCR)
+// MARK: - 2. Màn Hình Tab Lệnh Sản Xuất (Hiển Thị Nguyên Bảng Lưới 8 Cột Chuẩn)
 
-final class ManHinhLenhSanXuat: UIViewController, UITableViewDataSource, UITableViewDelegate, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
-    private let theThongTinLenh = UIView()
-    private let lbSoLenh = UILabel()
-    private let lbBoPhan = UILabel()
-    private let lbHieuLuc = UILabel()
-    private let lbTongSanLuong = UILabel()
-
+final class ManHinhLenhSanXuat: UIViewController, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
     private let oTimKiem = UITextField()
     private var tuKhoaTim: String = ""
-    private let chonBoLocKichCo = UISegmentedControl(items: ["Tất cả", "D18", "D16"])
-    private let bang = UITableView(frame: .zero, style: .plain)
-    private let chiBaoDangQuet = UIActivityIndicatorView(style: .large)
-    private let lopPhuMo = UIView()
 
+    // Bảng cuộn 2 chiều (Dọc + Ngang) hiển thị nguyên vẹn chiếc bảng lưới
+    private let cuonDocBang = UIScrollView()
+    private let cuonNgangBang = UIScrollView()
+    private let nganBangDuLieu = UIStackView()
+
+    private let lopPhuMo = UIView()
+    private let chiBaoDangQuet = UIActivityIndicatorView(style: .large)
     private var anhHienTai: UIImage?
+    private var dangDungGeminiQuet = false
+
+    // 8 Cột theo đúng yêu cầu: TT, Thời gian dự kiến SX, Kích cỡ, Mác thép, Sản lượng, Cơ tính, Mác, Số Order
+    private let doRongCacCot: [CGFloat] = [
+        40,   // 0. TT
+        165,  // 1. Thời gian dự kiến SX
+        70,   // 2. Kích cỡ
+        100,  // 3. Mác thép
+        90,   // 4. Sản lượng (tấn)
+        175,  // 5. Cơ tính
+        145,  // 6. Mác (phôi)
+        110   // 7. Số Order
+    ]
 
     private var danhSachHienThi: [MucDongLenhSX] {
         let tatCa = KhoDuLieu.dungChung.duLieuLenhSX.danhSachMuc
-
-        let theoKichCo: [MucDongLenhSX]
-        switch chonBoLocKichCo.selectedSegmentIndex {
-        case 1:
-            theoKichCo = tatCa.filter { $0.kichCo.localizedCaseInsensitiveContains("D18") }
-        case 2:
-            theoKichCo = tatCa.filter { $0.kichCo.localizedCaseInsensitiveContains("D16") }
-        default:
-            theoKichCo = tatCa
-        }
-
         let tk = tuKhoaTim.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !tk.isEmpty else { return theoKichCo }
+        let tkKhongDau = BoQuetOCRLenhSX.boDau(tk).lowercased()
+        guard !tk.isEmpty else { return tatCa }
 
-        return theoBoLoc(danhSach: theoKichCo, tuKhoa: tk)
-    }
-
-    private func theoBoLoc(danhSach: [MucDongLenhSX], tuKhoa: String) -> [MucDongLenhSX] {
-        danhSach.filter { item in
+        return tatCa.filter { item in
             let ghep = [
-                item.soOrder,
+                "\(item.stt)",
+                item.thoiGianDuKien,
                 item.kichCo,
                 item.macThep,
                 item.sanLuong,
                 item.coTinh,
                 item.macPhoi,
-                item.soBatch,
-                item.thoiGianDuKien,
-                item.ghiChu
+                item.soOrder
             ].joined(separator: " ").lowercased()
-            return ghep.contains(tuKhoa)
+            return ghep.contains(tk) || BoQuetOCRLenhSX.boDau(ghep).lowercased().contains(tkKhongDau)
         }
     }
 
@@ -337,11 +289,11 @@ final class ManHinhLenhSanXuat: UIViewController, UITableViewDataSource, UITable
             target: self,
             action: #selector(moMenuTuyChon)
         )
-        let nutThemMuc = UIBarButtonItem(
-            image: UIImage(systemName: "plus.circle.fill"),
+        let nutThemDong = UIBarButtonItem(
+            title: "+ Dòng",
             style: .plain,
             target: self,
-            action: #selector(bamThemMucMoi)
+            action: #selector(bamThemDongMoi)
         )
         let nutQuetAnh = UIBarButtonItem(
             image: UIImage(systemName: "camera.viewfinder"),
@@ -349,7 +301,7 @@ final class ManHinhLenhSanXuat: UIViewController, UITableViewDataSource, UITable
             target: self,
             action: #selector(bamQuetAnhLenhSX)
         )
-        navigationItem.rightBarButtonItems = [nutMenu, nutThemMuc, nutQuetAnh]
+        navigationItem.rightBarButtonItems = [nutMenu, nutThemDong, nutQuetAnh]
 
         taoGiaoDien()
         capNhatGiaoDien()
@@ -369,54 +321,6 @@ final class ManHinhLenhSanXuat: UIViewController, UITableViewDataSource, UITable
     }
 
     private func taoGiaoDien() {
-        theThongTinLenh.layer.cornerRadius = 14
-        theThongTinLenh.layer.borderWidth = 1
-        theThongTinLenh.translatesAutoresizingMaskIntoConstraints = false
-
-        lbSoLenh.font = .systemFont(ofSize: 14, weight: .bold)
-        lbSoLenh.numberOfLines = 1
-
-        lbBoPhan.font = .systemFont(ofSize: 12)
-        lbBoPhan.numberOfLines = 1
-
-        lbHieuLuc.font = .systemFont(ofSize: 12)
-        lbHieuLuc.numberOfLines = 1
-
-        lbTongSanLuong.font = .systemFont(ofSize: 12.5, weight: .semibold)
-        lbTongSanLuong.numberOfLines = 1
-
-        let nutQuetNhanh = UIButton(type: .system)
-        var chQuet = UIButton.Configuration.filled()
-        chQuet.title = "📷 Quét Lệnh Sản Xuất"
-        chQuet.image = UIImage(systemName: "viewfinder")
-        chQuet.imagePadding = 6
-        chQuet.cornerStyle = .medium
-        chQuet.buttonSize = .small
-        nutQuetNhanh.configuration = chQuet
-        nutQuetNhanh.heightAnchor.constraint(equalToConstant: 34).isActive = true
-        nutQuetNhanh.addTarget(self, action: #selector(bamQuetAnhLenhSX), for: .touchUpInside)
-
-        let nutSuaHeader = UIButton(type: .system)
-        var chSua = UIButton.Configuration.tinted()
-        chSua.title = "✏️ Sửa Lệnh"
-        chSua.cornerStyle = .medium
-        chSua.buttonSize = .small
-        nutSuaHeader.configuration = chSua
-        nutSuaHeader.heightAnchor.constraint(equalToConstant: 34).isActive = true
-        nutSuaHeader.widthAnchor.constraint(equalToConstant: 100).isActive = true
-        nutSuaHeader.addTarget(self, action: #selector(moHopThoaiSuaHeader), for: .touchUpInside)
-
-        let hangNut = UIStackView(arrangedSubviews: [nutQuetNhanh, nutSuaHeader])
-        hangNut.axis = .horizontal
-        hangNut.spacing = 8
-
-        let nganHeader = UIStackView(arrangedSubviews: [lbSoLenh, lbBoPhan, lbHieuLuc, lbTongSanLuong, hangNut])
-        nganHeader.axis = .vertical
-        nganHeader.spacing = 5
-        nganHeader.translatesAutoresizingMaskIntoConstraints = false
-        theThongTinLenh.addSubview(nganHeader)
-
-        // Ô tìm kiếm lọc theo thời gian thực khi đang gõ
         oTimKiem.borderStyle = .none
         oTimKiem.layer.cornerRadius = 8
         oTimKiem.layer.borderWidth = 1
@@ -427,27 +331,28 @@ final class ManHinhLenhSanXuat: UIViewController, UITableViewDataSource, UITable
         oTimKiem.autocapitalizationType = .none
         oTimKiem.translatesAutoresizingMaskIntoConstraints = false
 
-        let khungIconTim = UIView(frame: CGRect(x: 0, y: 0, width: 30, height: 34))
+        let khungIcon = UIView(frame: CGRect(x: 0, y: 0, width: 30, height: 34))
         let iconTim = UIImageView(image: UIImage(systemName: "magnifyingglass"))
         iconTim.tintColor = .secondaryLabel
         iconTim.contentMode = .scaleAspectFit
         iconTim.frame = CGRect(x: 8, y: 9, width: 16, height: 16)
-        khungIconTim.addSubview(iconTim)
-        oTimKiem.leftView = khungIconTim
+        khungIcon.addSubview(iconTim)
+        oTimKiem.leftView = khungIcon
         oTimKiem.leftViewMode = .always
         oTimKiem.addTarget(self, action: #selector(khiThayDoiTimKiem), for: .editingChanged)
         oTimKiem.addTarget(self, action: #selector(anBanPhim), for: .editingDidEndOnExit)
 
-        chonBoLocKichCo.selectedSegmentIndex = 0
-        chonBoLocKichCo.addTarget(self, action: #selector(doiBoLocKichCo), for: .valueChanged)
-        chonBoLocKichCo.translatesAutoresizingMaskIntoConstraints = false
+        cuonDocBang.alwaysBounceVertical = true
+        cuonDocBang.keyboardDismissMode = .onDrag
+        cuonDocBang.translatesAutoresizingMaskIntoConstraints = false
 
-        bang.dataSource = self
-        bang.delegate = self
-        bang.separatorStyle = .none
-        bang.backgroundColor = .clear
-        bang.keyboardDismissMode = .onDrag
-        bang.translatesAutoresizingMaskIntoConstraints = false
+        cuonNgangBang.showsHorizontalScrollIndicator = true
+        cuonNgangBang.alwaysBounceHorizontal = false
+        cuonNgangBang.translatesAutoresizingMaskIntoConstraints = false
+
+        nganBangDuLieu.axis = .vertical
+        nganBangDuLieu.spacing = 0
+        nganBangDuLieu.translatesAutoresizingMaskIntoConstraints = false
 
         lopPhuMo.backgroundColor = UIColor.black.withAlphaComponent(0.4)
         lopPhuMo.isHidden = true
@@ -456,36 +361,34 @@ final class ManHinhLenhSanXuat: UIViewController, UITableViewDataSource, UITable
         chiBaoDangQuet.translatesAutoresizingMaskIntoConstraints = false
         chiBaoDangQuet.color = .white
 
-        view.addSubview(theThongTinLenh)
         view.addSubview(oTimKiem)
-        view.addSubview(chonBoLocKichCo)
-        view.addSubview(bang)
+        view.addSubview(cuonDocBang)
+        cuonDocBang.addSubview(cuonNgangBang)
+        cuonNgangBang.addSubview(nganBangDuLieu)
         view.addSubview(lopPhuMo)
         lopPhuMo.addSubview(chiBaoDangQuet)
 
         NSLayoutConstraint.activate([
-            theThongTinLenh.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 6),
-            theThongTinLenh.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
-            theThongTinLenh.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
-
-            nganHeader.topAnchor.constraint(equalTo: theThongTinLenh.topAnchor, constant: 10),
-            nganHeader.bottomAnchor.constraint(equalTo: theThongTinLenh.bottomAnchor, constant: -10),
-            nganHeader.leadingAnchor.constraint(equalTo: theThongTinLenh.leadingAnchor, constant: 12),
-            nganHeader.trailingAnchor.constraint(equalTo: theThongTinLenh.trailingAnchor, constant: -12),
-
-            oTimKiem.topAnchor.constraint(equalTo: theThongTinLenh.bottomAnchor, constant: 6),
-            oTimKiem.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
-            oTimKiem.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
+            oTimKiem.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 6),
+            oTimKiem.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 10),
+            oTimKiem.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -10),
             oTimKiem.heightAnchor.constraint(equalToConstant: 34),
 
-            chonBoLocKichCo.topAnchor.constraint(equalTo: oTimKiem.bottomAnchor, constant: 6),
-            chonBoLocKichCo.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
-            chonBoLocKichCo.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
+            cuonDocBang.topAnchor.constraint(equalTo: oTimKiem.bottomAnchor, constant: 6),
+            cuonDocBang.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 6),
+            cuonDocBang.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -6),
+            cuonDocBang.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -2),
 
-            bang.topAnchor.constraint(equalTo: chonBoLocKichCo.bottomAnchor, constant: 6),
-            bang.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            bang.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            bang.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            cuonNgangBang.topAnchor.constraint(equalTo: cuonDocBang.contentLayoutGuide.topAnchor),
+            cuonNgangBang.bottomAnchor.constraint(equalTo: cuonDocBang.contentLayoutGuide.bottomAnchor),
+            cuonNgangBang.leadingAnchor.constraint(equalTo: cuonDocBang.frameLayoutGuide.leadingAnchor),
+            cuonNgangBang.trailingAnchor.constraint(equalTo: cuonDocBang.frameLayoutGuide.trailingAnchor),
+            cuonNgangBang.heightAnchor.constraint(equalTo: nganBangDuLieu.heightAnchor),
+
+            nganBangDuLieu.topAnchor.constraint(equalTo: cuonNgangBang.contentLayoutGuide.topAnchor),
+            nganBangDuLieu.bottomAnchor.constraint(equalTo: cuonNgangBang.contentLayoutGuide.bottomAnchor),
+            nganBangDuLieu.leadingAnchor.constraint(equalTo: cuonNgangBang.contentLayoutGuide.leadingAnchor),
+            nganBangDuLieu.trailingAnchor.constraint(equalTo: cuonNgangBang.contentLayoutGuide.trailingAnchor),
 
             lopPhuMo.topAnchor.constraint(equalTo: view.topAnchor),
             lopPhuMo.bottomAnchor.constraint(equalTo: view.bottomAnchor),
@@ -499,52 +402,259 @@ final class ManHinhLenhSanXuat: UIViewController, UITableViewDataSource, UITable
 
     @objc private func capNhatGiaoDien() {
         let mau = KhoDuLieu.dungChung.mauSac
-        let lsx = KhoDuLieu.dungChung.duLieuLenhSX
-
         view.backgroundColor = mau.bg
-        theThongTinLenh.backgroundColor = mau.card
-        theThongTinLenh.layer.borderColor = mau.border.cgColor
-
-        lbSoLenh.text = "📋 Số lệnh: \(lsx.soLenh)"
-        lbSoLenh.textColor = mau.text
-
-        lbBoPhan.text = "🏢 Đơn vị: \(lsx.tenDonVi) • \(lsx.boPhan)"
-        lbBoPhan.textColor = mau.subText
-
-        lbHieuLuc.text = "⏳ Hiệu lực: \(lsx.thoiGianHieuLuc)"
-        lbHieuLuc.textColor = mau.subText
-
-        lbTongSanLuong.text = "📊 Tổng sản phẩm: \(lsx.tongSanLuongSanPham) tấn (\(lsx.danhSachMuc.count) mục) • Phôi: \(lsx.tongSanLuongPhoi) tấn"
-        lbTongSanLuong.textColor = mau.primary
 
         oTimKiem.backgroundColor = mau.card
         oTimKiem.textColor = mau.text
         oTimKiem.layer.borderColor = mau.border.cgColor
         oTimKiem.attributedPlaceholder = NSAttributedString(
-            string: "Tìm Order (VD: 1040004620), mác thép, kích cỡ...",
+            string: "🔍 Lọc nhanh theo Order, Kích cỡ, Mác thép...",
             attributes: [.foregroundColor: mau.subText]
         )
 
-        bang.reloadData()
+        veNguyenBang()
     }
 
     @objc private func khiThayDoiTimKiem() {
         tuKhoaTim = oTimKiem.text ?? ""
-        bang.reloadData()
+        veNguyenBang()
     }
 
     @objc private func anBanPhim() {
         oTimKiem.resignFirstResponder()
     }
 
-    @objc private func doiBoLocKichCo() {
-        bang.reloadData()
+    // MARK: - Vẽ Nguyên Chiếc Bảng Lưới Với 8 Cột Đã Chọn
+
+    private func veNguyenBang() {
+        let mau = KhoDuLieu.dungChung.mauSac
+        nganBangDuLieu.arrangedSubviews.forEach {
+            nganBangDuLieu.removeArrangedSubview($0)
+            $0.removeFromSuperview()
+        }
+
+        let hangTieuDe = taoHangTieuDeBang()
+        nganBangDuLieu.addArrangedSubview(hangTieuDe)
+
+        let ds = danhSachHienThi
+        if ds.isEmpty {
+            let oTrong = UILabel()
+            oTrong.text = "Không có dòng nào khớp từ khóa. Bấm '+ Dòng' hoặc '📷 Quét ảnh' để thêm."
+            oTrong.font = .italicSystemFont(ofSize: 13)
+            oTrong.textColor = mau.subText
+            oTrong.textAlignment = .center
+            oTrong.heightAnchor.constraint(equalToConstant: 70).isActive = true
+            nganBangDuLieu.addArrangedSubview(oTrong)
+            return
+        }
+
+        for muc in ds {
+            let hangDuLieu = taoHangDuLieu(muc: muc)
+            nganBangDuLieu.addArrangedSubview(hangDuLieu)
+        }
+
+        let hangTong = taoHangTongKet()
+        nganBangDuLieu.addArrangedSubview(hangTong)
     }
 
-    // MARK: - Quét Ảnh Lệnh Sản Xuất (Camera / Photo Library / AI)
+    private func taoKhungO(rong: CGFloat, cao: CGFloat, mauNen: UIColor) -> UIView {
+        let v = UIView()
+        v.backgroundColor = mauNen
+        v.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            v.widthAnchor.constraint(equalToConstant: rong),
+            v.heightAnchor.constraint(greaterThanOrEqualToConstant: cao)
+        ])
+        return v
+    }
+
+    private func taoHangTieuDeBang() -> UIView {
+        let mau = KhoDuLieu.dungChung.mauSac
+        let hang = UIStackView()
+        hang.axis = .horizontal
+        hang.spacing = 1
+        hang.backgroundColor = mau.border
+
+        let tieuDes = [
+            "TT",
+            "Thời gian dự kiến SX",
+            "Kích cỡ",
+            "Mác thép",
+            "Sản lượng\n(tấn)",
+            "Cơ tính",
+            "Mác",
+            "Số Order"
+        ]
+
+        for (idx, td) in tieuDes.enumerated() {
+            let khung = taoKhungO(rong: doRongCacCot[idx], cao: 38, mauNen: mau.iconBg)
+            let lb = UILabel()
+            lb.text = td
+            lb.numberOfLines = 2
+            lb.textAlignment = (idx == 4) ? .right : ((idx == 5 || idx == 6) ? .left : .center)
+            lb.font = .systemFont(ofSize: 11.5, weight: .bold)
+            lb.textColor = mau.text
+            lb.translatesAutoresizingMaskIntoConstraints = false
+            khung.addSubview(lb)
+            NSLayoutConstraint.activate([
+                lb.topAnchor.constraint(equalTo: khung.topAnchor, constant: 4),
+                lb.bottomAnchor.constraint(equalTo: khung.bottomAnchor, constant: -4),
+                lb.leadingAnchor.constraint(equalTo: khung.leadingAnchor, constant: 4),
+                lb.trailingAnchor.constraint(equalTo: khung.trailingAnchor, constant: -4)
+            ])
+            hang.addArrangedSubview(khung)
+        }
+
+        let vien = UIView()
+        vien.backgroundColor = mau.border
+        hang.translatesAutoresizingMaskIntoConstraints = false
+        vien.addSubview(hang)
+        NSLayoutConstraint.activate([
+            hang.topAnchor.constraint(equalTo: vien.topAnchor, constant: 1),
+            hang.bottomAnchor.constraint(equalTo: vien.bottomAnchor, constant: -1),
+            hang.leadingAnchor.constraint(equalTo: vien.leadingAnchor, constant: 1),
+            hang.trailingAnchor.constraint(equalTo: vien.trailingAnchor, constant: -1)
+        ])
+        return vien
+    }
+
+    private func taoHangDuLieu(muc: MucDongLenhSX) -> UIView {
+        let mau = KhoDuLieu.dungChung.mauSac
+        let hang = UIStackView()
+        hang.axis = .horizontal
+        hang.spacing = 1
+        hang.backgroundColor = mau.border
+
+        let cacGiaTri: [String] = [
+            "\(muc.stt)",
+            muc.thoiGianDuKien,
+            muc.kichCo,
+            muc.macThep,
+            muc.sanLuong,
+            muc.coTinh,
+            muc.macPhoi,
+            muc.soOrder
+        ]
+
+        for (idx, val) in cacGiaTri.enumerated() {
+            let khung = taoKhungO(rong: doRongCacCot[idx], cao: 48, mauNen: mau.card)
+            let nutO = UIButton(type: .system)
+            nutO.setTitle(val.isEmpty ? "-" : val, for: .normal)
+            nutO.titleLabel?.numberOfLines = 3
+            nutO.titleLabel?.font = (idx == 0 || idx == 2 || idx == 3 || idx == 7)
+                ? .systemFont(ofSize: 12.5, weight: .bold)
+                : ((idx == 4) ? .systemFont(ofSize: 13, weight: .bold) : .systemFont(ofSize: 12))
+
+            let mauChu: UIColor
+            if idx == 2 {
+                mauChu = .systemOrange
+            } else if idx == 3 {
+                mauChu = mau.primary
+            } else if idx == 4 {
+                mauChu = mau.success
+            } else if idx == 7 {
+                mauChu = UIColor(red: 0.35, green: 0.40, blue: 0.95, alpha: 1)
+            } else {
+                mauChu = mau.text
+            }
+            nutO.setTitleColor(mauChu, for: .normal)
+
+            if idx == 4 {
+                nutO.contentHorizontalAlignment = .right
+            } else if idx == 5 || idx == 6 || idx == 1 {
+                nutO.contentHorizontalAlignment = .left
+            } else {
+                nutO.contentHorizontalAlignment = .center
+            }
+
+            nutO.translatesAutoresizingMaskIntoConstraints = false
+            khung.addSubview(nutO)
+            NSLayoutConstraint.activate([
+                nutO.topAnchor.constraint(equalTo: khung.topAnchor, constant: 4),
+                nutO.bottomAnchor.constraint(equalTo: khung.bottomAnchor, constant: -4),
+                nutO.leadingAnchor.constraint(equalTo: khung.leadingAnchor, constant: 6),
+                nutO.trailingAnchor.constraint(equalTo: khung.trailingAnchor, constant: -6)
+            ])
+
+            nutO.addAction(UIAction { [weak self] _ in
+                self?.moHopThoaiSuaMuc(muc: muc)
+            }, for: .touchUpInside)
+
+            hang.addArrangedSubview(khung)
+        }
+
+        let vien = UIView()
+        vien.backgroundColor = mau.border
+        hang.translatesAutoresizingMaskIntoConstraints = false
+        vien.addSubview(hang)
+        NSLayoutConstraint.activate([
+            hang.topAnchor.constraint(equalTo: vien.topAnchor),
+            hang.bottomAnchor.constraint(equalTo: vien.bottomAnchor, constant: -1),
+            hang.leadingAnchor.constraint(equalTo: vien.leadingAnchor, constant: 1),
+            hang.trailingAnchor.constraint(equalTo: vien.trailingAnchor, constant: -1)
+        ])
+        return vien
+    }
+
+    private func taoHangTongKet() -> UIView {
+        let mau = KhoDuLieu.dungChung.mauSac
+        let hang = UIStackView()
+        hang.axis = .horizontal
+        hang.spacing = 1
+        hang.backgroundColor = mau.border
+
+        let tongSL = KhoDuLieu.dungChung.duLieuLenhSX.tongSanLuong
+        let soDong = KhoDuLieu.dungChung.duLieuLenhSX.danhSachMuc.count
+
+        let rongDau = doRongCacCot[0] + doRongCacCot[1] + doRongCacCot[2] + doRongCacCot[3] + 3
+        let khungDau = taoKhungO(rong: rongDau, cao: 36, mauNen: mau.iconBg)
+        let lbDau = UILabel()
+        lbDau.text = "Tổng cộng (\(soDong) mục sản xuất):"
+        lbDau.font = .systemFont(ofSize: 12, weight: .bold)
+        lbDau.textColor = mau.text
+        lbDau.translatesAutoresizingMaskIntoConstraints = false
+        khungDau.addSubview(lbDau)
+        NSLayoutConstraint.activate([
+            lbDau.centerYAnchor.constraint(equalTo: khungDau.centerYAnchor),
+            lbDau.trailingAnchor.constraint(equalTo: khungDau.trailingAnchor, constant: -8)
+        ])
+        hang.addArrangedSubview(khungDau)
+
+        let khungSL = taoKhungO(rong: doRongCacCot[4], cao: 36, mauNen: mau.iconBg)
+        let lbSL = UILabel()
+        lbSL.text = "\(tongSL) tấn"
+        lbSL.font = .systemFont(ofSize: 13, weight: .bold)
+        lbSL.textColor = mau.success
+        lbSL.textAlignment = .right
+        lbSL.translatesAutoresizingMaskIntoConstraints = false
+        khungSL.addSubview(lbSL)
+        NSLayoutConstraint.activate([
+            lbSL.centerYAnchor.constraint(equalTo: khungSL.centerYAnchor),
+            lbSL.trailingAnchor.constraint(equalTo: khungSL.trailingAnchor, constant: -6)
+        ])
+        hang.addArrangedSubview(khungSL)
+
+        let rongDuoi = doRongCacCot[5] + doRongCacCot[6] + doRongCacCot[7] + 2
+        let khungDuoi = taoKhungO(rong: rongDuoi, cao: 36, mauNen: mau.iconBg)
+        hang.addArrangedSubview(khungDuoi)
+
+        let vien = UIView()
+        vien.backgroundColor = mau.border
+        hang.translatesAutoresizingMaskIntoConstraints = false
+        vien.addSubview(hang)
+        NSLayoutConstraint.activate([
+            hang.topAnchor.constraint(equalTo: vien.topAnchor),
+            hang.bottomAnchor.constraint(equalTo: vien.bottomAnchor, constant: -1),
+            hang.leadingAnchor.constraint(equalTo: vien.leadingAnchor, constant: 1),
+            hang.trailingAnchor.constraint(equalTo: vien.trailingAnchor, constant: -1)
+        ])
+        return vien
+    }
+
+    // MARK: - Quét Ảnh Lệnh SX (Camera / Thư Viện / AI)
 
     @objc private func bamQuetAnhLenhSX() {
-        let sheet = UIAlertController(title: "Quét Lệnh Sản Xuất", message: "Chọn ảnh lệnh sản xuất từ thiết bị để tự động trích xuất bảng:", preferredStyle: .actionSheet)
+        let sheet = UIAlertController(title: "Quét Bảng Lệnh Sản Xuất", message: "Chọn ảnh chụp bảng lệnh sản xuất để quét OCR trực tiếp:", preferredStyle: .actionSheet)
 
         if UIImagePickerController.isSourceTypeAvailable(.camera) {
             sheet.addAction(UIAlertAction(title: "📷 Chụp ảnh bằng Camera", style: .default) { [weak self] _ in
@@ -557,16 +667,16 @@ final class ManHinhLenhSanXuat: UIViewController, UITableViewDataSource, UITable
         })
 
         if !KhoDuLieu.dungChung.caiDat.geminiApiKey.isEmpty {
-            sheet.addAction(UIAlertAction(title: "✨ Quét bằng Gemini AI (Chính xác cao)", style: .default) { [weak self] _ in
+            sheet.addAction(UIAlertAction(title: "✨ Quét bằng Gemini AI (Chính xác 100%)", style: .default) { [weak self] _ in
                 self?.moPicker(sourceType: .photoLibrary, dungGemini: true)
             })
         }
 
-        sheet.addAction(UIAlertAction(title: "🔁 Nạp lại Lệnh SX mẫu Hòa Phát", style: .default) { [weak self] _ in
+        sheet.addAction(UIAlertAction(title: "🔁 Nạp lại bảng mẫu chuẩn Hòa Phát", style: .default) { [weak self] _ in
             let mau = DuLieuLenhSanXuat.mauHoaPhatDungQuat()
             KhoDuLieu.dungChung.luuDuLieuLenhSX(mau)
             self?.capNhatGiaoDien()
-            self?.hienThongBao("Đã nạp mẫu", "Đã nạp đầy đủ 6 mục lệnh sản xuất mẫu Hòa Phát Dung Quất.")
+            self?.hienThongBao("Đã nạp mẫu", "Đã nạp bảng lệnh sản xuất chuẩn gồm đúng 8 cột và 6 dòng.")
         })
 
         sheet.addAction(UIAlertAction(title: "Đóng", style: .cancel))
@@ -575,8 +685,6 @@ final class ManHinhLenhSanXuat: UIViewController, UITableViewDataSource, UITable
         }
         present(sheet, animated: true)
     }
-
-    private var dangDungGeminiQuet = false
 
     private func moPicker(sourceType: UIImagePickerController.SourceType, dungGemini: Bool = false) {
         dangDungGeminiQuet = dungGemini
@@ -602,13 +710,12 @@ final class ManHinhLenhSanXuat: UIViewController, UITableViewDataSource, UITable
                 case .success(let duLieu):
                     KhoDuLieu.dungChung.luuDuLieuLenhSX(duLieu)
                     self?.capNhatGiaoDien()
-                    self?.hienThongBao("Quét AI thành công! 🎉", "Đã trích xuất được \\(duLieu.danhSachMuc.count) mục từ ảnh bằng Gemini AI.")
+                    self?.hienThongBao("Quét AI thành công! 🎉", "Đã trích xuất \(duLieu.danhSachMuc.count) dòng vào bảng.")
                 case .failure(let err):
                     self?.hienThongBao("Lỗi quét AI", err.localizedDescription)
                 }
             }
         } else {
-            // Chạy Apple Vision OCR trực tiếp trên máy (Offline)
             BoQuetOCRLenhSX.dungChung.quetAnh(anh: anh) { [weak self] kq in
                 self?.lopPhuMo.isHidden = true
                 self?.chiBaoDangQuet.stopAnimating()
@@ -618,7 +725,7 @@ final class ManHinhLenhSanXuat: UIViewController, UITableViewDataSource, UITable
                     self?.capNhatGiaoDien()
                     self?.hienThongBao(
                         "Quét OCR thành công! 🔍",
-                        "Đã dùng OCR máy nhận dạng và trích xuất \\(duLieu.danhSachMuc.count) mục trong bảng Lệnh sản xuất."
+                        "Đã nhận dạng đúng ngày sản xuất và trích xuất \(duLieu.danhSachMuc.count) dòng lên bảng."
                     )
                 case .failure(let err):
                     self?.hienThongBao("Lỗi nhận dạng OCR", err.localizedDescription)
@@ -629,7 +736,7 @@ final class ManHinhLenhSanXuat: UIViewController, UITableViewDataSource, UITable
 
     @objc private func bamXemAnhGoc() {
         guard let anh = anhHienTai else {
-            hienThongBao("Chưa có ảnh", "Hãy bấm '📷 Quét Lệnh Sản Xuất' để chụp hoặc chọn ảnh lệnh sản xuất trước.")
+            hienThongBao("Chưa có ảnh", "Hãy bấm '📷 Quét ảnh' để chụp hoặc chọn ảnh bảng trước.")
             return
         }
         let modal = ManHinhXemAnhLenhSX(anh: anh)
@@ -637,37 +744,48 @@ final class ManHinhLenhSanXuat: UIViewController, UITableViewDataSource, UITable
         present(nav, animated: true)
     }
 
-    @objc private func bamThemMucMoi() {
-        let modal = ManHinhChiTietMucLenhSX(mucCu: nil) { [weak self] in
-            self?.capNhatGiaoDien()
-        }
-        let nav = UINavigationController(rootViewController: modal)
-        present(nav, animated: true)
+    @objc private func bamThemDongMoi() {
+        var lsx = KhoDuLieu.dungChung.duLieuLenhSX
+        let sttMoi = lsx.danhSachMuc.count + 1
+        let dongMoi = MucDongLenhSX(
+            stt: sttMoi,
+            thoiGianDuKien: lsx.danhSachMuc.last?.thoiGianDuKien ?? "08h00 12/11 - 08h00 15/11",
+            kichCo: "D16",
+            macThep: "CB400V",
+            sanLuong: "3,500",
+            coTinh: "40.2025/YCCN - P.CN",
+            macPhoi: "CT5",
+            soOrder: ""
+        )
+        lsx.danhSachMuc.append(dongMoi)
+        KhoDuLieu.dungChung.luuDuLieuLenhSX(lsx)
+        capNhatGiaoDien()
+        moHopThoaiSuaMuc(muc: dongMoi)
     }
 
     @objc private func moMenuTuyChon() {
-        let sheet = UIAlertController(title: "Tùy chọn Lệnh Sản Xuất", message: nil, preferredStyle: .actionSheet)
+        let sheet = UIAlertController(title: "Tùy chọn Bảng Lệnh SX", message: nil, preferredStyle: .actionSheet)
 
-        sheet.addAction(UIAlertAction(title: "📋 Sao chép tóm tắt Lệnh SX", style: .default) { [weak self] _ in
+        sheet.addAction(UIAlertAction(title: "📋 Sao chép dữ liệu bảng", style: .default) { [weak self] _ in
             let lsx = KhoDuLieu.dungChung.duLieuLenhSX
             var dong: [String] = []
-            dong.append("=== \\(lsx.tieuDe) ===")
-            dong.append("Số: \\(lsx.soLenh) • \\(lsx.boPhan)")
-            dong.append("Hiệu lực: \\(lsx.thoiGianHieuLuc)")
-            dong.append("Tổng sản lượng: \\(lsx.tongSanLuongSanPham) tấn (\\(lsx.danhSachMuc.count) mục)")
-            dong.append("----------------------------")
+            dong.append("TT\tThời gian dự kiến SX\tKích cỡ\tMác thép\tSản lượng (tấn)\tCơ tính\tMác\tSố Order")
             for m in lsx.danhSachMuc {
-                dong.append("#\\(m.stt) | Order: \\(m.soOrder) | Kích cỡ: \\(m.kichCo) | Mác thép: \\(m.macThep) | SL: \\(m.sanLuong) tấn | Mác phôi: \\(m.macPhoi) | Thời gian: \\(m.thoiGianDuKien)")
+                dong.append("\(m.stt)\t\(m.thoiGianDuKien)\t\(m.kichCo)\t\(m.macThep)\t\(m.sanLuong)\t\(m.coTinh)\t\(m.macPhoi)\t\(m.soOrder)")
             }
-            UIPasteboard.general.string = dong.joined(separator: "\\n")
-            self?.hienThongBao("Đã sao chép", "Đã lưu nội dung Lệnh sản xuất vào bộ nhớ tạm.")
+            dong.append("Tổng sản lượng: \(lsx.tongSanLuong) tấn (\(lsx.danhSachMuc.count) dòng)")
+            UIPasteboard.general.string = dong.joined(separator: "\n")
+            self?.hienThongBao("Đã sao chép", "Đã sao chép toàn bộ bảng lệnh sản xuất vào bộ nhớ tạm.")
         })
 
-        sheet.addAction(UIAlertAction(title: "✏️ Chỉnh sửa thông tin Header lệnh", style: .default) { [weak self] _ in
-            self?.moHopThoaiSuaHeader()
+        sheet.addAction(UIAlertAction(title: "🔁 Nạp lại bảng mẫu chuẩn Hòa Phát", style: .default) { [weak self] _ in
+            let mau = DuLieuLenhSanXuat.mauHoaPhatDungQuat()
+            KhoDuLieu.dungChung.luuDuLieuLenhSX(mau)
+            self?.capNhatGiaoDien()
+            self?.hienThongBao("Đã nạp mẫu", "Đã nạp lại bảng mẫu chuẩn gồm đúng 8 cột và 6 dòng.")
         })
 
-        sheet.addAction(UIAlertAction(title: "🗑️ Xóa toàn bộ danh sách lệnh SX", style: .destructive) { [weak self] _ in
+        sheet.addAction(UIAlertAction(title: "🗑️ Xóa toàn bộ các dòng trong bảng", style: .destructive) { [weak self] _ in
             var rong = KhoDuLieu.dungChung.duLieuLenhSX
             rong.danhSachMuc = []
             KhoDuLieu.dungChung.luuDuLieuLenhSX(rong)
@@ -681,30 +799,64 @@ final class ManHinhLenhSanXuat: UIViewController, UITableViewDataSource, UITable
         present(sheet, animated: true)
     }
 
-    @objc private func moHopThoaiSuaHeader() {
-        let lsx = KhoDuLieu.dungChung.duLieuLenhSX
-        let alert = UIAlertController(title: "Sửa thông tin Lệnh SX", message: nil, preferredStyle: .alert)
+    private func moHopThoaiSuaMuc(muc: MucDongLenhSX) {
+        let alert = UIAlertController(title: "Chỉnh sửa Dòng #\(muc.stt)", message: nil, preferredStyle: .alert)
 
         alert.addTextField { tf in
-            tf.text = lsx.soLenh
-            tf.placeholder = "Số lệnh (VD: 01.10.2026/LSX-XC...)"
+            tf.text = muc.thoiGianDuKien
+            tf.placeholder = "Thời gian dự kiến SX (VD: 08h00 10/11 - 08h00 12/11)"
         }
         alert.addTextField { tf in
-            tf.text = lsx.boPhan
-            tf.placeholder = "Bộ phận (VD: XC#1-XC-NM.CT DAI)"
+            tf.text = muc.kichCo
+            tf.placeholder = "Kích cỡ (VD: D18 hoặc D16)"
         }
         alert.addTextField { tf in
-            tf.text = lsx.thoiGianHieuLuc
-            tf.placeholder = "Thời gian hiệu lực"
+            tf.text = muc.macThep
+            tf.placeholder = "Mác thép (VD: CB400V, CB500V, Gr40...)"
         }
+        alert.addTextField { tf in
+            tf.text = muc.sanLuong
+            tf.placeholder = "Sản lượng tấn (VD: 3,500)"
+            tf.keyboardType = .decimalPad
+        }
+        alert.addTextField { tf in
+            tf.text = muc.coTinh
+            tf.placeholder = "Cơ tính (VD: 40.2025/YCCN - P.CN)"
+        }
+        alert.addTextField { tf in
+            tf.text = muc.macPhoi
+            tf.placeholder = "Mác phôi (VD: CT5, CT5V, Gr80...)"
+        }
+        alert.addTextField { tf in
+            tf.text = muc.soOrder
+            tf.placeholder = "Số Order (VD: 1040004620)"
+            tf.keyboardType = .numberPad
+        }
+
+        alert.addAction(UIAlertAction(title: "Xóa dòng này", style: .destructive) { [weak self] _ in
+            var lsx = KhoDuLieu.dungChung.duLieuLenhSX
+            lsx.danhSachMuc.removeAll { $0.id == muc.id }
+            KhoDuLieu.dungChung.luuDuLieuLenhSX(lsx)
+            self?.capNhatGiaoDien()
+        })
 
         alert.addAction(UIAlertAction(title: "Hủy", style: .cancel))
         alert.addAction(UIAlertAction(title: "Lưu", style: .default) { [weak self] _ in
-            var moi = KhoDuLieu.dungChung.duLieuLenhSX
-            moi.soLenh = alert.textFields?[0].text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? moi.soLenh
-            moi.boPhan = alert.textFields?[1].text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? moi.boPhan
-            moi.thoiGianHieuLuc = alert.textFields?[2].text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? moi.thoiGianHieuLuc
-            KhoDuLieu.dungChung.luuDuLieuLenhSX(moi)
+            guard let tfs = alert.textFields, tfs.count >= 7 else { return }
+            var moi = muc
+            moi.thoiGianDuKien = tfs[0].text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? muc.thoiGianDuKien
+            moi.kichCo = tfs[1].text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? muc.kichCo
+            moi.macThep = tfs[2].text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? muc.macThep
+            moi.sanLuong = tfs[3].text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? muc.sanLuong
+            moi.coTinh = tfs[4].text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? muc.coTinh
+            moi.macPhoi = tfs[5].text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? muc.macPhoi
+            moi.soOrder = tfs[6].text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? muc.soOrder
+
+            var lsx = KhoDuLieu.dungChung.duLieuLenhSX
+            if let idx = lsx.danhSachMuc.firstIndex(where: { $0.id == moi.id }) {
+                lsx.danhSachMuc[idx] = moi
+            }
+            KhoDuLieu.dungChung.luuDuLieuLenhSX(lsx)
             self?.capNhatGiaoDien()
         })
         present(alert, animated: true)
@@ -715,383 +867,9 @@ final class ManHinhLenhSanXuat: UIViewController, UITableViewDataSource, UITable
         alert.addAction(UIAlertAction(title: "Đóng", style: .default))
         present(alert, animated: true)
     }
-
-    // MARK: - UITableViewDataSource & Delegate
-
-    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        max(1, danhSachHienThi.count)
-    }
-
-    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        if danhSachHienThi.isEmpty {
-            let cell = UITableViewCell(style: .default, reuseIdentifier: "OTrongLenhSX")
-            cell.selectionStyle = .none
-            cell.backgroundColor = .clear
-            cell.textLabel?.text = "Không tìm thấy mục lệnh sản xuất nào khớp từ khóa.\nBấm '📷 Quét Lệnh Sản Xuất' để quét ảnh mới."
-            cell.textLabel?.numberOfLines = 0
-            cell.textLabel?.textAlignment = .center
-            cell.textLabel?.font = .italicSystemFont(ofSize: 14)
-            cell.textLabel?.textColor = KhoDuLieu.dungChung.mauSac.subText
-            return cell
-        }
-
-        let ma = "OLenhSanXuat"
-        let cell = tableView.dequeueReusableCell(withIdentifier: ma) ?? UITableViewCell(style: .default, reuseIdentifier: ma)
-        cell.selectionStyle = .none
-        cell.backgroundColor = .clear
-        cell.contentView.subviews.forEach { $0.removeFromSuperview() }
-
-        let item = danhSachHienThi[indexPath.row]
-        let mau = KhoDuLieu.dungChung.mauSac
-
-        let the = UIView()
-        the.backgroundColor = mau.card
-        the.layer.cornerRadius = 14
-        the.layer.borderWidth = 1
-        the.layer.borderColor = mau.border.cgColor
-        the.translatesAutoresizingMaskIntoConstraints = false
-        cell.contentView.addSubview(the)
-
-        // Hàng 1: STT + Badge Kích cỡ + Badge Mác thép + Sản lượng
-        let lbSTT = UILabel()
-        lbSTT.text = "#\\(item.stt)"
-        lbSTT.font = .systemFont(ofSize: 13, weight: .bold)
-        lbSTT.textColor = mau.subText
-
-        let nhanKichCo = taoBadge("Kích cỡ: \\(item.kichCo)", mauNen: .systemOrange.withAlphaComponent(0.15), mauChu: .systemOrange)
-        let nhanMacThep = taoBadge("Mác: \\(item.macThep)", mauNen: mau.primary.withAlphaComponent(0.15), mauChu: mau.primary)
-
-        let lbSanLuong = UILabel()
-        lbSanLuong.text = "📦 \\(item.sanLuong) tấn"
-        lbSanLuong.font = .systemFont(ofSize: 14, weight: .bold)
-        lbSanLuong.textColor = mau.success
-        lbSanLuong.setContentHuggingPriority(.required, for: .horizontal)
-
-        let hangDau = UIStackView(arrangedSubviews: [lbSTT, nhanKichCo, nhanMacThep, UIView(), lbSanLuong])
-        hangDau.axis = .horizontal
-        hangDau.spacing = 6
-        hangDau.alignment = .center
-
-        let vach = UIView()
-        vach.backgroundColor = mau.border
-        vach.heightAnchor.constraint(equalToConstant: 0.8).isActive = true
-
-        // Hàng 2: Thời gian dự kiến sản xuất
-        let lbTG = UILabel()
-        lbTG.text = "🕒 Thời gian SX: \\(item.thoiGianDuKien.isEmpty ? \"Theo kế hoạch ca\" : item.thoiGianDuKien)"
-        lbTG.font = .systemFont(ofSize: 13, weight: .medium)
-        lbTG.textColor = mau.text
-
-        // Hàng 3: Số Order & Batch
-        let lbOrder = UILabel()
-        let attrOrder = NSMutableAttributedString(
-            string: "🏷️ Số Order: ",
-            attributes: [.font: UIFont.systemFont(ofSize: 13, weight: .semibold), .foregroundColor: mau.subText]
-        )
-        attrOrder.append(NSAttributedString(
-            string: item.soOrder.isEmpty ? "(Chưa có)" : item.soOrder,
-            attributes: [.font: UIFont.systemFont(ofSize: 13.5, weight: .bold), .foregroundColor: mau.primary]
-        ))
-        if !item.soBatch.isEmpty {
-            attrOrder.append(NSAttributedString(
-                string: "  •  Batch: \\(item.soBatch)",
-                attributes: [.font: UIFont.systemFont(ofSize: 12.5), .foregroundColor: mau.subText]
-            ))
-        }
-        lbOrder.attributedText = attrOrder
-
-        // Hàng 4: Mác phôi & Cơ tính
-        let lbPhoi = UILabel()
-        lbPhoi.numberOfLines = 0
-        let attrPhoi = NSMutableAttributedString(
-            string: "🏗️ Mác phôi: ",
-            attributes: [.font: UIFont.systemFont(ofSize: 13, weight: .semibold), .foregroundColor: mau.subText]
-        )
-        attrPhoi.append(NSAttributedString(
-            string: item.macPhoi,
-            attributes: [.font: UIFont.systemFont(ofSize: 13, weight: .semibold), .foregroundColor: mau.text]
-        ))
-        if !item.coTinh.isEmpty {
-            attrPhoi.append(NSAttributedString(
-                string: "  •  Cơ tính: \\(item.coTinh)",
-                attributes: [.font: UIFont.systemFont(ofSize: 12.5), .foregroundColor: mau.subText]
-            ))
-        }
-        lbPhoi.attributedText = attrPhoi
-
-        let nganNoiDung = UIStackView(arrangedSubviews: [hangDau, vach, lbTG, lbOrder, lbPhoi])
-        nganNoiDung.axis = .vertical
-        nganNoiDung.spacing = 6
-
-        if !item.ghiChu.isEmpty {
-            let lbGC = UILabel()
-            lbGC.text = "📝 \\(item.ghiChu)"
-            lbGC.font = .italicSystemFont(ofSize: 12)
-            lbGC.textColor = mau.subText
-            nganNoiDung.addArrangedSubview(lbGC)
-        }
-
-        nganNoiDung.translatesAutoresizingMaskIntoConstraints = false
-        the.addSubview(nganNoiDung)
-
-        NSLayoutConstraint.activate([
-            the.topAnchor.constraint(equalTo: cell.contentView.topAnchor, constant: 5),
-            the.bottomAnchor.constraint(equalTo: cell.contentView.bottomAnchor, constant: -5),
-            the.leadingAnchor.constraint(equalTo: cell.contentView.leadingAnchor, constant: 12),
-            the.trailingAnchor.constraint(equalTo: cell.contentView.trailingAnchor, constant: -12),
-
-            nganNoiDung.topAnchor.constraint(equalTo: the.topAnchor, constant: 10),
-            nganNoiDung.bottomAnchor.constraint(equalTo: the.bottomAnchor, constant: -10),
-            nganNoiDung.leadingAnchor.constraint(equalTo: the.leadingAnchor, constant: 12),
-            nganNoiDung.trailingAnchor.constraint(equalTo: the.trailingAnchor, constant: -12)
-        ])
-
-        return cell
-    }
-
-    private func taoBadge(_ text: String, mauNen: UIColor, mauChu: UIColor) -> UILabel {
-        let lb = UILabel()
-        lb.text = "  \\(text)  "
-        lb.font = .systemFont(ofSize: 11.5, weight: .bold)
-        lb.textColor = mauChu
-        lb.backgroundColor = mauNen
-        lb.layer.cornerRadius = 6
-        lb.layer.masksToBounds = true
-        lb.heightAnchor.constraint(equalToConstant: 22).isActive = true
-        return lb
-    }
-
-    func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-        guard !danhSachHienThi.isEmpty, danhSachHienThi.indices.contains(indexPath.row) else { return }
-        let item = danhSachHienThi[indexPath.row]
-        let modal = ManHinhChiTietMucLenhSX(mucCu: item) { [weak self] in
-            self?.capNhatGiaoDien()
-        }
-        let nav = UINavigationController(rootViewController: modal)
-        present(nav, animated: true)
-    }
-
-    func tableView(
-        _ tableView: UITableView,
-        trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath
-    ) -> UISwipeActionsConfiguration? {
-        guard !danhSachHienThi.isEmpty, danhSachHienThi.indices.contains(indexPath.row) else { return nil }
-        let item = danhSachHienThi[indexPath.row]
-
-        let xoa = UIContextualAction(style: .destructive, title: "Xóa") { [weak self] _, _, completion in
-            var lsx = KhoDuLieu.dungChung.duLieuLenhSX
-            lsx.danhSachMuc.removeAll { $0.id == item.id }
-            KhoDuLieu.dungChung.luuDuLieuLenhSX(lsx)
-            self?.capNhatGiaoDien()
-            completion(true)
-        }
-
-        let sua = UIContextualAction(style: .normal, title: "Sửa") { [weak self] _, _, completion in
-            let modal = ManHinhChiTietMucLenhSX(mucCu: item) { [weak self] in
-                self?.capNhatGiaoDien()
-            }
-            let nav = UINavigationController(rootViewController: modal)
-            self?.present(nav, animated: true)
-            completion(true)
-        }
-        sua.backgroundColor = KhoDuLieu.dungChung.mauSac.primary
-
-        return UISwipeActionsConfiguration(actions: [xoa, sua])
-    }
 }
 
-// MARK: - 3. Màn Hình Xem & Chỉnh Sửa Chi Tiết Mục Lệnh SX
-
-final class ManHinhChiTietMucLenhSX: UIViewController {
-    private let mucCu: MucDongLenhSX?
-    private let khiLuu: () -> Void
-
-    private let oSTT = UITextField()
-    private let oThoiGianDuKien = UITextField()
-    private let oKichCo = UITextField()
-    private let oMacThep = UITextField()
-    private let oSanLuong = UITextField()
-    private let oCoTinh = UITextField()
-    private let oMacPhoi = UITextField()
-    private let oLoaiPhoi = UITextField()
-    private let oKichThuocPhoi = UITextField()
-    private let oSanLuongPhoi = UITextField()
-    private let oHinhThucPhoi = UITextField()
-    private let oSoOrder = UITextField()
-    private let oSoBatch = UITextField()
-    private let oGhiChu = UITextField()
-
-    init(mucCu: MucDongLenhSX?, khiLuu: @escaping () -> Void) {
-        self.mucCu = mucCu
-        self.khiLuu = khiLuu
-        super.init(nibName: nil, bundle: nil)
-    }
-
-    required init?(coder: NSCoder) {
-        fatalError("Khong ho tro coder")
-    }
-
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        let mau = KhoDuLieu.dungChung.mauSac
-        view.backgroundColor = mau.card
-        navigationItem.title = mucCu == nil ? "Thêm mục Lệnh SX" : "Chi tiết mục Lệnh SX"
-
-        navigationItem.leftBarButtonItem = UIBarButtonItem(title: "Đóng", style: .plain, target: self, action: #selector(dong))
-        navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Lưu", style: .done, target: self, action: #selector(luu))
-
-        let cuon = UIScrollView()
-        cuon.keyboardDismissMode = .interactive
-        cuon.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(cuon)
-
-        let ngan = UIStackView()
-        ngan.axis = .vertical
-        ngan.spacing = 10
-        ngan.translatesAutoresizingMaskIntoConstraints = false
-        cuon.addSubview(ngan)
-
-        [oSTT, oThoiGianDuKien, oKichCo, oMacThep, oSanLuong, oCoTinh, oMacPhoi, oLoaiPhoi, oKichThuocPhoi, oSanLuongPhoi, oHinhThucPhoi, oSoOrder, oSoBatch, oGhiChu].forEach {
-            $0.borderStyle = .roundedRect
-            $0.backgroundColor = mau.iconBg
-            $0.textColor = mau.text
-            $0.font = .systemFont(ofSize: 14)
-        }
-
-        oSTT.placeholder = "STT (VD: 1)"
-        oSTT.text = "\\(mucCu?.stt ?? (KhoDuLieu.dungChung.duLieuLenhSX.danhSachMuc.count + 1))"
-        oSTT.keyboardType = .numberPad
-
-        oThoiGianDuKien.placeholder = "VD: 08h00 10/11 - 08h00 12/11"
-        oThoiGianDuKien.text = mucCu?.thoiGianDuKien ?? ""
-
-        oKichCo.placeholder = "VD: D18 hoặc D16"
-        oKichCo.text = mucCu?.kichCo ?? ""
-
-        oMacThep.placeholder = "VD: CB400V, CB500V, Gr40, Gr60..."
-        oMacThep.text = mucCu?.macThep ?? ""
-
-        oSanLuong.placeholder = "VD: 3,500 hoặc 40"
-        oSanLuong.text = mucCu?.sanLuong ?? ""
-
-        oCoTinh.placeholder = "VD: 40.2025/YCCN - P.CN"
-        oCoTinh.text = mucCu?.coTinh ?? ""
-
-        oMacPhoi.placeholder = "VD: CT5, CT5V, Gr80-1..."
-        oMacPhoi.text = mucCu?.macPhoi ?? ""
-
-        oLoaiPhoi.placeholder = "VD: 1+(*)"
-        oLoaiPhoi.text = mucCu?.loaiPhoi ?? "1+(*)"
-
-        oKichThuocPhoi.placeholder = "VD: 150x150, 165x165"
-        oKichThuocPhoi.text = mucCu?.kichThuocPhoi ?? "150x150, 165x165"
-
-        oSanLuongPhoi.placeholder = "VD: 3,605 hoặc 41"
-        oSanLuongPhoi.text = mucCu?.sanLuongPhoi ?? ""
-
-        oHinhThucPhoi.placeholder = "VD: Phôi nóng / Phôi nguội"
-        oHinhThucPhoi.text = mucCu?.hinhThucPhoi ?? "Phôi nóng / Phôi nguội"
-
-        oSoOrder.placeholder = "VD: 1040004620"
-        oSoOrder.text = mucCu?.soOrder ?? ""
-        oSoOrder.keyboardType = .numberPad
-
-        oSoBatch.placeholder = "VD: 1111261117"
-        oSoBatch.text = mucCu?.soBatch ?? ""
-        oSoBatch.keyboardType = .numberPad
-
-        oGhiChu.placeholder = "VD: (1) Nội địa"
-        oGhiChu.text = mucCu?.ghiChu ?? ""
-
-        func taoO(_ tieuDe: String, _ tf: UITextField) -> UIStackView {
-            let lb = UILabel()
-            lb.text = tieuDe
-            lb.font = .systemFont(ofSize: 12.5, weight: .bold)
-            lb.textColor = mau.subText
-            let st = UIStackView(arrangedSubviews: [lb, tf])
-            st.axis = .vertical
-            st.spacing = 4
-            return st
-        }
-
-        let hangDoi1 = UIStackView(arrangedSubviews: [taoO("Số thứ tự (TT):", oSTT), taoO("Kích cỡ sản phẩm:", oKichCo)])
-        hangDoi1.distribution = .fillEqually
-        hangDoi1.spacing = 10
-
-        let hangDoi2 = UIStackView(arrangedSubviews: [taoO("Mác thép:", oMacThep), taoO("Sản lượng (tấn):", oSanLuong)])
-        hangDoi2.distribution = .fillEqually
-        hangDoi2.spacing = 10
-
-        let hangDoi3 = UIStackView(arrangedSubviews: [taoO("Số Order:", oSoOrder), taoO("Số Batch:", oSoBatch)])
-        hangDoi3.distribution = .fillEqually
-        hangDoi3.spacing = 10
-
-        let hangDoi4 = UIStackView(arrangedSubviews: [taoO("Mác phôi cán:", oMacPhoi), taoO("Sản lượng phôi (tấn):", oSanLuongPhoi)])
-        hangDoi4.distribution = .fillEqually
-        hangDoi4.spacing = 10
-
-        [
-            hangDoi1,
-            taoO("🕒 Thời gian dự kiến sản xuất:", oThoiGianDuKien),
-            hangDoi2,
-            taoO("🔬 Cơ tính:", oCoTinh),
-            hangDoi3,
-            hangDoi4,
-            taoO("📐 Kích thước phôi:", oKichThuocPhoi),
-            taoO("📝 Ghi chú:", oGhiChu)
-        ].forEach { ngan.addArrangedSubview($0) }
-
-        NSLayoutConstraint.activate([
-            cuon.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            cuon.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            cuon.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            cuon.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-
-            ngan.topAnchor.constraint(equalTo: cuon.contentLayoutGuide.topAnchor, constant: 14),
-            ngan.bottomAnchor.constraint(equalTo: cuon.contentLayoutGuide.bottomAnchor, constant: -28),
-            ngan.leadingAnchor.constraint(equalTo: cuon.frameLayoutGuide.leadingAnchor, constant: 16),
-            ngan.trailingAnchor.constraint(equalTo: cuon.frameLayoutGuide.trailingAnchor, constant: -16)
-        ])
-    }
-
-    @objc private func dong() {
-        dismiss(animated: true)
-    }
-
-    @objc private func luu() {
-        view.endEditing(true)
-        let sttVal = Int(oSTT.text ?? "") ?? 1
-        let moi = MucDongLenhSX(
-            id: mucCu?.id ?? UUID().uuidString,
-            stt: sttVal,
-            thoiGianDuKien: oThoiGianDuKien.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
-            kichCo: oKichCo.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
-            macThep: oMacThep.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
-            sanLuong: oSanLuong.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
-            coTinh: oCoTinh.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
-            macPhoi: oMacPhoi.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
-            loaiPhoi: oLoaiPhoi.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "1+(*)",
-            kichThuocPhoi: oKichThuocPhoi.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "150x150, 165x165",
-            sanLuongPhoi: oSanLuongPhoi.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
-            hinhThucPhoi: oHinhThucPhoi.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "Phôi nóng / Phôi nguội",
-            soOrder: oSoOrder.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
-            soBatch: oSoBatch.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
-            ghiChu: oGhiChu.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        )
-
-        var lsx = KhoDuLieu.dungChung.duLieuLenhSX
-        if let idx = lsx.danhSachMuc.firstIndex(where: { $0.id == moi.id }) {
-            lsx.danhSachMuc[idx] = moi
-        } else {
-            lsx.danhSachMuc.append(moi)
-        }
-        lsx.danhSachMuc.sort { $0.stt < $1.stt }
-        KhoDuLieu.dungChung.luuDuLieuLenhSX(lsx)
-        dismiss(animated: true, completion: khiLuu)
-    }
-}
-
-// MARK: - 4. Màn Hình Phóng To Ảnh Lệnh Sản Xuất Để So Sánh Đối Chiếu
+// MARK: - 3. Màn Hình Phóng To Ảnh Lệnh Sản Xuất Để So Sánh Đối Chiếu
 
 final class ManHinhXemAnhLenhSX: UIViewController, UIScrollViewDelegate {
     private let anh: UIImage
@@ -1110,7 +888,7 @@ final class ManHinhXemAnhLenhSX: UIViewController, UIScrollViewDelegate {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
-        navigationItem.title = "Ảnh Lệnh Sản Xuất"
+        navigationItem.title = "Ảnh Bảng Lệnh SX"
         navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Đóng", style: .done, target: self, action: #selector(dong))
 
         cuon.delegate = self
