@@ -34,15 +34,27 @@ final class ManHinhCaiDat: UIViewController {
 
         NSLayoutConstraint.activate([
             cuon.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            cuon.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            cuon.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
             cuon.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             cuon.trailingAnchor.constraint(equalTo: view.trailingAnchor),
 
             nganChinh.topAnchor.constraint(equalTo: cuon.contentLayoutGuide.topAnchor, constant: 10),
-            nganChinh.bottomAnchor.constraint(equalTo: cuon.contentLayoutGuide.bottomAnchor, constant: -28),
+            nganChinh.bottomAnchor.constraint(equalTo: cuon.contentLayoutGuide.bottomAnchor, constant: -50),
             nganChinh.leadingAnchor.constraint(equalTo: cuon.frameLayoutGuide.leadingAnchor, constant: 12),
             nganChinh.trailingAnchor.constraint(equalTo: cuon.frameLayoutGuide.trailingAnchor, constant: -12)
         ])
+
+        // Thêm khoảng đệm cuộn 60pt ở đáy để người dùng luôn kéo thấy hết nội dung
+        cuon.contentInset = UIEdgeInsets(top: 0, left: 0, bottom: 60, right: 0)
+
+        // Đăng ký thông báo bàn phím để tự động cuộn lên khi bàn phím xuất hiện
+        NotificationCenter.default.addObserver(self, selector: #selector(khiBanPhimHien(_:)), name: UIResponder.keyboardWillShowNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(khiBanPhimAn(_:)), name: UIResponder.keyboardWillHideNotification, object: nil)
+
+        // Chạm ra ngoài để ẩn bàn phím
+        let cham = UITapGestureRecognizer(target: self, action: #selector(anBanPhim))
+        cham.cancelsTouchesInView = false
+        view.addGestureRecognizer(cham)
 
         banNhap = KhoDuLieu.dungChung.caiDat
         veGiaoDien()
@@ -51,6 +63,31 @@ final class ManHinhCaiDat: UIViewController {
 
     deinit {
         NotificationCenter.default.removeObserver(self)
+    }
+
+    @objc private func anBanPhim() {
+        view.endEditing(true)
+    }
+
+    @objc private func khiBanPhimHien(_ notif: Notification) {
+        guard let userInfo = notif.userInfo,
+              let kbFrame = userInfo[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+        let kbHeight = kbFrame.height
+        cuon.contentInset.bottom = kbHeight + 40
+        cuon.verticalScrollIndicatorInsets.bottom = kbHeight
+
+        if oGemini.isFirstResponder {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                guard let self = self else { return }
+                let khung = self.oGemini.convert(self.oGemini.bounds, to: self.cuon)
+                self.cuon.scrollRectToVisible(khung.insetBy(dx: 0, dy: -60), animated: true)
+            }
+        }
+    }
+
+    @objc private func khiBanPhimAn(_ notif: Notification) {
+        cuon.contentInset.bottom = 60
+        cuon.verticalScrollIndicatorInsets.bottom = 0
     }
 
     @objc private func khiDongBoXong() {
@@ -310,16 +347,72 @@ final class ManHinhCaiDat: UIViewController {
 
         nganChinh.addArrangedSubview(theChuKy)
 
-        // 5. Gemini API Key
+        // 5. Gemini API Key (Có nút Dán từ bộ nhớ tạm, Xem/Ẩn key, và Phím Xong)
         nganChinh.addArrangedSubview(taoTieuDeMuc("🤖 GEMINI API KEY"))
         let theGemini = taoThe()
         let nganGemini = taoNganBenTrong(theGemini)
+
+        let lbHuongDan = UILabel()
+        lbHuongDan.text = "Nhập Gemini API Key để quét ảnh thông minh AI chính xác 100%:"
+        lbHuongDan.font = .systemFont(ofSize: 12)
+        lbHuongDan.textColor = mau.subText
+        lbHuongDan.numberOfLines = 0
+        nganGemini.addArrangedSubview(lbHuongDan)
+
         oGemini.borderStyle = .roundedRect
-        oGemini.placeholder = "AIzaSy..."
+        oGemini.placeholder = "Dán key AIzaSy... vào đây"
         oGemini.font = .systemFont(ofSize: 13)
         oGemini.text = banNhap.geminiApiKey
         oGemini.isSecureTextEntry = true
-        nganGemini.addArrangedSubview(oGemini)
+        oGemini.autocorrectionType = .no
+        oGemini.autocapitalizationType = .none
+        oGemini.clearButtonMode = .whileEditing
+
+        // Nút Hiện/Ẩn Key (icon con mắt)
+        let nutHienAn = UIButton(type: .system)
+        nutHienAn.setImage(UIImage(systemName: "eye"), for: .normal)
+        nutHienAn.tintColor = mau.subText
+        nutHienAn.frame = CGRect(x: 0, y: 0, width: 34, height: 34)
+        nutHienAn.addAction(UIAction { [weak self] _ in
+            guard let self = self else { return }
+            self.oGemini.isSecureTextEntry.toggle()
+            let icon = self.oGemini.isSecureTextEntry ? "eye" : "eye.slash"
+            nutHienAn.setImage(UIImage(systemName: icon), for: .normal)
+        }, for: .touchUpInside)
+        oGemini.rightView = nutHienAn
+        oGemini.rightViewMode = .always
+
+        // Toolbar phụ trên bàn phím có nút "Xong"
+        let thanhPhu = UIToolbar()
+        thanhPhu.sizeToFit()
+        let nutCach = UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil)
+        let nutXong = UIBarButtonItem(title: "Xong", style: .done, target: self, action: #selector(anBanPhim))
+        thanhPhu.items = [nutCach, nutXong]
+        oGemini.inputAccessoryView = thanhPhu
+
+        // Hàng nút: Dán Key từ Clipboard
+        let nutDanKey = UIButton(type: .system)
+        var chDan = UIButton.Configuration.tinted()
+        chDan.title = "📋 Dán Key từ bộ nhớ tạm"
+        chDan.baseForegroundColor = mau.primary
+        chDan.cornerStyle = .medium
+        nutDanKey.configuration = chDan
+        nutDanKey.heightAnchor.constraint(equalToConstant: 38).isActive = true
+        nutDanKey.addAction(UIAction { [weak self] _ in
+            guard let self = self else { return }
+            if let chuoiDan = UIPasteboard.general.string?.trimmingCharacters(in: .whitespacesAndNewlines), !chuoiDan.isEmpty {
+                self.oGemini.text = chuoiDan
+                self.banNhap.geminiApiKey = chuoiDan
+                self.hienThongBao("Đã dán Key! 📋", "Key đã được điền vào ô. Nhớ bấm nút 'Lưu' ở trên góc phải.")
+            } else {
+                self.hienThongBao("Chưa copy Key", "Hãy copy Gemini API Key vào bộ nhớ tạm trước khi bấm dán.")
+            }
+        }, for: .touchUpInside)
+
+        let hangGemini = UIStackView(arrangedSubviews: [oGemini, nutDanKey])
+        hangGemini.axis = .vertical
+        hangGemini.spacing = 8
+        nganGemini.addArrangedSubview(hangGemini)
         nganChinh.addArrangedSubview(theGemini)
 
         // 6. Nút Lưu Cài Đặt nổi bật ở cuối trang
