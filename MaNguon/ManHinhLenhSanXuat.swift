@@ -77,7 +77,7 @@ final class BoQuetOCRLenhSX {
         var cacMocThoiGian: [String] = []
         for item in danhSach {
             let vb = item.text
-            let m = timCacMauRegex(chuoi: vb, pattern: "(\d{1,2}h\d{2}\s*\d{1,2}/\d{1,2}|\d{1,2}/\d{1,2})")
+            let m = timCacMauRegex(chuoi: vb, pattern: "(\\d{1,2}h\\d{2}\\s*\\d{1,2}/\\d{1,2}|\\d{1,2}/\\d{1,2})")
             for t in m {
                 if !cacMocThoiGian.contains(t) {
                     cacMocThoiGian.append(t)
@@ -88,7 +88,7 @@ final class BoQuetOCRLenhSX {
         var tgNhomTren = "08h00 10/11 - 08h00 12/11"
         var tgNhomDuoi = "08h00 12/11 - 08h00 15/11"
 
-        let cacNgayDuyNhat = cacMocThoiGian.filter { /usr/bin/bash.contains("/") && !/usr/bin/bash.contains("2025") && !/usr/bin/bash.contains("2026") }
+        let cacNgayDuyNhat = cacMocThoiGian.filter { $0.contains("/") && !$0.contains("2025") && !$0.contains("2026") }
         if cacNgayDuyNhat.count >= 2 {
             let c1 = cacNgayDuyNhat[0].contains("h") ? cacNgayDuyNhat[0] : "08h00 \(cacNgayDuyNhat[0])"
             let c2 = cacNgayDuyNhat[1].contains("h") ? cacNgayDuyNhat[1] : "08h00 \(cacNgayDuyNhat[1])"
@@ -121,13 +121,13 @@ final class BoQuetOCRLenhSX {
         for item in dsNoiDungBang {
             let vb = item.text
             let centerY = item.box.origin.y + item.box.height / 2.0
-            let coOrder = vb.range(of: "\b10\d{8}\b", options: .regularExpression) != nil
-            let coBatch = vb.range(of: "\b11\d{8}\b", options: .regularExpression) != nil
-            let coSTT = vb.range(of: "^\b([1-6])\b", options: .regularExpression) != nil && item.box.origin.x < 0.20
-            let coKC = vb.range(of: "\b(D|Ø)\d{1,2}\b", options: .regularExpression) != nil
+            let coOrder = vb.range(of: "\\b10\\d{8}\\b", options: .regularExpression) != nil
+            let coBatch = vb.range(of: "\\b11\\d{8}\\b", options: .regularExpression) != nil
+            let coSTT = vb.range(of: "^\\b([1-6])\\b", options: .regularExpression) != nil && item.box.origin.x < 0.20
+            let coKC = vb.range(of: "\\b(D|Ø)\\d{1,2}\\b", options: .regularExpression) != nil
 
             if coOrder || coBatch || coSTT || coKC {
-                if !toaDoYAnchors.contains(where: { abs(/usr/bin/bash - centerY) < 0.045 }) {
+                if !toaDoYAnchors.contains(where: { abs($0 - centerY) < 0.045 }) {
                     toaDoYAnchors.append(centerY)
                 }
             }
@@ -155,8 +155,8 @@ final class BoQuetOCRLenhSX {
         for k in 0..<soDongCanLay {
             let stt = k + 1
             let chieuY = k < toaDoYAnchors.count ? toaDoYAnchors[k] : (0.8 - CGFloat(k) * 0.12)
-            let cacTuCuaDong = dsNoiDungBang.filter { abs((/usr/bin/bash.box.origin.y + /usr/bin/bash.box.height / 2.0) - chieuY) < 0.065 }
-                .sorted { /usr/bin/bash.box.origin.x < .box.origin.x }
+            let cacTuCuaDong = dsNoiDungBang.filter { abs(($0.box.origin.y + $0.box.height / 2.0) - chieuY) < 0.065 }
+                .sorted { $0.box.origin.x < $1.box.origin.x }
             let vbDong = cacTuCuaDong.map(\.text).joined(separator: " ")
 
             var muc = (k < mauChuan.count) ? mauChuan[k] : MucDongLenhSX(stt: stt)
@@ -170,7 +170,7 @@ final class BoQuetOCRLenhSX {
             }
 
             // Kích cỡ
-            if let rKC = vbDong.range(of: "\b(D|Ø)\d{1,2}\b", options: .regularExpression) {
+            if let rKC = vbDong.range(of: "\\b(D|Ø)\\d{1,2}\\b", options: .regularExpression) {
                 muc.kichCo = String(vbDong[rKC]).replacingOccurrences(of: "Ø", with: "D")
             }
 
@@ -179,7 +179,7 @@ final class BoQuetOCRLenhSX {
                 muc.macThep = "Gr60 (L=12m)"
             } else if vbDong.contains("Gr40") || vbDong.contains("GR40") {
                 muc.macThep = "Gr40"
-            } else if let rMT = vbDong.range(of: "\b(CB[345]00V?|CBS00V?|CB50OV|CB5OOV|SD\d{3})\b", options: .regularExpression) {
+            } else if let rMT = vbDong.range(of: "\\b(CB[345]00V?|CBS00V?|CB50OV|CB5OOV|SD\\d{3})\\b", options: .regularExpression) {
                 var s = String(vbDong[rMT])
                 if s.contains("5") || s.contains("S") { s = "CB500V" }
                 else if s.contains("4") { s = "CB400V" }
@@ -187,14 +187,14 @@ final class BoQuetOCRLenhSX {
             }
 
             // Sản lượng (tấn)
-            let cacSoSL = timCacMauRegex(chuoi: vbDong, pattern: "\b(\d{1,3}(?:,\d{3})+|\b\d{2,4}\b)")
-                .filter { /usr/bin/bash != "150" && /usr/bin/bash != "165" && !/usr/bin/bash.hasPrefix("10") && !/usr/bin/bash.hasPrefix("11") && /usr/bin/bash != "2025" && /usr/bin/bash != "2026" }
+            let cacSoSL = timCacMauRegex(chuoi: vbDong, pattern: "\\b(\\d{1,3}(?:,\\d{3})+|\\b\\d{2,4}\\b)")
+                .filter { $0 != "150" && $0 != "165" && !$0.hasPrefix("10") && !$0.hasPrefix("11") && $0 != "2025" && $0 != "2026" }
             if !cacSoSL.isEmpty {
                 muc.sanLuong = cacSoSL[0]
             }
 
             // Cơ tính
-            if let rCT = vbDong.range(of: "\d+[\./]\d{4}/YC[CT]N[\-\s]*P\.CN[A-Z]*", options: .regularExpression) {
+            if let rCT = vbDong.range(of: "\\d+[\\./]\\d{4}/YC[CT]N[\\-\\s]*P\\.CN[A-Z]*", options: .regularExpression) {
                 muc.coTinh = String(vbDong[rCT])
             } else if vbDong.contains("158") || vbDong.contains("CNLT") {
                 muc.coTinh = "158.2026/YCTN-P.CNLT"
@@ -214,7 +214,7 @@ final class BoQuetOCRLenhSX {
             }
 
             // Số Order
-            if let rOrd = vbDong.range(of: "\b10\d{8}\b", options: .regularExpression) {
+            if let rOrd = vbDong.range(of: "\\b10\\d{8}\\b", options: .regularExpression) {
                 muc.soOrder = String(vbDong[rOrd])
             }
 
@@ -458,8 +458,8 @@ final class ManHinhLenhSanXuat: UIViewController, UIImagePickerControllerDelegat
     private func veNguyenBang() {
         let mau = KhoDuLieu.dungChung.mauSac
         nganBangDuLieu.arrangedSubviews.forEach {
-            nganBangDuLieu.removeArrangedSubview(/usr/bin/bash)
-            /usr/bin/bash.removeFromSuperview()
+            nganBangDuLieu.removeArrangedSubview($0)
+            $0.removeFromSuperview()
         }
 
         let hangTieuDe = taoHangTieuDeBang()

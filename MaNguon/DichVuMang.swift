@@ -1000,7 +1000,12 @@ final class DichVuGemini {
             }
           ]
         }
-        Lưu ý quan trọng:\n        1. Thời gian dự kiến sản xuất ở cột 2 thường được gộp ô theo nhóm dòng (ví dụ 3 dòng đầu là 08h00 10/11 - 08h00 12/11, 3 dòng sau là 08h00 12/11 - 08h00 15/11), hãy gán đúng thời gian sản xuất cho từng dòng.\n        2. Mác thép phải ghi đầy đủ kể cả thông tin chiều dài trong ngoặc nếu có (ví dụ: Gr60 (L=12m), CB400V, CB500V, Gr40).\n        3. Mác phôi phải trích xuất đầy đủ toàn bộ văn bản trong cột Mác phôi (ví dụ: CT5, CT5V, B500B2/ CT5/ W 60 3/11 loại 1+2/ S60 3/11 loại 2, Gr80-1).\n        Chỉ trả về JSON thuần trong cặp dấu ```json ... ```, không thêm lời chào.\n        """
+        Lưu ý quan trọng:
+        1. Thời gian dự kiến sản xuất ở cột 2 thường được gộp ô theo nhóm dòng (ví dụ 3 dòng đầu là 08h00 10/11 - 08h00 12/11, 3 dòng sau là 08h00 12/11 - 08h00 15/11), hãy gán đúng thời gian sản xuất cho từng dòng.
+        2. Mác thép phải ghi đầy đủ kể cả thông tin chiều dài trong ngoặc nếu có (ví dụ: Gr60 (L=12m), CB400V, CB500V, Gr40).
+        3. Mác phôi phải trích xuất đầy đủ toàn bộ văn bản trong cột Mác phôi (ví dụ: CT5, CT5V, B500B2/ CT5/ W 60 3/11 loại 1+2/ S60 3/11 loại 2, Gr80-1).
+        Chỉ trả về JSON thuần trong cặp dấu ```json ... ```, không thêm lời chào.
+        """
         let key = KhoDuLieu.dungChung.caiDat.geminiApiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !key.isEmpty else {
             hoanThanh(.failure(NSError(domain: "Gemini", code: 401, userInfo: [NSLocalizedDescriptionKey: "Chưa có Gemini API Key. Hãy vào Cài đặt để nhập Key!"])))
