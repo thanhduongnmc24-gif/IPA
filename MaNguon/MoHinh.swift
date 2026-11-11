@@ -137,6 +137,200 @@ struct MucAnhSheet: Codable, Hashable, Identifiable {
     var base64: String? = nil
 }
 
+
+// MARK: - 1C. Mô hình Thực Đơn
+
+struct MucThucDonNgay: Codable, Hashable, Identifiable {
+    var id: String = UUID().uuidString
+    var ngayVaoCa: String       // VD: "08/11/2026"
+    var khoaNgay: String        // VD: "2026-11-08"
+    var ca: String              // "Ngày" hoặc "Đêm"
+    var truaCaiThien: String    // Trưa - Cải thiện
+    var td1MonChinh: String     // TĐ1 - Món chính
+    var td1MonPhu: String       // TĐ1 - Món phụ
+    var td2MonChinh: String     // TĐ2 - Món chính
+    var td2MonPhu: String       // TĐ2 - Món phụ
+    var chieuToi: String        // Chiều/Tối (1 thực đơn)
+    var anDem: String           // Ăn đêm (ca đêm)
+    var sangHomSau: String      // Sáng hôm sau
+    var ghiChu: String          // Ghi chú
+
+    init(
+        id: String = UUID().uuidString,
+        ngayVaoCa: String = "",
+        khoaNgay: String = "",
+        ca: String = "",
+        truaCaiThien: String = "",
+        td1MonChinh: String = "",
+        td1MonPhu: String = "",
+        td2MonChinh: String = "",
+        td2MonPhu: String = "",
+        chieuToi: String = "",
+        anDem: String = "",
+        sangHomSau: String = "",
+        ghiChu: String = ""
+    ) {
+        self.id = id
+        self.ngayVaoCa = ngayVaoCa
+        self.khoaNgay = khoaNgay
+        self.ca = ca
+        self.truaCaiThien = truaCaiThien
+        self.td1MonChinh = td1MonChinh
+        self.td1MonPhu = td1MonPhu
+        self.td2MonChinh = td2MonChinh
+        self.td2MonPhu = td2MonPhu
+        self.chieuToi = chieuToi
+        self.anDem = anDem
+        self.sangHomSau = sangHomSau
+        self.ghiChu = ghiChu
+    }
+
+    var laCaDem: Bool {
+        let c = ca.lowercased()
+        return c.contains("đêm") || c.contains("dem")
+    }
+
+    var laCaNgay: Bool {
+        let c = ca.lowercased()
+        return c.contains("ngày") || c.contains("ngay")
+    }
+
+    var caChuan: String {
+        if laCaDem { return "dem" }
+        if laCaNgay { return "ngay" }
+        return "nghi"
+    }
+
+    var tomTatBuaTrua: String {
+        var cacPhan: [String] = []
+        if !truaCaiThien.isEmpty {
+            cacPhan.append("Cải thiện: \(truaCaiThien)")
+        }
+        var td1: [String] = []
+        if !td1MonChinh.isEmpty { td1.append(td1MonChinh) }
+        if !td1MonPhu.isEmpty { td1.append("phụ: \(td1MonPhu)") }
+        if !td1.isEmpty { cacPhan.append("TĐ1: \(td1.joined(separator: ", "))") }
+
+        var td2: [String] = []
+        if !td2MonChinh.isEmpty { td2.append(td2MonChinh) }
+        if !td2MonPhu.isEmpty { td2.append("phụ: \(td2MonPhu)") }
+        if !td2.isEmpty { cacPhan.append("TĐ2: \(td2.joined(separator: ", "))") }
+
+        return cacPhan.joined(separator: "
+")
+    }
+
+    var tomTatBuaChieu: String {
+        if chieuToi.isEmpty { return "" }
+        return "Chiều/Tối: \(chieuToi)"
+    }
+
+    var tomTatBuaDem: String {
+        if anDem.isEmpty { return "" }
+        return "Ăn đêm: \(anDem)"
+    }
+
+    var tomTatBuaSang: String {
+        if sangHomSau.isEmpty { return "" }
+        return "Sáng hôm sau: \(sangHomSau)"
+    }
+
+    var tomTatThongBao: String {
+        if laCaDem {
+            var cacPhan: [String] = []
+            if !anDem.isEmpty { cacPhan.append("🍜 Ăn đêm: \(anDem)") }
+            if !sangHomSau.isEmpty { cacPhan.append("🥖 Sáng: \(sangHomSau)") }
+            return cacPhan.isEmpty ? "Thực đơn ca đêm" : cacPhan.joined(separator: "
+")
+        } else {
+            var cacPhan: [String] = []
+            if !truaCaiThien.isEmpty {
+                cacPhan.append("🍱 Trưa: \(truaCaiThien)")
+            } else if !td1MonChinh.isEmpty {
+                cacPhan.append("🍱 Trưa: \(td1MonChinh)")
+            }
+            if !chieuToi.isEmpty {
+                cacPhan.append("🍲 Chiều: \(chieuToi)")
+            }
+            return cacPhan.isEmpty ? "Thực đơn ca ngày" : cacPhan.joined(separator: "
+")
+        }
+    }
+}
+
+struct QuyTacThucDon: Codable, Hashable, Identifiable {
+    var id: String = UUID().uuidString
+    var noiDung: String
+    var quyTac: String
+
+    init(id: String = UUID().uuidString, noiDung: String = "", quyTac: String = "") {
+        self.id = id
+        self.noiDung = noiDung
+        self.quyTac = quyTac
+    }
+}
+
+struct DuLieuThucDon: Codable, Hashable, Identifiable {
+    var id: String = UUID().uuidString
+    var tenTepNguon: String = "thuc_don_kip_A_thang_11_2026_da_kiem_tra.xlsx"
+    var tenSheetChinh: String = "Thực đơn"
+    var capNhatLuc: Date = Date()
+    var danhSachNgay: [MucThucDonNgay] = []
+    var quyTacLoc: [QuyTacThucDon] = []
+
+    init(
+        id: String = UUID().uuidString,
+        tenTepNguon: String = "thuc_don_kip_A_thang_11_2026_da_kiem_tra.xlsx",
+        tenSheetChinh: String = "Thực đơn",
+        capNhatLuc: Date = Date(),
+        danhSachNgay: [MucThucDonNgay] = [],
+        quyTacLoc: [QuyTacThucDon] = []
+    ) {
+        self.id = id
+        self.tenTepNguon = tenTepNguon
+        self.tenSheetChinh = tenSheetChinh
+        self.capNhatLuc = capNhatLuc
+        self.danhSachNgay = danhSachNgay
+        self.quyTacLoc = quyTacLoc
+    }
+
+    static func duLieuMauThang11() -> DuLieuThucDon {
+        let cacMuc: [MucThucDonNgay] = [
+            MucThucDonNgay(ngayVaoCa: "08/11/2026", khoaNgay: "2026-11-08", ca: "Ngày", truaCaiThien: "Bánh canh chả tôm / Sữa tươi Ba Vì", td1MonChinh: "Bò nấu lagu", td1MonPhu: "Đậu khuôn chiên sốt cà", td2MonChinh: "Thịt kho trứng", td2MonPhu: "Đậu khuôn chiên sốt cà", chieuToi: "Cotlet rim; Chả cá rim tiêu; Cơm trắng; Cà tím xào mỡ hành; Canh dưa chua thịt bò", anDem: "", sangHomSau: "", ghiChu: ""),
+            MucThucDonNgay(ngayVaoCa: "09/11/2026", khoaNgay: "2026-11-09", ca: "Đêm", truaCaiThien: "", td1MonChinh: "", td1MonPhu: "", td2MonChinh: "", td2MonPhu: "", chieuToi: "", anDem: "Hủ tiếu giò heo / Sữa tươi Vinamilk", sangHomSau: "10/11: Bánh mì cà ri gà / Sữa tươi Ba Vì", ghiChu: ""),
+            MucThucDonNgay(ngayVaoCa: "11/11/2026", khoaNgay: "2026-11-11", ca: "Ngày", truaCaiThien: "Cơm chiên Dương Châu / Sữa tươi Ba Vì / Táo", td1MonChinh: "Cá diêu hồng chiên mắm", td1MonPhu: "Gỏi dưa leo chả lụa", td2MonChinh: "Thịt kho tàu", td2MonPhu: "Gỏi dưa leo chả lụa", chieuToi: "Cotlet nướng mỡ hành; Trứng chiên hành; Cơm trắng; Cải thảo xào; Canh dưa chua thịt bò", anDem: "", sangHomSau: "", ghiChu: ""),
+            MucThucDonNgay(ngayVaoCa: "12/11/2026", khoaNgay: "2026-11-12", ca: "Đêm", truaCaiThien: "", td1MonChinh: "", td1MonPhu: "", td2MonChinh: "", td2MonPhu: "", chieuToi: "", anDem: "Bánh mì bò áp chảo / Sữa Yomost", sangHomSau: "13/11: Cháo gà kiến / Sữa tươi Vinamilk", ghiChu: ""),
+            MucThucDonNgay(ngayVaoCa: "14/11/2026", khoaNgay: "2026-11-14", ca: "Ngày", truaCaiThien: "Bún gà nấu ớt hiểm / Sữa Yomost", td1MonChinh: "Tỏi gà rôty", td1MonPhu: "Thịt xào dưa cải", td2MonChinh: "Cá biển kho", td2MonPhu: "Thịt xào dưa cải", chieuToi: "Giò kho sả ớt; Ốc om chuối đậu; Cơm trắng; Bầu xào; Canh mồng tơi nấu cua/ghẹ", anDem: "", sangHomSau: "", ghiChu: ""),
+            MucThucDonNgay(ngayVaoCa: "15/11/2026", khoaNgay: "2026-11-15", ca: "Đêm", truaCaiThien: "", td1MonChinh: "", td1MonPhu: "", td2MonChinh: "", td2MonPhu: "", chieuToi: "", anDem: "Mì tôm, tôm, trứng vịt lộn / Sữa tươi Vinamilk", sangHomSau: "16/11: Bún giò heo / Sữa tươi Ba Vì", ghiChu: ""),
+            MucThucDonNgay(ngayVaoCa: "17/11/2026", khoaNgay: "2026-11-17", ca: "Ngày", truaCaiThien: "Mì tôm thịt bò, trứng ốp la / Sữa tươi Ba Vì", td1MonChinh: "Tỏi gà chiên mắm", td1MonPhu: "Trứng gà luộc", td2MonChinh: "Tôm rim thịt", td2MonPhu: "Trứng gà luộc", chieuToi: "Cotlet nướng mỡ hành; Đậu khuôn chiên sốt cà; Cơm trắng; Bầu luộc; Canh chua chả cá", anDem: "", sangHomSau: "", ghiChu: ""),
+            MucThucDonNgay(ngayVaoCa: "18/11/2026", khoaNgay: "2026-11-18", ca: "Đêm", truaCaiThien: "", td1MonChinh: "", td1MonPhu: "", td2MonChinh: "", td2MonPhu: "", chieuToi: "", anDem: "Mì quảng thập cẩm / Sữa tươi Kun", sangHomSau: "19/11: Hủ tiếu thập cẩm / Sữa tươi Kun", ghiChu: ""),
+            MucThucDonNgay(ngayVaoCa: "20/11/2026", khoaNgay: "2026-11-20", ca: "Ngày", truaCaiThien: "Hủ tiếu bò / Sữa tươi Ba Vì", td1MonChinh: "Sườn sốt chua ngọt", td1MonPhu: "Thịt xào dưa cải", td2MonChinh: "Cá biển chiên mắm", td2MonPhu: "Thịt xào dưa cải", chieuToi: "Bò xào hành cần; Cá cơm khô rang đậu phộng; Cơm trắng; Rau cải luộc; Canh khổ qua nấu thịt", anDem: "", sangHomSau: "", ghiChu: ""),
+            MucThucDonNgay(ngayVaoCa: "21/11/2026", khoaNgay: "2026-11-21", ca: "Đêm", truaCaiThien: "", td1MonChinh: "", td1MonPhu: "", td2MonChinh: "", td2MonPhu: "", chieuToi: "", anDem: "Bánh canh chả cá / Sữa tươi Vinamilk", sangHomSau: "22/11: Bánh mì thịt, xúc xích, trứng ốp la / Sữa Yomost", ghiChu: ""),
+            MucThucDonNgay(ngayVaoCa: "23/11/2026", khoaNgay: "2026-11-23", ca: "Ngày", truaCaiThien: "Cơm tấm / Sữa Yomost / Chuối", td1MonChinh: "Cánh gà chiên mắm", td1MonPhu: "Chả cá chiên sốt cà", td2MonChinh: "Thịt rim mặn", td2MonPhu: "Chả cá chiên sốt cà", chieuToi: "Tôm rim; Cá biển kho; Cơm trắng; Bầu luộc; Canh bí đỏ nấu thịt", anDem: "", sangHomSau: "", ghiChu: ""),
+            MucThucDonNgay(ngayVaoCa: "24/11/2026", khoaNgay: "2026-11-24", ca: "Đêm", truaCaiThien: "", td1MonChinh: "", td1MonPhu: "", td2MonChinh: "", td2MonPhu: "", chieuToi: "", anDem: "Mì quảng thập cẩm / Sữa tươi Kun", sangHomSau: "25/11: Cháo lươn hoặc cháo ngao, trứng vịt lộn (tùy bếp) / Sữa tươi Vinamilk", ghiChu: ""),
+            MucThucDonNgay(ngayVaoCa: "26/11/2026", khoaNgay: "2026-11-26", ca: "Ngày", truaCaiThien: "Bún Thái hải sản / Sữa Yomost", td1MonChinh: "Bò xào hành cần", td1MonPhu: "Thịt viên chiên sốt cà", td2MonChinh: "Cá biển kho tiêu", td2MonPhu: "Thịt viên chiên sốt cà", chieuToi: "Gà kho sả ớt; Thịt xào dưa cải; Cơm trắng; Mít xào lá lốt; Canh cải nấu thịt", anDem: "", sangHomSau: "", ghiChu: ""),
+            MucThucDonNgay(ngayVaoCa: "27/11/2026", khoaNgay: "2026-11-27", ca: "Đêm", truaCaiThien: "", td1MonChinh: "", td1MonPhu: "", td2MonChinh: "", td2MonPhu: "", chieuToi: "", anDem: "Mì tôm thịt bò, trứng ốp la / Sữa chua Ba Vì và Chuối", sangHomSau: "28/11: Bún măng vịt / Sữa tươi Ba Vì", ghiChu: ""),
+            MucThucDonNgay(ngayVaoCa: "29/11/2026", khoaNgay: "2026-11-29", ca: "Ngày", truaCaiThien: "Phở bò / Sữa tươi Vinamilk", td1MonChinh: "Sườn kho sả", td1MonPhu: "Trứng gà luộc", td2MonChinh: "Cơm gà", td2MonPhu: "Trứng gà luộc", chieuToi: "Cá lóc chiên mắm xoài; Chả lụa xào nấm hành tây; Cơm trắng; Rau cải, giá luộc; Canh bí xanh nấu chả cá", anDem: "", sangHomSau: "", ghiChu: ""),
+            MucThucDonNgay(ngayVaoCa: "30/11/2026", khoaNgay: "2026-11-30", ca: "Đêm", truaCaiThien: "", td1MonChinh: "", td1MonPhu: "", td2MonChinh: "", td2MonPhu: "", chieuToi: "", anDem: "Bún sườn chua / Sữa tươi Ba Vì", sangHomSau: "01/12: Không có trong thực đơn tháng 11", ghiChu: "Cần thực đơn tháng 12 để bổ sung bữa sáng sau ca đêm 30/11.")
+        ]
+
+        let cacQuyTac: [QuyTacThucDon] = [
+            QuyTacThucDon(noiDung: "Chu kỳ kíp A", quyTac: "Ngày → Đêm → Nghỉ, lặp lại từ 08/11/2026"),
+            QuyTacThucDon(noiDung: "Ca ngày", quyTac: "Ca ngày: bữa trưa gồm món cải thiện, Thực đơn 1 (món chính + món phụ), Thực đơn 2 (món chính + món phụ); bữa chiều chỉ có 1 thực đơn."),
+            QuyTacThucDon(noiDung: "Ca đêm", quyTac: "Ca đêm: lấy món ăn đêm ngày vào ca và món ăn sáng của ngày kế tiếp."),
+            QuyTacThucDon(noiDung: "Nguồn", quyTac: "Thực đơn tháng 11/2026 do Anh Hai cung cấp")
+        ]
+
+        return DuLieuThucDon(
+            tenTepNguon: "thuc_don_kip_A_thang_11_2026_da_kiem_tra.xlsx",
+            tenSheetChinh: "Thực đơn",
+            capNhatLuc: Date(),
+            danhSachNgay: cacMuc,
+            quyTacLoc: cacQuyTac
+        )
+    }
+}
+
 // MARK: - 1D. Mô hình Lệnh Sản Xuất (Hòa Phát Dung Quất / Xưởng Cán)
 
 struct MucDongLenhSX: Codable, Hashable, Identifiable {
