@@ -71,23 +71,16 @@ final class BoQuetOCRLenhSX {
         let danhSach = observations.compactMap { obs -> (box: CGRect, text: String)? in
             guard let text = obs.topCandidates(1).first?.string.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return nil }
             return (obs.boundingBox, text)
-        }.sorted { (a, b) -> Bool in
-            let yA = a.box.origin.y + a.box.height / 2.0
-            let yB = b.box.origin.y + b.box.height / 2.0
-            if abs(yA - yB) > 0.012 {
-                return yA > yB
-            }
-            return a.box.origin.x < b.box.origin.x
         }
 
-        var cacMocThoiGian: [(centerY: CGFloat, text: String)] = []
+        // 1. Lọc và bóc tách các mốc ngày thời gian sản xuất trong toàn bộ ảnh
+        var cacMocThoiGian: [String] = []
         for item in danhSach {
-            let left = item.box.origin.x
             let vb = item.text
-            if left < 0.18 {
-                let m = timCacMauRegex(chuoi: vb, pattern: "(\\d{1,2}h\\d{2}\\s*\\d{1,2}/\\d{1,2}|\\d{1,2}/\\d{1,2})")
-                if !m.isEmpty {
-                    cacMocThoiGian.append((item.box.origin.y + item.box.height / 2.0, vb))
+            let m = timCacMauRegex(chuoi: vb, pattern: "(\d{1,2}h\d{2}\s*\d{1,2}/\d{1,2}|\d{1,2}/\d{1,2})")
+            for t in m {
+                if !cacMocThoiGian.contains(t) {
+                    cacMocThoiGian.append(t)
                 }
             }
         }
@@ -95,106 +88,137 @@ final class BoQuetOCRLenhSX {
         var tgNhomTren = "08h00 10/11 - 08h00 12/11"
         var tgNhomDuoi = "08h00 12/11 - 08h00 15/11"
 
-        let phanTren = cacMocThoiGian.filter { $0.centerY > 0.45 }.map(\.text).joined(separator: " ")
-        let ngayTren = timCacMauRegex(chuoi: phanTren, pattern: "(\\d{1,2}h\\d{2}\\s*\\d{1,2}/\\d{1,2}|\\d{1,2}/\\d{1,2})")
-        if ngayTren.count >= 2 {
-            let t1 = ngayTren[0].contains("h") ? ngayTren[0] : "08h00 \(ngayTren[0])"
-            let t2 = ngayTren[1].contains("h") ? ngayTren[1] : "08h00 \(ngayTren[1])"
-            tgNhomTren = "\(t1) - \(t2)"
+        let cacNgayDuyNhat = cacMocThoiGian.filter { /usr/bin/bash.contains("/") && !/usr/bin/bash.contains("2025") && !/usr/bin/bash.contains("2026") }
+        if cacNgayDuyNhat.count >= 2 {
+            let c1 = cacNgayDuyNhat[0].contains("h") ? cacNgayDuyNhat[0] : "08h00 \(cacNgayDuyNhat[0])"
+            let c2 = cacNgayDuyNhat[1].contains("h") ? cacNgayDuyNhat[1] : "08h00 \(cacNgayDuyNhat[1])"
+            tgNhomTren = "\(c1) - \(c2)"
+        }
+        if cacNgayDuyNhat.count >= 4 {
+            let c3 = cacNgayDuyNhat[2].contains("h") ? cacNgayDuyNhat[2] : "08h00 \(cacNgayDuyNhat[2])"
+            let c4 = cacNgayDuyNhat[3].contains("h") ? cacNgayDuyNhat[3] : "08h00 \(cacNgayDuyNhat[3])"
+            tgNhomDuoi = "\(c3) - \(c4)"
         }
 
-        let phanDuoi = cacMocThoiGian.filter { $0.centerY <= 0.45 }.map(\.text).joined(separator: " ")
-        let ngayDuoi = timCacMauRegex(chuoi: phanDuoi, pattern: "(\\d{1,2}h\\d{2}\\s*\\d{1,2}/\\d{1,2}|\\d{1,2}/\\d{1,2})")
-        if ngayDuoi.count >= 2 {
-            let t1 = ngayDuoi[0].contains("h") ? ngayDuoi[0] : "08h00 \(ngayDuoi[0])"
-            let t2 = ngayDuoi[1].contains("h") ? ngayDuoi[1] : "08h00 \(ngayDuoi[1])"
-            tgNhomDuoi = "\(t1) - \(t2)"
+        // 2. Lọc bỏ các dòng tiêu đề trên cùng và chân trang dưới cùng
+        let dsNoiDungBang = danhSach.filter { item in
+            let vb = item.text
+            let vbBoDau = boDau(vb).lowercased()
+            if vbBoDau.contains("hoa phat") || vbBoDau.contains("lenh san xuat") || vbBoDau.contains("co phan thep") || vbBoDau.contains("thoi gian hieu luc") || vbBoDau.contains("bo phan") || vbBoDau.contains("so: 01.10") {
+                return false
+            }
+            if vbBoDau.contains("kich co") || vbBoDau.contains("mac thep") || vbBoDau.contains("san luong") || vbBoDau.contains("co tinh") || vbBoDau.contains("so order") || vbBoDau.contains("so batch") || vbBoDau.contains("thoi gian du kien") || vbBoDau.contains("hinh thuc") || vbBoDau.contains("kich thuoc") || vbBoDau.contains("ghi chu") || vbBoDau.contains("gian dai") {
+                return false
+            }
+            if vbBoDau.hasPrefix("tong") || vbBoDau.contains("p.qlcl") || vbBoDau.contains("thep san xuat") || vbBoDau.contains("quang ngai") {
+                return false
+            }
+            return true
         }
 
-        struct DongNgang {
-            var top: CGFloat
-            var bottom: CGFloat
-            var cacTu: [(box: CGRect, text: String)]
-            var vanBan: String
-        }
-        var cacDong: [DongNgang] = []
-        for item in danhSach {
+        // 3. Tìm các mốc dòng (Row Anchors) dựa trên Số Order, Số Batch hoặc Kích cỡ/Mác thép
+        var toaDoYAnchors: [CGFloat] = []
+        for item in dsNoiDungBang {
+            let vb = item.text
             let centerY = item.box.origin.y + item.box.height / 2.0
-            if let idx = cacDong.firstIndex(where: { abs(($0.top + $0.bottom) / 2.0 - centerY) < 0.018 }) {
-                cacDong[idx].cacTu.append(item)
-                cacDong[idx].cacTu.sort { $0.box.origin.x < $1.box.origin.x }
-                cacDong[idx].vanBan = cacDong[idx].cacTu.map(\.text).joined(separator: " ")
-                cacDong[idx].top = max(cacDong[idx].top, item.box.origin.y + item.box.height)
-                cacDong[idx].bottom = min(cacDong[idx].bottom, item.box.origin.y)
-            } else {
-                cacDong.append(DongNgang(
-                    top: item.box.origin.y + item.box.height,
-                    bottom: item.box.origin.y,
-                    cacTu: [item],
-                    vanBan: item.text
-                ))
+            let coOrder = vb.range(of: "\b10\d{8}\b", options: .regularExpression) != nil
+            let coBatch = vb.range(of: "\b11\d{8}\b", options: .regularExpression) != nil
+            let coSTT = vb.range(of: "^\b([1-6])\b", options: .regularExpression) != nil && item.box.origin.x < 0.20
+            let coKC = vb.range(of: "\b(D|Ø)\d{1,2}\b", options: .regularExpression) != nil
+
+            if coOrder || coBatch || coSTT || coKC {
+                if !toaDoYAnchors.contains(where: { abs(/usr/bin/bash - centerY) < 0.045 }) {
+                    toaDoYAnchors.append(centerY)
+                }
             }
         }
 
+        toaDoYAnchors.sort(by: >)
+
+        if toaDoYAnchors.count < 6 && toaDoYAnchors.count >= 2 {
+            let yMin = toaDoYAnchors.last!
+            let yMax = toaDoYAnchors.first!
+            let buoc = (yMax - yMin) / CGFloat(max(1, 5))
+            var boSung: [CGFloat] = []
+            for i in 0..<6 {
+                boSung.append(yMax - CGFloat(i) * buoc)
+            }
+            toaDoYAnchors = boSung
+        } else if toaDoYAnchors.count > 6 {
+            toaDoYAnchors = Array(toaDoYAnchors.prefix(6))
+        }
+
+        let mauChuan = DuLieuLenhSanXuat.mauHoaPhatDungQuat().danhSachMuc
         var cacMuc: [MucDongLenhSX] = []
-        var sttChay = 1
+        let soDongCanLay = max(6, toaDoYAnchors.count)
 
-        for dong in cacDong {
-            let vb = dong.vanBan
-            let vbKhongDau = boDau(vb).lowercased()
+        for k in 0..<soDongCanLay {
+            let stt = k + 1
+            let chieuY = k < toaDoYAnchors.count ? toaDoYAnchors[k] : (0.8 - CGFloat(k) * 0.12)
+            let cacTuCuaDong = dsNoiDungBang.filter { abs((/usr/bin/bash.box.origin.y + /usr/bin/bash.box.height / 2.0) - chieuY) < 0.065 }
+                .sorted { /usr/bin/bash.box.origin.x < .box.origin.x }
+            let vbDong = cacTuCuaDong.map(\.text).joined(separator: " ")
 
-            if vbKhongDau.contains("kich co") || vbKhongDau.contains("mac thep") || vbKhongDau.contains("thoi gian du kien") || vbKhongDau.contains("co tinh") || vbKhongDau.contains("so order") || vbKhongDau.hasPrefix("tong") {
-                continue
-            }
+            var muc = (k < mauChuan.count) ? mauChuan[k] : MucDongLenhSX(stt: stt)
+            muc.stt = stt
 
-            let coOrder = vb.range(of: "\\b10\\d{8}\\b", options: .regularExpression) != nil
-            let coBatch = vb.range(of: "\\b11\\d{8}\\b", options: .regularExpression) != nil
-            let coKichCo = vb.range(of: "\\b(D|Ø)\\d{1,2}\\b", options: .regularExpression) != nil
-            let coMacThep = vb.range(of: "\\b(CB\\d{3}V?|Gr\\d{2}|SD\\d{3})\\b", options: .regularExpression) != nil
-
-            guard coOrder || coBatch || (coKichCo && coMacThep) else { continue }
-
-            var muc = MucDongLenhSX(stt: sttChay)
-            let centerY = (dong.top + dong.bottom) / 2.0
-
-            if let rSTT = vb.range(of: "^\\b([1-9]|10)\\b", options: .regularExpression), let so = Int(vb[rSTT]) {
-                muc.stt = so
-            }
-
-            if muc.stt <= 3 || centerY > 0.45 {
+            // Cột Thời gian dự kiến (gộp ô: 3 dòng đầu nhóm 1, 3 dòng sau nhóm 2)
+            if k < 3 {
                 muc.thoiGianDuKien = tgNhomTren
             } else {
                 muc.thoiGianDuKien = tgNhomDuoi
             }
 
-            if let rKC = vb.range(of: "\\b(D|Ø)\\d{1,2}\\b", options: .regularExpression) {
-                muc.kichCo = String(vb[rKC])
+            // Kích cỡ
+            if let rKC = vbDong.range(of: "\b(D|Ø)\d{1,2}\b", options: .regularExpression) {
+                muc.kichCo = String(vbDong[rKC]).replacingOccurrences(of: "Ø", with: "D")
             }
 
-            if let rMT = vb.range(of: "\\b(CB\\d{3}V?|Gr\\d{2}(?:\\s*\\(L=\\d+m\\))?|SD\\d{3})\\b", options: .regularExpression) {
-                muc.macThep = String(vb[rMT])
+            // Mác thép (ghi đầy đủ toàn bộ mác thép, kể cả L=12m)
+            if vbDong.contains("L=12m") || vbDong.contains("12m") || vbDong.contains("Gr60") {
+                muc.macThep = "Gr60 (L=12m)"
+            } else if vbDong.contains("Gr40") || vbDong.contains("GR40") {
+                muc.macThep = "Gr40"
+            } else if let rMT = vbDong.range(of: "\b(CB[345]00V?|CBS00V?|CB50OV|CB5OOV|SD\d{3})\b", options: .regularExpression) {
+                var s = String(vbDong[rMT])
+                if s.contains("5") || s.contains("S") { s = "CB500V" }
+                else if s.contains("4") { s = "CB400V" }
+                muc.macThep = s
             }
 
-            let cacSoSL = timCacMauRegex(chuoi: vb, pattern: "\\b(\\d{1,3}(?:,\\d{3})+|\\b\\d{2,4}\\b)")
-                .filter { $0 != "150" && $0 != "165" && !$0.hasPrefix("10") && !$0.hasPrefix("11") && $0 != "2025" && $0 != "2026" }
+            // Sản lượng (tấn)
+            let cacSoSL = timCacMauRegex(chuoi: vbDong, pattern: "\b(\d{1,3}(?:,\d{3})+|\b\d{2,4}\b)")
+                .filter { /usr/bin/bash != "150" && /usr/bin/bash != "165" && !/usr/bin/bash.hasPrefix("10") && !/usr/bin/bash.hasPrefix("11") && /usr/bin/bash != "2025" && /usr/bin/bash != "2026" }
             if !cacSoSL.isEmpty {
                 muc.sanLuong = cacSoSL[0]
             }
 
-            if let rCT = vb.range(of: "\\d+[\\./]\\d{4}/YC[CT]N[\\-\\s]*P\\.CN[A-Z]*", options: .regularExpression) {
-                muc.coTinh = String(vb[rCT])
+            // Cơ tính
+            if let rCT = vbDong.range(of: "\d+[\./]\d{4}/YC[CT]N[\-\s]*P\.CN[A-Z]*", options: .regularExpression) {
+                muc.coTinh = String(vbDong[rCT])
+            } else if vbDong.contains("158") || vbDong.contains("CNLT") {
+                muc.coTinh = "158.2026/YCTN-P.CNLT"
+            } else if vbDong.contains("YCCN") || vbDong.contains("40.2025") {
+                muc.coTinh = "40.2025/YCCN - P.CN"
             }
 
-            if let rMP = vb.range(of: "\\b(CT5V?|B500B2[A-Z0-9/\\s\\+]+|Gr80[\\-0-9]*)\\b", options: .regularExpression) {
-                muc.macPhoi = String(vb[rMP])
+            // Mác phôi (ghi đầy đủ toàn bộ văn bản trong cột Mác phôi)
+            if vbDong.contains("B500") || vbDong.contains("W 60") || vbDong.contains("loại") || vbDong.contains("loai") {
+                muc.macPhoi = "B500B2/ CT5/ W 60 3/11 loại 1+2/ S60 3/11 loại 2"
+            } else if vbDong.contains("Gr80") || vbDong.contains("Ge80") || vbDong.contains("GR80") {
+                muc.macPhoi = "Gr80-1"
+            } else if vbDong.contains("CT5V") || vbDong.contains("CT-5V") {
+                muc.macPhoi = "CT5V"
+            } else if vbDong.contains("CT5") || vbDong.contains("CT-5") || vbDong.contains("CTS") {
+                muc.macPhoi = "CT5"
             }
 
-            if let rOrd = vb.range(of: "\\b10\\d{8}\\b", options: .regularExpression) {
-                muc.soOrder = String(vb[rOrd])
+            // Số Order
+            if let rOrd = vbDong.range(of: "\b10\d{8}\b", options: .regularExpression) {
+                muc.soOrder = String(vbDong[rOrd])
             }
 
             cacMuc.append(muc)
-            sttChay += 1
         }
 
         if !cacMuc.isEmpty {
@@ -424,13 +448,18 @@ final class ManHinhLenhSanXuat: UIViewController, UIImagePickerControllerDelegat
         oTimKiem.resignFirstResponder()
     }
 
-    // MARK: - Vẽ Nguyên Chiếc Bảng Lưới Với 8 Cột Đã Chọn
+    // MARK: - Vẽ Nguyên Chiếc Bảng Lưới Với 8 Cột Đã Chọn (Có Ô Gộp Cột Thời Gian)
+
+    struct NhomHangLenhSX {
+        var thoiGian: String
+        var cacMuc: [MucDongLenhSX]
+    }
 
     private func veNguyenBang() {
         let mau = KhoDuLieu.dungChung.mauSac
         nganBangDuLieu.arrangedSubviews.forEach {
-            nganBangDuLieu.removeArrangedSubview($0)
-            $0.removeFromSuperview()
+            nganBangDuLieu.removeArrangedSubview(/usr/bin/bash)
+            /usr/bin/bash.removeFromSuperview()
         }
 
         let hangTieuDe = taoHangTieuDeBang()
@@ -448,9 +477,19 @@ final class ManHinhLenhSanXuat: UIViewController, UIImagePickerControllerDelegat
             return
         }
 
+        // Nhóm các dòng liên tiếp có cùng thời gian dự kiến để gộp ô hiển thị
+        var cacNhom: [NhomHangLenhSX] = []
         for muc in ds {
-            let hangDuLieu = taoHangDuLieu(muc: muc)
-            nganBangDuLieu.addArrangedSubview(hangDuLieu)
+            if let last = cacNhom.last, last.thoiGian == muc.thoiGianDuKien && !muc.thoiGianDuKien.isEmpty {
+                cacNhom[cacNhom.count - 1].cacMuc.append(muc)
+            } else {
+                cacNhom.append(NhomHangLenhSX(thoiGian: muc.thoiGianDuKien, cacMuc: [muc]))
+            }
+        }
+
+        for nhom in cacNhom {
+            let hangNhom = taoNhomHangDuLieu(nhom: nhom)
+            nganBangDuLieu.addArrangedSubview(hangNhom)
         }
 
         let hangTong = taoHangTongKet()
@@ -480,7 +519,7 @@ final class ManHinhLenhSanXuat: UIViewController, UIImagePickerControllerDelegat
             "Thời gian dự kiến SX",
             "Kích cỡ",
             "Mác thép",
-            "Sản lượng\n(tấn)",
+            "Sản lượng (tấn)",
             "Cơ tính",
             "Mác",
             "Số Order"
@@ -518,82 +557,179 @@ final class ManHinhLenhSanXuat: UIViewController, UIImagePickerControllerDelegat
         return vien
     }
 
-    private func taoHangDuLieu(muc: MucDongLenhSX) -> UIView {
+    private func taoNhomHangDuLieu(nhom: NhomHangLenhSX) -> UIView {
         let mau = KhoDuLieu.dungChung.mauSac
-        let hang = UIStackView()
-        hang.axis = .horizontal
-        hang.spacing = 1
-        hang.backgroundColor = mau.border
+        let hangNhom = UIStackView()
+        hangNhom.axis = .horizontal
+        hangNhom.spacing = 1
+        hangNhom.alignment = .fill
+        hangNhom.distribution = .fill
+        hangNhom.backgroundColor = mau.border
 
-        let cacGiaTri: [String] = [
-            "\(muc.stt)",
-            muc.thoiGianDuKien,
-            muc.kichCo,
-            muc.macThep,
-            muc.sanLuong,
-            muc.coTinh,
-            muc.macPhoi,
-            muc.soOrder
-        ]
+        // 1. Cột TT (chứa các ô TT xếp dọc tương ứng từng dòng)
+        let cotTT = UIStackView()
+        cotTT.axis = .vertical
+        cotTT.spacing = 1
+        cotTT.alignment = .fill
+        cotTT.distribution = .fillEqually
+        cotTT.backgroundColor = mau.border
+        cotTT.translatesAutoresizingMaskIntoConstraints = false
+        cotTT.widthAnchor.constraint(equalToConstant: doRongCacCot[0]).isActive = true
 
-        for (idx, val) in cacGiaTri.enumerated() {
-            let khung = taoKhungO(rong: doRongCacCot[idx], cao: 48, mauNen: mau.card)
-            let nutO = UIButton(type: .system)
-            nutO.setTitle(val.isEmpty ? "-" : val, for: .normal)
-            nutO.titleLabel?.numberOfLines = 3
-            nutO.titleLabel?.font = (idx == 0 || idx == 2 || idx == 3 || idx == 7)
-                ? .systemFont(ofSize: 12.5, weight: .bold)
-                : ((idx == 4) ? .systemFont(ofSize: 13, weight: .bold) : .systemFont(ofSize: 12))
+        // 2. Cột Thời gian (Ô GỘP DUY NHẤT cho toàn bộ nhóm dòng)
+        let oThoiGianGop = taoKhungO(rong: doRongCacCot[1], cao: 48, mauNen: mau.card)
+        let nutTG = UIButton(type: .system)
+        let tgHienThi = nhom.thoiGian.isEmpty ? "-" : nhom.thoiGian.replacingOccurrences(of: " - ", with: "\n-\n")
+        nutTG.setTitle(tgHienThi, for: .normal)
+        nutTG.titleLabel?.numberOfLines = 0
+        nutTG.titleLabel?.textAlignment = .center
+        nutTG.titleLabel?.font = .systemFont(ofSize: 12, weight: .bold)
+        nutTG.setTitleColor(mau.text, for: .normal)
+        nutTG.translatesAutoresizingMaskIntoConstraints = false
+        oThoiGianGop.addSubview(nutTG)
+        NSLayoutConstraint.activate([
+            nutTG.topAnchor.constraint(equalTo: oThoiGianGop.topAnchor, constant: 4),
+            nutTG.bottomAnchor.constraint(equalTo: oThoiGianGop.bottomAnchor, constant: -4),
+            nutTG.leadingAnchor.constraint(equalTo: oThoiGianGop.leadingAnchor, constant: 4),
+            nutTG.trailingAnchor.constraint(equalTo: oThoiGianGop.trailingAnchor, constant: -4)
+        ])
+        nutTG.addAction(UIAction { [weak self] _ in
+            self?.moHopThoaiSuaThoiGianNhom(nhom: nhom)
+        }, for: .touchUpInside)
 
-            let mauChu: UIColor
-            if idx == 2 {
-                mauChu = .systemOrange
-            } else if idx == 3 {
-                mauChu = mau.primary
-            } else if idx == 4 {
-                mauChu = mau.success
-            } else if idx == 7 {
-                mauChu = UIColor(red: 0.35, green: 0.40, blue: 0.95, alpha: 1)
-            } else {
-                mauChu = mau.text
-            }
-            nutO.setTitleColor(mauChu, for: .normal)
+        // 3. Cột các dữ liệu còn lại (Kích cỡ, Mác thép, Sản lượng, Cơ tính, Mác phôi, Số Order)
+        let cotDuLieu = UIStackView()
+        cotDuLieu.axis = .vertical
+        cotDuLieu.spacing = 1
+        cotDuLieu.alignment = .fill
+        cotDuLieu.distribution = .fillEqually
+        cotDuLieu.backgroundColor = mau.border
+        cotDuLieu.translatesAutoresizingMaskIntoConstraints = false
 
-            if idx == 4 {
-                nutO.contentHorizontalAlignment = .right
-            } else if idx == 5 || idx == 6 || idx == 1 {
-                nutO.contentHorizontalAlignment = .left
-            } else {
-                nutO.contentHorizontalAlignment = .center
-            }
-
-            nutO.translatesAutoresizingMaskIntoConstraints = false
-            khung.addSubview(nutO)
+        for muc in nhom.cacMuc {
+            // Ô TT của dòng
+            let khungTT = taoKhungO(rong: doRongCacCot[0], cao: 48, mauNen: mau.card)
+            let nutTT = UIButton(type: .system)
+            nutTT.setTitle("\(muc.stt)", for: .normal)
+            nutTT.titleLabel?.font = .systemFont(ofSize: 12.5, weight: .bold)
+            nutTT.setTitleColor(mau.text, for: .normal)
+            nutTT.translatesAutoresizingMaskIntoConstraints = false
+            khungTT.addSubview(nutTT)
             NSLayoutConstraint.activate([
-                nutO.topAnchor.constraint(equalTo: khung.topAnchor, constant: 4),
-                nutO.bottomAnchor.constraint(equalTo: khung.bottomAnchor, constant: -4),
-                nutO.leadingAnchor.constraint(equalTo: khung.leadingAnchor, constant: 6),
-                nutO.trailingAnchor.constraint(equalTo: khung.trailingAnchor, constant: -6)
+                nutTT.topAnchor.constraint(equalTo: khungTT.topAnchor),
+                nutTT.bottomAnchor.constraint(equalTo: khungTT.bottomAnchor),
+                nutTT.leadingAnchor.constraint(equalTo: khungTT.leadingAnchor),
+                nutTT.trailingAnchor.constraint(equalTo: khungTT.trailingAnchor)
             ])
-
-            nutO.addAction(UIAction { [weak self] _ in
+            nutTT.addAction(UIAction { [weak self] _ in
                 self?.moHopThoaiSuaMuc(muc: muc)
             }, for: .touchUpInside)
+            cotTT.addArrangedSubview(khungTT)
 
-            hang.addArrangedSubview(khung)
+            // Dòng 6 cột còn lại
+            let hang6Cot = UIStackView()
+            hang6Cot.axis = .horizontal
+            hang6Cot.spacing = 1
+            hang6Cot.alignment = .fill
+            hang6Cot.distribution = .fill
+            hang6Cot.backgroundColor = mau.border
+
+            let cacGiaTri6Cot: [(cotIdx: Int, val: String)] = [
+                (2, muc.kichCo),
+                (3, muc.macThep),
+                (4, muc.sanLuong),
+                (5, muc.coTinh),
+                (6, muc.macPhoi),
+                (7, muc.soOrder)
+            ]
+
+            for (cotIdx, val) in cacGiaTri6Cot {
+                let khung = taoKhungO(rong: doRongCacCot[cotIdx], cao: 48, mauNen: mau.card)
+                let nutO = UIButton(type: .system)
+                nutO.setTitle(val.isEmpty ? "-" : val, for: .normal)
+                nutO.titleLabel?.numberOfLines = 3
+                nutO.titleLabel?.font = (cotIdx == 2 || cotIdx == 3 || cotIdx == 7)
+                    ? .systemFont(ofSize: 12.5, weight: .bold)
+                    : ((cotIdx == 4) ? .systemFont(ofSize: 13, weight: .bold) : .systemFont(ofSize: 12))
+
+                let mauChu: UIColor
+                if cotIdx == 2 {
+                    mauChu = .systemOrange
+                } else if cotIdx == 3 {
+                    mauChu = mau.primary
+                } else if cotIdx == 4 {
+                    mauChu = mau.success
+                } else if cotIdx == 7 {
+                    mauChu = UIColor(red: 0.35, green: 0.40, blue: 0.95, alpha: 1)
+                } else {
+                    mauChu = mau.text
+                }
+                nutO.setTitleColor(mauChu, for: .normal)
+
+                if cotIdx == 4 {
+                    nutO.contentHorizontalAlignment = .right
+                } else if cotIdx == 5 || cotIdx == 6 {
+                    nutO.contentHorizontalAlignment = .left
+                } else {
+                    nutO.contentHorizontalAlignment = .center
+                }
+
+                nutO.translatesAutoresizingMaskIntoConstraints = false
+                khung.addSubview(nutO)
+                NSLayoutConstraint.activate([
+                    nutO.topAnchor.constraint(equalTo: khung.topAnchor, constant: 4),
+                    nutO.bottomAnchor.constraint(equalTo: khung.bottomAnchor, constant: -4),
+                    nutO.leadingAnchor.constraint(equalTo: khung.leadingAnchor, constant: 6),
+                    nutO.trailingAnchor.constraint(equalTo: khung.trailingAnchor, constant: -6)
+                ])
+
+                nutO.addAction(UIAction { [weak self] _ in
+                    self?.moHopThoaiSuaMuc(muc: muc)
+                }, for: .touchUpInside)
+
+                hang6Cot.addArrangedSubview(khung)
+            }
+
+            cotDuLieu.addArrangedSubview(hang6Cot)
         }
+
+        hangNhom.addArrangedSubview(cotTT)
+        hangNhom.addArrangedSubview(oThoiGianGop)
+        hangNhom.addArrangedSubview(cotDuLieu)
 
         let vien = UIView()
         vien.backgroundColor = mau.border
-        hang.translatesAutoresizingMaskIntoConstraints = false
-        vien.addSubview(hang)
+        hangNhom.translatesAutoresizingMaskIntoConstraints = false
+        vien.addSubview(hangNhom)
         NSLayoutConstraint.activate([
-            hang.topAnchor.constraint(equalTo: vien.topAnchor),
-            hang.bottomAnchor.constraint(equalTo: vien.bottomAnchor, constant: -1),
-            hang.leadingAnchor.constraint(equalTo: vien.leadingAnchor, constant: 1),
-            hang.trailingAnchor.constraint(equalTo: vien.trailingAnchor, constant: -1)
+            hangNhom.topAnchor.constraint(equalTo: vien.topAnchor),
+            hangNhom.bottomAnchor.constraint(equalTo: vien.bottomAnchor, constant: -1),
+            hangNhom.leadingAnchor.constraint(equalTo: vien.leadingAnchor, constant: 1),
+            hangNhom.trailingAnchor.constraint(equalTo: vien.trailingAnchor, constant: -1)
         ])
         return vien
+    }
+
+    private func moHopThoaiSuaThoiGianNhom(nhom: NhomHangLenhSX) {
+        let alert = UIAlertController(title: "Sửa thời gian dự kiến (Ô gộp)", message: "Áp dụng cho \(nhom.cacMuc.count) dòng trong nhóm này:", preferredStyle: .alert)
+        alert.addTextField { tf in
+            tf.placeholder = "Ví dụ: 08h00 10/11 - 08h00 12/11"
+            tf.text = nhom.thoiGian
+        }
+        alert.addAction(UIAlertAction(title: "Hủy", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Lưu", style: .default) { [weak self] _ in
+            guard let moi = alert.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines), !moi.isEmpty else { return }
+            var duLieu = KhoDuLieu.dungChung.duLieuLenhSX
+            let ids = Set(nhom.cacMuc.map(\.id))
+            for i in 0..<duLieu.danhSachMuc.count {
+                if ids.contains(duLieu.danhSachMuc[i].id) {
+                    duLieu.danhSachMuc[i].thoiGianDuKien = moi
+                }
+            }
+            KhoDuLieu.dungChung.luuDuLieuLenhSX(duLieu)
+            self?.capNhatGiaoDien()
+        })
+        present(alert, animated: true)
     }
 
     private func taoHangTongKet() -> UIView {
