@@ -216,8 +216,7 @@ struct MucThucDonNgay: Codable, Hashable, Identifiable {
         if !td2MonPhu.isEmpty { td2.append("phụ: \(td2MonPhu)") }
         if !td2.isEmpty { cacPhan.append("TĐ2: \(td2.joined(separator: ", "))") }
 
-        return cacPhan.joined(separator: "
-")
+        return cacPhan.joined(separator: "\n")
     }
 
     var tomTatBuaChieu: String {
@@ -240,8 +239,7 @@ struct MucThucDonNgay: Codable, Hashable, Identifiable {
             var cacPhan: [String] = []
             if !anDem.isEmpty { cacPhan.append("🍜 Ăn đêm: \(anDem)") }
             if !sangHomSau.isEmpty { cacPhan.append("🥖 Sáng: \(sangHomSau)") }
-            return cacPhan.isEmpty ? "Thực đơn ca đêm" : cacPhan.joined(separator: "
-")
+            return cacPhan.isEmpty ? "Thực đơn ca đêm" : cacPhan.joined(separator: "\n")
         } else {
             var cacPhan: [String] = []
             if !truaCaiThien.isEmpty {
@@ -252,8 +250,7 @@ struct MucThucDonNgay: Codable, Hashable, Identifiable {
             if !chieuToi.isEmpty {
                 cacPhan.append("🍲 Chiều: \(chieuToi)")
             }
-            return cacPhan.isEmpty ? "Thực đơn ca ngày" : cacPhan.joined(separator: "
-")
+            return cacPhan.isEmpty ? "Thực đơn ca ngày" : cacPhan.joined(separator: "\n")
         }
     }
 }
