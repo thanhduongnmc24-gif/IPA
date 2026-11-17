@@ -681,6 +681,9 @@ final class DichVuSupabase {
             "MENU_NOTIF_NOON_TIME": ISO8601DateFormatter().string(from: kho.caiDat.gioThongBaoThucDonTrua),
             "MENU_NOTIF_AFTERNOON_TIME": ISO8601DateFormatter().string(from: kho.caiDat.gioThongBaoThucDonChieu),
             "MENU_NOTIF_NIGHT_TIME": ISO8601DateFormatter().string(from: kho.caiDat.gioThongBaoThucDonDem),
+            "LENH_SX_NOTIF_ENABLED": kho.caiDat.batThongBaoLenhSX,
+            "LENH_SX_NOTIF_DAY_TIME": ISO8601DateFormatter().string(from: kho.caiDat.gioThongBaoLenhSXCaNgay),
+            "LENH_SX_NOTIF_NIGHT_TIME": ISO8601DateFormatter().string(from: kho.caiDat.gioThongBaoLenhSXCaDem),
             "MENU_DATA": thucDonObj,
             "GEMINI_API_KEY": kho.caiDat.geminiApiKey,
             "GEMINI_MODEL": kho.caiDat.geminiModel,
@@ -850,7 +853,7 @@ final class DichVuSupabase {
         }
         if let d = layDataJSON(tu: backup["XUONG_CAN_TABLES"]),
            let list = tm.giaiMaDuLieu([BangXuongCan].self, tu: d), !list.isEmpty {
-            kho.luuBangXuongCan(list, dongBoSupabase: false)
+            kho.luuBangXuongCan(KhoDuLieu.sapXepDanhSachBangAZ(list), dongBoSupabase: false)
         }
         if let d = layDataJSON(tu: backup["MENU_DATA"]),
            let td = tm.giaiMaDuLieu(DuLieuThucDon.self, tu: d), !td.danhSachNgay.isEmpty {
@@ -880,6 +883,17 @@ final class DichVuSupabase {
         if let sNightTime = backup["MENU_NOTIF_NIGHT_TIME"] as? String,
            let dNight = TienIchLich.docNgayISO(sNightTime) {
             cd.gioThongBaoThucDonDem = dNight
+        }
+        if let lsxNotif = backup["LENH_SX_NOTIF_ENABLED"] as? Bool {
+            cd.batThongBaoLenhSX = lsxNotif
+        }
+        if let sLsxDay = backup["LENH_SX_NOTIF_DAY_TIME"] as? String,
+           let dLsxDay = TienIchLich.docNgayISO(sLsxDay) {
+            cd.gioThongBaoLenhSXCaNgay = dLsxDay
+        }
+        if let sLsxNight = backup["LENH_SX_NOTIF_NIGHT_TIME"] as? String,
+           let dLsxNight = TienIchLich.docNgayISO(sLsxNight) {
+            cd.gioThongBaoLenhSXCaDem = dLsxNight
         }
         if let sDate = backup["CYCLE_START_DATE"] as? String,
            let d = TienIchLich.docNgayISO(sDate) {

@@ -3,6 +3,7 @@ import UIKit
 final class ManHinhXuongCan: UIViewController, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
     private let hienNutDongModal: Bool
     private var chiSoBang: Int = 0
+    private var canSapXepKhiQuayLaiTab: Bool = false
     private var cacMaAnhDangTaiLenDrive: Set<String> = []
 
     // Lưu vị trí ô ảnh đang chọn để nhận kết quả từ Camera / Thư viện ảnh
@@ -77,7 +78,23 @@ final class ManHinhXuongCan: UIViewController, UIImagePickerControllerDelegate, 
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        if canSapXepKhiQuayLaiTab {
+            canSapXepKhiQuayLaiTab = false
+            KhoDuLieu.dungChung.sapXepTatCaBangXuongCanAZ(dongBoSupabase: false)
+        }
         napGiaoDien()
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        // Kiểm tra nếu người dùng chuyển sang Tab khác (không phải đang mở hộp thoại nhập chữ hoặc chọn ảnh modal)
+        let dangMoModal = (presentedViewController != nil) ||
+            (navigationController?.presentedViewController != nil) ||
+            (tabBarController?.presentedViewController != nil)
+        if !dangMoModal {
+            canSapXepKhiQuayLaiTab = true
+            KhoDuLieu.dungChung.sapXepTatCaBangXuongCanAZ(dongBoSupabase: false)
+        }
     }
 
     deinit {
@@ -376,7 +393,7 @@ final class ManHinhXuongCan: UIViewController, UIImagePickerControllerDelegate, 
 
     private func taoHangDuLieu(bang: BangXuongCan, dong: DongXuongCan, soThuTu: Int) -> UIView {
         let mau = KhoDuLieu.dungChung.mauSac
-        let chieuCaoDong: CGFloat = bang.cot.contains(where: { $0.loai == .anh }) ? 84 : 46
+        let chieuCaoDong: CGFloat = bang.cot.contains(where: { $0.loai == .anh }) ? 84 : 54
         let hang = UIStackView()
         hang.axis = .horizontal
         hang.spacing = 1
@@ -392,19 +409,51 @@ final class ManHinhXuongCan: UIViewController, UIImagePickerControllerDelegate, 
         hang.addArrangedSubview(oSTT)
 
         let cacCot = bang.cot.sorted { $0.thuTu < $1.thuTu }
-        for cot in cacCot {
+        for (idxCot, cot) in cacCot.enumerated() {
             let giaTriO = dong.giaTri[cot.id]
             let khungO = taoKhungO(rong: chieuRongCot(cot), cao: chieuCaoDong, mauNen: mau.card)
 
             if cot.loai == .chu {
                 let chuHienTai = giaTriO?.vanBan ?? ""
-                let nutChu = UIButton(type: .system)
-                nutChu.setTitle(chuHienTai.isEmpty ? "Nhập..." : chuHienTai, for: .normal)
-                nutChu.setTitleColor(chuHienTai.isEmpty ? mau.subText.withAlphaComponent(0.5) : mau.text, for: .normal)
-                nutChu.titleLabel?.font = chuHienTai.isEmpty ? .italicSystemFont(ofSize: 12) : .systemFont(ofSize: 13, weight: .regular)
-                nutChu.titleLabel?.numberOfLines = 3
-                nutChu.contentHorizontalAlignment = .left
-                nutChu.contentEdgeInsets = UIEdgeInsets(top: 4, left: 6, bottom: 4, right: 6)
+                let lbChinh = UILabel()
+                lbChinh.text = chuHienTai.isEmpty ? "Nhập..." : chuHienTai
+                lbChinh.textColor = chuHienTai.isEmpty ? mau.subText.withAlphaComponent(0.5) : mau.text
+                lbChinh.font = chuHienTai.isEmpty ? .italicSystemFont(ofSize: 12) : .systemFont(ofSize: 13, weight: idxCot == 0 ? .medium : .regular)
+                lbChinh.numberOfLines = idxCot == 0 ? 2 : 3
+
+                if idxCot == 0 {
+                    // Cột đầu tiên: hiển thị nội dung ở trên và ngày giờ lưu (dd/MM/yyyy-HH:mm) chữ nhỏ ở dưới
+                    let lbNgayGio = UILabel()
+                    lbNgayGio.text = "(\(TienIchLich.dinhDangNgayGioXuongCan.string(from: dong.capNhatLuc)))"
+                    lbNgayGio.font = .systemFont(ofSize: 10, weight: .regular)
+                    lbNgayGio.textColor = mau.subText
+                    lbNgayGio.numberOfLines = 1
+
+                    let nganCotDau = UIStackView(arrangedSubviews: [lbChinh, lbNgayGio])
+                    nganCotDau.axis = .vertical
+                    nganCotDau.spacing = 2
+                    nganCotDau.alignment = .leading
+                    nganCotDau.translatesAutoresizingMaskIntoConstraints = false
+                    khungO.addSubview(nganCotDau)
+                    NSLayoutConstraint.activate([
+                        nganCotDau.centerYAnchor.constraint(equalTo: khungO.centerYAnchor),
+                        nganCotDau.topAnchor.constraint(greaterThanOrEqualTo: khungO.topAnchor, constant: 3),
+                        nganCotDau.bottomAnchor.constraint(lessThanOrEqualTo: khungO.bottomAnchor, constant: -3),
+                        nganCotDau.leadingAnchor.constraint(equalTo: khungO.leadingAnchor, constant: 6),
+                        nganCotDau.trailingAnchor.constraint(equalTo: khungO.trailingAnchor, constant: -6)
+                    ])
+                } else {
+                    lbChinh.translatesAutoresizingMaskIntoConstraints = false
+                    khungO.addSubview(lbChinh)
+                    NSLayoutConstraint.activate([
+                        lbChinh.topAnchor.constraint(equalTo: khungO.topAnchor, constant: 4),
+                        lbChinh.bottomAnchor.constraint(equalTo: khungO.bottomAnchor, constant: -4),
+                        lbChinh.leadingAnchor.constraint(equalTo: khungO.leadingAnchor, constant: 6),
+                        lbChinh.trailingAnchor.constraint(equalTo: khungO.trailingAnchor, constant: -6)
+                    ])
+                }
+
+                let nutChu = UIButton(type: .custom)
                 nutChu.translatesAutoresizingMaskIntoConstraints = false
                 khungO.addSubview(nutChu)
                 NSLayoutConstraint.activate([
@@ -610,9 +659,11 @@ final class ManHinhXuongCan: UIViewController, UIImagePickerControllerDelegate, 
 
     @objc private func themDongMoi() {
         guard var bang = bangHienTai else { return }
-        bang.dong.append(DongXuongCan())
+        // Thêm dòng mới vào vị trí đầu tiên (index 0), đẩy các dòng khác xuống dưới và chưa sắp xếp A-Z ngay
+        bang.dong.insert(DongXuongCan(capNhatLuc: Date()), at: 0)
         bang.capNhatLuc = Date()
         KhoDuLieu.dungChung.capNhatMotBangXuongCan(bang)
+        cuonDocBang.setContentOffset(.zero, animated: true)
     }
 
     private func hienMenuChinhSuaCot(bang: BangXuongCan, cot: CotXuongCan) {

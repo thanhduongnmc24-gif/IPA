@@ -13,6 +13,20 @@ final class UyQuyenUngDung: UIResponder, UIApplicationDelegate, UNUserNotificati
         TienIchLich.xinQuyenThongBao()
         TienIchLich.capNhatTatCaThongBaoLich()
         TienIchLich.capNhatTatCaThongBaoThucDon()
+        TienIchLich.capNhatTatCaThongBaoLenhSX()
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(khiUngDungTamDungHoacThoat),
+            name: UIApplication.didEnterBackgroundNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(khiUngDungTamDungHoacThoat),
+            name: UIApplication.willTerminateNotification,
+            object: nil
+        )
 
         let w = UIWindow(frame: UIScreen.main.bounds)
         let manHinhGoc = ManHinhGocTabBar()
@@ -25,6 +39,10 @@ final class UyQuyenUngDung: UIResponder, UIApplicationDelegate, UNUserNotificati
         DichVuSupabase.dungChung.tuDongKhoiPhucGhiChuNeuCan()
 
         return true
+    }
+
+    @objc private func khiUngDungTamDungHoacThoat() {
+        KhoDuLieu.dungChung.sapXepTatCaBangXuongCanAZ(dongBoSupabase: false)
     }
 
     func userNotificationCenter(

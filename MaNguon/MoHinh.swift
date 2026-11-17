@@ -337,9 +337,19 @@ struct MucDongLenhSX: Codable, Hashable, Identifiable {
     var kichCo: String              // Cột 3: Kích cỡ (VD: "D10", "D12", "D12HP", "D14HP")
     var macThep: String             // Cột 4: Mác thép (VD: "CB300V", "CB400V", "CB500V", "Gr40", "Gr60 (L=12m)")
     var sanLuong: String            // Cột 5: Sản lượng (tấn) (VD: "2,000", "4,000", "3,500", "40")
-    var coTinh: String              // Cột 6: Cơ tính (VD: "40.2025/YCCN - P.CN", "158.2026/YCTN-P.CNLT")
-    var macPhoi: String             // Cột 7: Mác phôi cán (VD: "CT5", "CT5V", "B500B2...", "Gr80-1")
+    var coTinh: String              // Cột 6: YCSX / Cơ tính (VD: "40.2025/YCCN - P.CN", "158.2026/YCTN-P.CNLT")
+    var macPhoi: String             // Cột 7: Mác phôi (VD: "CT5", "CT5V", "B500B2...", "Gr80-1")
     var soOrder: String             // Cột 8: Số Order (VD: "1040004605")
+
+    var tomTatThongBaoDong: String {
+        let kc = kichCo.isEmpty ? "-" : kichCo
+        let mt = macThep.isEmpty ? "-" : macThep
+        let sl = sanLuong.isEmpty ? "-" : "\(sanLuong) tấn"
+        let ycsx = coTinh.isEmpty ? "-" : coTinh
+        let mp = macPhoi.isEmpty ? "-" : macPhoi
+        let ord = soOrder.isEmpty ? "-" : soOrder
+        return "• \(kc) - \(mt) | SL: \(sl) | YCSX: \(ycsx) | Mác phôi: \(mp) | Order: \(ord)"
+    }
 
     init(
         id: String = UUID().uuidString,
@@ -420,8 +430,8 @@ struct MucDongLenhSX: Codable, Hashable, Identifiable {
 
     static func chuanHoaThoiGian(_ chuoi: String) -> String {
         let gop = chuoi
-            .replacingOccurrences(of: "\\r\\n", with: " ")
-            .replacingOccurrences(of: "\\n", with: " ")
+            .replacingOccurrences(of: "\r\n", with: " ")
+            .replacingOccurrences(of: "\n", with: " ")
             .replacingOccurrences(of: "⬇", with: "-")
             .replacingOccurrences(of: "–", with: "-")
             .replacingOccurrences(of: "—", with: "-")
@@ -562,23 +572,6 @@ struct DuLieuLenhSanXuat: Codable, Hashable, Identifiable {
             danhSachMuc: cacMuc
         )
     }
-
-    static func mauHoaPhat6DongD18D16() -> DuLieuLenhSanXuat {
-        let cacMuc: [MucDongLenhSX] = [
-            MucDongLenhSX(stt: 1, thoiGianDuKien: "08h00 10/11 - 08h00 12/11", kichCo: "D18", macThep: "CB400V", sanLuong: "3,500", coTinh: "40.2025/YCCN - P.CN", macPhoi: "CT5", soOrder: "1040004620"),
-            MucDongLenhSX(stt: 2, thoiGianDuKien: "08h00 10/11 - 08h00 12/11", kichCo: "D18", macThep: "CB500V", sanLuong: "3,500", coTinh: "40.2025/YCCN - P.CN", macPhoi: "CT5V", soOrder: "1040004621"),
-            MucDongLenhSX(stt: 3, thoiGianDuKien: "08h00 10/11 - 08h00 12/11", kichCo: "D16", macThep: "CB400V", sanLuong: "3,500", coTinh: "40.2025/YCCN - P.CN", macPhoi: "CT5", soOrder: "1040004617"),
-            MucDongLenhSX(stt: 4, thoiGianDuKien: "08h00 12/11 - 08h00 15/11", kichCo: "D16", macThep: "CB500V", sanLuong: "3,500", coTinh: "40.2025/YCCN - P.CN", macPhoi: "CT5V", soOrder: "1040004618"),
-            MucDongLenhSX(stt: 5, thoiGianDuKien: "08h00 12/11 - 08h00 15/11", kichCo: "D16", macThep: "Gr40", sanLuong: "3,500", coTinh: "40.2025/YCCN - P.CN", macPhoi: "B500B2/ CT5/ W 60 3/11 loại 1+2/ S60 3/11 loại 2", soOrder: "1040004615"),
-            MucDongLenhSX(stt: 6, thoiGianDuKien: "08h00 12/11 - 08h00 15/11", kichCo: "D16", macThep: "Gr60 (L=12m)", sanLuong: "40", coTinh: "158.2026/YCTN-P.CNLT", macPhoi: "Gr80-1", soOrder: "1040004616")
-        ]
-
-        return DuLieuLenhSanXuat(
-            tieuDe: "BẢNG LỆNH SẢN XUẤT",
-            capNhatLuc: Date(),
-            danhSachMuc: cacMuc
-        )
-    }
 }
 
 // MARK: - 2. Mô hình Xưởng Cán (Chỉ lưu siêu dữ liệu & ID ảnh Google Drive lên Supabase, KHÔNG lưu dữ liệu ảnh lên Supabase)
@@ -709,6 +702,11 @@ struct CaiDatUngDung: Codable {
     var gioThongBaoThucDonChieu: Date = TienIchLich.taoGio(gio: 16, phut: 30)
     var gioThongBaoThucDonDem: Date = TienIchLich.taoGio(gio: 22, phut: 30)
 
+    // Thông báo Lệnh sản xuất vào khung giờ bắt đầu ca (Ca Ngày & Ca Đêm)
+    var batThongBaoLenhSX: Bool = true
+    var gioThongBaoLenhSXCaNgay: Date = TienIchLich.taoGio(gio: 7, phut: 30)
+    var gioThongBaoLenhSXCaDem: Date = TienIchLich.taoGio(gio: 19, phut: 30)
+
     var geminiApiKey: String = ""
     var geminiModel: String = "gemini-3.5-flash-lite"
     var sheetWebhookUrl: String = "https://script.google.com/macros/s/AKfycbwmGmcshrvrCsfmqXmj1qlyERulh0CtawveADAMK8rwR4g-Oa5h4NMEo73EiSrIiNcK/exec"
@@ -736,6 +734,7 @@ struct CaiDatUngDung: Codable {
         case batThongBaoThucDon
         case gioThongBaoThucDonSang, gioThongBaoThucDonTrua, gioThongBaoThucDonChieu, gioThongBaoThucDonDem
         case gioThongBaoThucDonNgay
+        case batThongBaoLenhSX, gioThongBaoLenhSXCaNgay, gioThongBaoLenhSXCaDem
         case geminiApiKey, geminiModel, sheetWebhookUrl
         case driveKey, driveFolderId, driveScriptUrl, driveClientId, driveClientSecret, driveRefreshToken
     }
@@ -757,6 +756,9 @@ struct CaiDatUngDung: Codable {
         self.gioThongBaoThucDonTrua = (try? c.decodeIfPresent(Date.self, forKey: .gioThongBaoThucDonTrua)) ?? TienIchLich.taoGio(gio: 10, phut: 30)
         self.gioThongBaoThucDonChieu = (try? c.decodeIfPresent(Date.self, forKey: .gioThongBaoThucDonChieu)) ?? TienIchLich.taoGio(gio: 16, phut: 30)
         self.gioThongBaoThucDonDem = (try? c.decodeIfPresent(Date.self, forKey: .gioThongBaoThucDonDem)) ?? TienIchLich.taoGio(gio: 22, phut: 30)
+        self.batThongBaoLenhSX = (try? c.decodeIfPresent(Bool.self, forKey: .batThongBaoLenhSX)) ?? true
+        self.gioThongBaoLenhSXCaNgay = (try? c.decodeIfPresent(Date.self, forKey: .gioThongBaoLenhSXCaNgay)) ?? TienIchLich.taoGio(gio: 7, phut: 30)
+        self.gioThongBaoLenhSXCaDem = (try? c.decodeIfPresent(Date.self, forKey: .gioThongBaoLenhSXCaDem)) ?? TienIchLich.taoGio(gio: 19, phut: 30)
         self.geminiApiKey = (try? c.decodeIfPresent(String.self, forKey: .geminiApiKey)) ?? ""
         let mModel = (try? c.decodeIfPresent(String.self, forKey: .geminiModel)) ?? "gemini-3.5-flash-lite"
         self.geminiModel = mModel.isEmpty ? "gemini-3.5-flash-lite" : mModel
@@ -786,6 +788,9 @@ struct CaiDatUngDung: Codable {
         try c.encode(gioThongBaoThucDonTrua, forKey: .gioThongBaoThucDonTrua)
         try c.encode(gioThongBaoThucDonChieu, forKey: .gioThongBaoThucDonChieu)
         try c.encode(gioThongBaoThucDonDem, forKey: .gioThongBaoThucDonDem)
+        try c.encode(batThongBaoLenhSX, forKey: .batThongBaoLenhSX)
+        try c.encode(gioThongBaoLenhSXCaNgay, forKey: .gioThongBaoLenhSXCaNgay)
+        try c.encode(gioThongBaoLenhSXCaDem, forKey: .gioThongBaoLenhSXCaDem)
         try c.encode(geminiApiKey, forKey: .geminiApiKey)
         try c.encode(geminiModel, forKey: .geminiModel)
         try c.encode(sheetWebhookUrl, forKey: .sheetWebhookUrl)
@@ -976,7 +981,8 @@ final class KhoDuLieu {
         }
 
         if let d = tm.doc([BangXuongCan].self, tu: tm.tepXuongCan), !d.isEmpty {
-            danhSachBangXuongCan = d
+            danhSachBangXuongCan = Self.sapXepDanhSachBangAZ(d)
+            tm.ghi(danhSachBangXuongCan, vao: tm.tepXuongCan)
         } else {
             let cot1 = CotXuongCan(tenCot: "Mã lô / Phôi", loai: .chu, thuTu: 0)
             let cot2 = CotXuongCan(tenCot: "Thông số cán", loai: .chu, thuTu: 1)
@@ -1060,6 +1066,7 @@ final class KhoDuLieu {
     func luuGhiChuLich(_ moi: [String: GhiChuNgay], dongBoSupabase: Bool = true) {
         ghiChuLich = moi
         ThuMucDuLieu.dungChung.ghi(moi, vao: ThuMucDuLieu.dungChung.tepLich)
+        TienIchLich.capNhatTatCaThongBaoLenhSX()
         if dongBoSupabase {
             DichVuSupabase.dungChung.dongBoDuLieuTuDong()
         }
@@ -1107,6 +1114,7 @@ final class KhoDuLieu {
     func luuDuLieuLenhSX(_ moi: DuLieuLenhSanXuat, dongBoSupabase: Bool = true) {
         duLieuLenhSX = moi
         ThuMucDuLieu.dungChung.ghi(moi, vao: ThuMucDuLieu.dungChung.tepLenhSanXuat)
+        TienIchLich.capNhatTatCaThongBaoLenhSX()
         NotificationCenter.default.post(name: .lenhSanXuatCapNhat, object: nil)
         if dongBoSupabase {
             DichVuSupabase.dungChung.dongBoDuLieuTuDong()
@@ -1129,8 +1137,43 @@ final class KhoDuLieu {
         ThuMucDuLieu.dungChung.ghi(banChuan, vao: ThuMucDuLieu.dungChung.tepCaiDat)
         TienIchLich.capNhatTatCaThongBaoLich()
         TienIchLich.capNhatTatCaThongBaoThucDon()
+        TienIchLich.capNhatTatCaThongBaoLenhSX()
         if thongBao {
             NotificationCenter.default.post(name: .caiDatThayDoi, object: nil)
+        }
+    }
+
+    static func sapXepDanhSachBangAZ(_ ds: [BangXuongCan]) -> [BangXuongCan] {
+        let locViet = Locale(identifier: "vi_VN")
+        return ds.map { bangGoc in
+            var bang = bangGoc
+            guard let cotDau = bang.cot.sorted(by: { $0.thuTu < $1.thuTu }).first else {
+                return bang
+            }
+            bang.dong.sort { d1, d2 in
+                let s1 = (d1.giaTri[cotDau.id]?.vanBan ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                let s2 = (d2.giaTri[cotDau.id]?.vanBan ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                if s1.isEmpty && !s2.isEmpty { return false }
+                if !s1.isEmpty && s2.isEmpty { return true }
+                if s1.isEmpty && s2.isEmpty { return d1.capNhatLuc > d2.capNhatLuc }
+                let kq = s1.compare(s2, options: [.caseInsensitive, .numeric, .diacriticInsensitive], range: nil, locale: locViet)
+                if kq == .orderedSame {
+                    return d1.capNhatLuc > d2.capNhatLuc
+                }
+                return kq == .orderedAscending
+            }
+            return bang
+        }
+    }
+
+    func sapXepTatCaBangXuongCanAZ(dongBoSupabase: Bool = false) {
+        let daSapXep = Self.sapXepDanhSachBangAZ(danhSachBangXuongCan)
+        guard daSapXep != danhSachBangXuongCan else { return }
+        danhSachBangXuongCan = daSapXep
+        ThuMucDuLieu.dungChung.ghi(daSapXep, vao: ThuMucDuLieu.dungChung.tepXuongCan)
+        NotificationCenter.default.post(name: .xuongCanCapNhat, object: nil)
+        if dongBoSupabase {
+            DichVuSupabase.dungChung.dongBoXuongCanTuDong()
         }
     }
 
@@ -1186,6 +1229,14 @@ enum TienIchLich {
         df.calendar = lich
         df.locale = Locale(identifier: "vi_VN")
         df.dateFormat = "HH:mm"
+        return df
+    }()
+
+    static let dinhDangNgayGioXuongCan: DateFormatter = {
+        let df = DateFormatter()
+        df.calendar = lich
+        df.locale = Locale(identifier: "vi_VN")
+        df.dateFormat = "dd/MM/yyyy-HH:mm"
         return df
     }()
 
@@ -1524,5 +1575,180 @@ enum TienIchLich {
         let id = "REMINDER_\(suKien.id)"
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [id])
         UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: id, content: noiDung, trigger: trigger))
+    }
+
+    // MARK: - Thông Báo Lệnh Sản Xuất Vào Khung Giờ Bắt Đầu Ca
+
+    static func phanTichKhoangThoiGianLenhSX(_ chuoi: String, namThamChieu: Int? = nil) -> (batDau: Date, ketThuc: Date)? {
+        let nam = namThamChieu ?? lich.component(.year, from: Date())
+        guard let regex = try? NSRegularExpression(pattern: "(?:(\\d{1,2})h(\\d{2})\\s*)?(\\d{1,2})/(\\d{1,2})") else {
+            return nil
+        }
+        let matches = regex.matches(in: chuoi, range: NSRange(chuoi.startIndex..., in: chuoi))
+        guard matches.count >= 2 else { return nil }
+
+        func taoMoc(_ m: NSTextCheckingResult, namMacDinh: Int) -> (date: Date, thang: Int)? {
+            var gio = 8
+            var phut = 0
+            if m.range(at: 1).location != NSNotFound, let r1 = Range(m.range(at: 1), in: chuoi), let g = Int(chuoi[r1]) {
+                gio = g
+            }
+            if m.range(at: 2).location != NSNotFound, let r2 = Range(m.range(at: 2), in: chuoi), let p = Int(chuoi[r2]) {
+                phut = p
+            }
+            guard m.range(at: 3).location != NSNotFound, let r3 = Range(m.range(at: 3), in: chuoi), let ngay = Int(chuoi[r3]),
+                  m.range(at: 4).location != NSNotFound, let r4 = Range(m.range(at: 4), in: chuoi), let thang = Int(chuoi[r4]) else {
+                return nil
+            }
+            var comp = DateComponents()
+            comp.year = namMacDinh
+            comp.month = thang
+            comp.day = ngay
+            comp.hour = gio
+            comp.minute = phut
+            comp.second = 0
+            guard let d = lich.date(from: comp) else { return nil }
+            return (d, thang)
+        }
+
+        guard let moc1 = taoMoc(matches[0], namMacDinh: nam),
+              var moc2 = taoMoc(matches[1], namMacDinh: nam) else {
+            return nil
+        }
+        if moc2.date < moc1.date && moc2.thang < moc1.thang {
+            if let dQuaNam = taoMoc(matches[1], namMacDinh: nam + 1) {
+                moc2 = dQuaNam
+            }
+        }
+        return (moc1.date, moc2.date)
+    }
+
+    static func danhSachMucLenhSXChoThoiDiem(_ thoiDiemKiemTra: Date) -> [MucDongLenhSX] {
+        let tatCa = KhoDuLieu.dungChung.duLieuLenhSX.danhSachMuc
+        guard !tatCa.isEmpty else { return [] }
+        let nam = lich.component(.year, from: thoiDiemKiemTra)
+
+        let khop = tatCa.filter { muc in
+            guard let khoang = phanTichKhoangThoiGianLenhSX(muc.thoiGianDuKien, namThamChieu: nam) else {
+                return false
+            }
+            return thoiDiemKiemTra >= khoang.batDau && thoiDiemKiemTra < khoang.ketThuc
+        }
+        return khop
+    }
+
+    static func capNhatTatCaThongBaoLenhSX(hoanThanh: ((Int) -> Void)? = nil) {
+        let trungTam = UNUserNotificationCenter.current()
+        let cd = KhoDuLieu.dungChung.caiDat
+        let danhSachMuc = KhoDuLieu.dungChung.duLieuLenhSX.danhSachMuc
+
+        trungTam.getPendingNotificationRequests { dsHienTai in
+            let cacIdCu = dsHienTai.map(\.identifier).filter { $0.hasPrefix("LENHSX_") }
+            if !cacIdCu.isEmpty {
+                trungTam.removePendingNotificationRequests(withIdentifiers: cacIdCu)
+            }
+
+            guard cd.batThongBaoLenhSX, !danhSachMuc.isEmpty else {
+                DispatchQueue.main.async { hoanThanh?(0) }
+                return
+            }
+
+            let tpCaNgay = lich.dateComponents([.hour, .minute], from: cd.gioThongBaoLenhSXCaNgay)
+            let tpCaDem = lich.dateComponents([.hour, .minute], from: cd.gioThongBaoLenhSXCaDem)
+            let bayGio = Date()
+            let dauHomNay = lich.startOfDay(for: bayGio)
+            let tatCaLich = KhoDuLieu.dungChung.ghiChuLich
+
+            var cacYeuCauSapToi: [(thoiDiem: Date, req: UNNotificationRequest)] = []
+
+            func lenLichCa(ngay: Date, laCaDem: Bool) {
+                let gioHen = laCaDem ? (tpCaDem.hour ?? 19) : (tpCaNgay.hour ?? 7)
+                let phutHen = laCaDem ? (tpCaDem.minute ?? 30) : (tpCaNgay.minute ?? 30)
+                guard let thoiDiemBao = lich.date(bySettingHour: gioHen, minute: phutHen, second: 0, of: ngay),
+                      thoiDiemBao > bayGio else { return }
+
+                // Mốc kiểm tra trong ca sản xuất (Ca Ngày: 12h00 trưa cùng ngày; Ca Đêm: 22h00 đêm cùng ngày)
+                let gioKiemTra = laCaDem ? 22 : 12
+                let mocKiemTra = lich.date(bySettingHour: gioKiemTra, minute: 0, second: 0, of: ngay) ?? thoiDiemBao
+                var cacMucCa = danhSachMucLenhSXChoThoiDiem(mocKiemTra)
+                if cacMucCa.isEmpty {
+                    // Nếu bảng không có ngày khớp (hoặc chưa ghi ngày), dùng các mục hiện có
+                    let coKhoangHopLe = danhSachMuc.contains { phanTichKhoangThoiGianLenhSX($0.thoiGianDuKien) != nil }
+                    if !coKhoangHopLe {
+                        cacMucCa = danhSachMuc
+                    }
+                }
+                guard !cacMucCa.isEmpty else { return }
+
+                let khoa = dinhDangKhoaNgay.string(from: ngay)
+                let ngayViet = dinhDangNgayViet.string(from: ngay)
+                let nhanCa = laCaDem ? "Ca Đêm 🌙" : "Ca Ngày ☀️"
+                let id = "LENHSX_\(khoa)_\(laCaDem ? "DEM" : "NGAY")"
+
+                let noiDung = UNMutableNotificationContent()
+                noiDung.title = "🏭 Lệnh sản xuất \(nhanCa) (\(ngayViet))"
+                noiDung.body = cacMucCa.map(\.tomTatThongBaoDong).joined(separator: "\n")
+                noiDung.sound = .default
+
+                let tpTrigger = lich.dateComponents([.year, .month, .day, .hour, .minute], from: thoiDiemBao)
+                let trigger = UNCalendarNotificationTrigger(dateMatching: tpTrigger, repeats: false)
+                let req = UNNotificationRequest(identifier: id, content: noiDung, trigger: trigger)
+                cacYeuCauSapToi.append((thoiDiemBao, req))
+            }
+
+            for buocNgay in 0..<30 {
+                guard let ngay = lich.date(byAdding: .day, value: buocNgay, to: dauHomNay) else { continue }
+                let khoa = dinhDangKhoaNgay.string(from: ngay)
+                let gc = tatCaLich[khoa]
+                let loaiCa = (gc?.type.isEmpty == false) ? gc!.type : (tinhCaTuDong(cho: ngay) ?? "")
+
+                if loaiCa == "ngay" {
+                    lenLichCa(ngay: ngay, laCaDem: false)
+                } else if loaiCa == "dem" {
+                    lenLichCa(ngay: ngay, laCaDem: true)
+                } else if loaiCa.isEmpty {
+                    lenLichCa(ngay: ngay, laCaDem: false)
+                    lenLichCa(ngay: ngay, laCaDem: true)
+                }
+            }
+
+            cacYeuCauSapToi.sort { $0.thoiDiem < $1.thoiDiem }
+            let gioiHan = Array(cacYeuCauSapToi.prefix(40))
+            for item in gioiHan {
+                trungTam.add(item.req)
+            }
+            DispatchQueue.main.async {
+                hoanThanh?(gioiHan.count)
+            }
+        }
+    }
+
+    static func guiThongBaoThuLenhSX() {
+        xinQuyenThongBao()
+        let tatCa = KhoDuLieu.dungChung.duLieuLenhSX.danhSachMuc
+        let bayGio = Date()
+        var cacMucHienTai = danhSachMucLenhSXChoThoiDiem(bayGio)
+        if cacMucHienTai.isEmpty {
+            if let thoiGianDau = tatCa.first?.thoiGianDuKien, !thoiGianDau.isEmpty {
+                cacMucHienTai = tatCa.filter { $0.thoiGianDuKien == thoiGianDau }
+            } else {
+                cacMucHienTai = Array(tatCa.prefix(4))
+            }
+        }
+
+        let noiDung = UNMutableNotificationContent()
+        if !cacMucHienTai.isEmpty {
+            let tg = cacMucHienTai.first?.thoiGianDuKien ?? ""
+            noiDung.title = tg.isEmpty ? "🏭 Lệnh Sản Xuất Bắt Đầu Ca" : "🏭 Lệnh SX (\(tg))"
+            noiDung.body = cacMucHienTai.map(\.tomTatThongBaoDong).joined(separator: "\n")
+        } else {
+            noiDung.title = "🏭 Thông báo Lệnh Sản Xuất"
+            noiDung.body = "Thông báo Lệnh sản xuất vào khung giờ bắt đầu ca đã hoạt động!"
+        }
+        noiDung.sound = .default
+
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1.5, repeats: false)
+        let req = UNNotificationRequest(identifier: "LENHSX_TEST_\(UUID().uuidString)", content: noiDung, trigger: trigger)
+        UNUserNotificationCenter.current().add(req)
     }
 }

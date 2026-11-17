@@ -11,6 +11,7 @@ final class ManHinhCaiDat: UIViewController {
     private let nhanChuKy = UILabel()
     private let nganGioThongBao = UIStackView()
     private let nganGioThongBaoThucDon = UIStackView()
+    private let nganGioThongBaoLenhSX = UIStackView()
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -344,6 +345,28 @@ final class ManHinhCaiDat: UIViewController {
         })
         nganGioThongBaoThucDon.isHidden = !banNhap.batThongBaoThucDon
         nganChuKy.addArrangedSubview(nganGioThongBaoThucDon)
+
+        // 4C. Thông báo Lệnh sản xuất vào khung giờ bắt đầu ca (Ca Ngày & Ca Đêm)
+        nganChuKy.addArrangedSubview(taoVachNgan())
+        nganChuKy.addArrangedSubview(taoHangCongTac(ten: "Bật thông báo Lệnh sản xuất 🏭", dangBat: banNhap.batThongBaoLenhSX) { [weak self] bat in
+            self?.banNhap.batThongBaoLenhSX = bat
+            self?.nganGioThongBaoLenhSX.isHidden = !bat
+        })
+
+        nganGioThongBaoLenhSX.axis = .vertical
+        nganGioThongBaoLenhSX.spacing = 6
+        nganGioThongBaoLenhSX.arrangedSubviews.forEach {
+            nganGioThongBaoLenhSX.removeArrangedSubview($0)
+            $0.removeFromSuperview()
+        }
+        nganGioThongBaoLenhSX.addArrangedSubview(taoHangGioNhac("Giờ báo bắt đầu Ca Ngày ☀️", gio: banNhap.gioThongBaoLenhSXCaNgay) { [weak self] d in
+            self?.banNhap.gioThongBaoLenhSXCaNgay = d
+        })
+        nganGioThongBaoLenhSX.addArrangedSubview(taoHangGioNhac("Giờ báo bắt đầu Ca Đêm 🌙", gio: banNhap.gioThongBaoLenhSXCaDem) { [weak self] d in
+            self?.banNhap.gioThongBaoLenhSXCaDem = d
+        })
+        nganGioThongBaoLenhSX.isHidden = !banNhap.batThongBaoLenhSX
+        nganChuKy.addArrangedSubview(nganGioThongBaoLenhSX)
 
         nganChinh.addArrangedSubview(theChuKy)
 
