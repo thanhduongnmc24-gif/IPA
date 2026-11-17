@@ -683,6 +683,7 @@ final class DichVuSupabase {
             "MENU_NOTIF_NIGHT_TIME": ISO8601DateFormatter().string(from: kho.caiDat.gioThongBaoThucDonDem),
             "MENU_DATA": thucDonObj,
             "GEMINI_API_KEY": kho.caiDat.geminiApiKey,
+            "GEMINI_MODEL": kho.caiDat.geminiModel,
             "WORK_CYCLE_PATTERN": kho.caiDat.chuKyLamViec,
             "XUONG_CAN_TABLES": xuongCanArr,
             "DRIVE_FOLDER_ID": kho.caiDat.driveFolderId,
@@ -892,6 +893,9 @@ final class DichVuSupabase {
         if let gKey = backup["GEMINI_API_KEY"] as? String, !gKey.isEmpty {
             cd.geminiApiKey = gKey
         }
+        if let gModel = backup["GEMINI_MODEL"] as? String, !gModel.isEmpty {
+            cd.geminiModel = gModel
+        }
         if let pat = backup["WORK_CYCLE_PATTERN"] as? [String], !pat.isEmpty {
             cd.chuKyLamViec = pat
         } else if let dPat = layDataJSON(tu: backup["WORK_CYCLE_PATTERN"]),
@@ -922,23 +926,72 @@ final class DichVuSupabase {
     }
 }
 
-// MARK: - 4. Dịch Vụ Gemini AI (Media Creator)
+// MARK: - 4. Dịch Vụ Gemini AI (Hỗ Trợ 3.5 Flash Lite & 3.1 Flash Lite Có Tự Động Dự Phòng)
 
 final class DichVuGemini {
     static let dungChung = DichVuGemini()
+    private(set) var modelVuaSuDung: String = "gemini-3.5-flash-lite"
     private init() {}
+
+    func danhSachModelThuNghiem() -> [String] {
+        let modelChon = KhoDuLieu.dungChung.caiDat.geminiModel.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if modelChon.contains("3.1") {
+            return [
+                "gemini-3.1-flash-lite",
+                "gemini-3.1-flash-lite-preview",
+                "gemini-3.5-flash-lite",
+                "gemini-2.5-flash-lite"
+            ]
+        } else {
+            return [
+                "gemini-3.5-flash-lite",
+                "gemini-3.1-flash-lite",
+                "gemini-3.1-flash-lite-preview",
+                "gemini-2.5-flash-lite"
+            ]
+        }
+    }
+
+    static func tenThanThien(cua model: String) -> String {
+        let m = model.lowercased()
+        if m.contains("3.5") { return "Gemini 3.5 Flash Lite" }
+        if m.contains("3.1") { return "Gemini 3.1 Flash Lite" }
+        if m.contains("2.5") { return "Gemini 2.5 Flash Lite" }
+        return model
+    }
 
     func goiGemini(prompt: String, hoanThanh: @escaping (Result<String, Error>) -> Void) {
         let key = KhoDuLieu.dungChung.caiDat.geminiApiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !key.isEmpty else {
-            hoanThanh(.failure(NSError(domain: "Gemini", code: 401, userInfo: [NSLocalizedDescriptionKey: "Chưa có Gemini API Key. Hãy vào tab Cài đặt để nhập Key Gemini!"])))
+            hoanThanh(.failure(NSError(domain: "Gemini", code: 401, userInfo: [NSLocalizedDescriptionKey: "Chưa có Gemini API Key. Hãy vào tab Cài đặt hoặc bấm Cài đặt nhanh Key để nhập Key Gemini!"])))
             return
         }
-        guard let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=\(key)") else {
+        let danhSachModels = danhSachModelThuNghiem()
+        goiTextTheoDanhSachModel(prompt: prompt, key: key, models: danhSachModels, chiSo: 0, hoanThanh: hoanThanh)
+    }
+
+    private func goiTextTheoDanhSachModel(
+        prompt: String,
+        key: String,
+        models: [String],
+        chiSo: Int,
+        hoanThanh: @escaping (Result<String, Error>) -> Void
+    ) {
+        guard chiSo < models.count else {
+            DispatchQueue.main.async {
+                hoanThanh(.failure(NSError(domain: "Gemini", code: -10, userInfo: [NSLocalizedDescriptionKey: "Tất cả các model (3.5 Flash Lite & 3.1 Flash Lite) hiện đều quá tải hoặc hết hạn mức. Vui lòng thử lại sau ít giây."])))
+            }
             return
         }
+        let model = models[chiSo]
+        guard let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent?key=\(key)") else {
+            goiTextTheoDanhSachModel(prompt: prompt, key: key, models: models, chiSo: chiSo + 1, hoanThanh: hoanThanh)
+            return
+        }
+
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
+        req.timeoutInterval = 35
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let body: [String: Any] = [
             "contents": [
@@ -947,119 +1000,324 @@ final class DichVuGemini {
         ]
         req.httpBody = try? JSONSerialization.data(withJSONObject: body)
 
-        URLSession.shared.dataTask(with: req) { data, _, error in
+        URLSession.shared.dataTask(with: req) { [weak self] data, response, error in
+            guard let self else { return }
             if let error {
                 DispatchQueue.main.async { hoanThanh(.failure(error)) }
                 return
             }
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
             guard let data,
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                DispatchQueue.main.async {
-                    hoanThanh(.failure(NSError(domain: "Gemini", code: -1, userInfo: [NSLocalizedDescriptionKey: "Phản hồi AI không hợp lệ."])))
+                if chiSo + 1 < models.count {
+                    self.goiTextTheoDanhSachModel(prompt: prompt, key: key, models: models, chiSo: chiSo + 1, hoanThanh: hoanThanh)
+                } else {
+                    DispatchQueue.main.async {
+                        hoanThanh(.failure(NSError(domain: "Gemini", code: -1, userInfo: [NSLocalizedDescriptionKey: "Phản hồi AI không hợp lệ."])))
+                    }
                 }
                 return
             }
+
             if let candidates = json["candidates"] as? [[String: Any]],
                let content = candidates.first?["content"] as? [String: Any],
                let parts = content["parts"] as? [[String: Any]],
                let text = parts.first?["text"] as? String {
+                self.modelVuaSuDung = model
                 DispatchQueue.main.async { hoanThanh(.success(text)) }
-            } else if let err = json["error"] as? [String: Any],
-                      let msg = err["message"] as? String {
+                return
+            }
+
+            let errObj = json["error"] as? [String: Any]
+            let msg = (errObj?["message"] as? String) ?? "HTTP \(statusCode)"
+            let msgLower = msg.lowercased()
+
+            // Nếu lỗi do Key không hợp lệ thì dừng ngay để báo người dùng
+            if msgLower.contains("api_key_invalid") || msgLower.contains("api key not valid") {
                 DispatchQueue.main.async {
-                    hoanThanh(.failure(NSError(domain: "Gemini", code: 400, userInfo: [NSLocalizedDescriptionKey: msg])))
+                    hoanThanh(.failure(NSError(domain: "Gemini", code: 401, userInfo: [NSLocalizedDescriptionKey: "Gemini API Key không hợp lệ. Vui lòng kiểm tra lại Key trong Cài đặt."])))
                 }
+                return
+            }
+
+            // Nếu hết quota (429), quá tải (503 High Demand), hoặc mã model chưa mở (404/400), tự động chuyển sang model Flash Lite dự phòng tiếp theo
+            if chiSo + 1 < models.count {
+                self.goiTextTheoDanhSachModel(prompt: prompt, key: key, models: models, chiSo: chiSo + 1, hoanThanh: hoanThanh)
             } else {
                 DispatchQueue.main.async {
-                    hoanThanh(.failure(NSError(domain: "Gemini", code: -2, userInfo: [NSLocalizedDescriptionKey: "Không nhận được nội dung từ Gemini."])))
+                    hoanThanh(.failure(NSError(domain: "Gemini", code: statusCode, userInfo: [NSLocalizedDescriptionKey: msg])))
                 }
             }
         }.resume()
     }
 
+    private func chuanBiAnhQuet(_ anh: UIImage) -> Data? {
+        let w = anh.size.width
+        let h = anh.size.height
+        guard w > 0, h > 0 else { return anh.jpegData(compressionQuality: 0.88) }
+
+        let maxCanh = max(w, h)
+        var tyLe: CGFloat = 1.0
+        if maxCanh < 1800 {
+            tyLe = min(2.4, 2200.0 / maxCanh)
+        } else if maxCanh > 2600 {
+            tyLe = 2400.0 / maxCanh
+        }
+
+        if abs(tyLe - 1.0) > 0.05 {
+            let kichThuocMoi = CGSize(width: floor(w * tyLe), height: floor(h * tyLe))
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = 1.0
+            let anhMoi = UIGraphicsImageRenderer(size: kichThuocMoi, format: format).image { _ in
+                anh.draw(in: CGRect(origin: .zero, size: kichThuocMoi))
+            }
+            return anhMoi.jpegData(compressionQuality: 0.88)
+        }
+        return anh.jpegData(compressionQuality: 0.88)
+    }
+
     func phanTichLenhSanXuat(anh: UIImage, hoanThanh: @escaping (Result<DuLieuLenhSanXuat, Error>) -> Void) {
-        guard let jpegData = anh.jpegData(compressionQuality: 0.8) else {
-            hoanThanh(.failure(NSError(domain: "Gemini", code: -1, userInfo: [NSLocalizedDescriptionKey: "Không thể nén ảnh JPEG."])))
+        let key = KhoDuLieu.dungChung.caiDat.geminiApiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else {
+            hoanThanh(.failure(NSError(domain: "Gemini", code: 401, userInfo: [NSLocalizedDescriptionKey: "Chưa có Gemini API Key. Hãy bấm '🔑 Cài đặt nhanh Gemini Key & Model' hoặc vào tab Cài đặt để dán Key!"])))
             return
         }
+        guard let jpegData = chuanBiAnhQuet(anh) else {
+            hoanThanh(.failure(NSError(domain: "Gemini", code: -1, userInfo: [NSLocalizedDescriptionKey: "Không thể xử lý dữ liệu ảnh JPEG."])))
+            return
+        }
+
         let b64 = jpegData.base64EncodedString()
         let prompt = """
-        Hãy phân tích ảnh bảng Lệnh sản xuất thép và trích xuất đúng 8 cột sau thành JSON:
+        Bạn là hệ thống OCR chuyên dụng đọc bảng Lệnh Sản Xuất thép của Hòa Phát Dung Quất.
+        Hãy đọc TOÀN BỘ các dòng dữ liệu có trong ảnh bảng (từ dòng TT = 1 cho đến dòng cuối cùng trước hàng Tổng, bất kể bảng có 6 dòng, 12 dòng hay nhiều hơn) và trích xuất chính xác 8 cột sau đây thành JSON:
         {
           "tieuDe": "BẢNG LỆNH SẢN XUẤT",
           "danhSachMuc": [
             {
               "stt": 1,
-              "thoiGianDuKien": "08h00 10/11 - 08h00 12/11",
-              "kichCo": "D18",
+              "thoiGianDuKien": "08h00 16/11 - 08h00 19/11",
+              "kichCo": "D10",
               "macThep": "CB400V",
-              "sanLuong": "3,500",
+              "sanLuong": "2,000",
               "coTinh": "40.2025/YCCN - P.CN",
               "macPhoi": "CT5",
-              "soOrder": "1040004620"
+              "soOrder": "1040004605"
             }
           ]
         }
-        Lưu ý quan trọng:
-        1. Thời gian dự kiến sản xuất ở cột 2 thường được gộp ô theo nhóm dòng (ví dụ 3 dòng đầu là 08h00 10/11 - 08h00 12/11, 3 dòng sau là 08h00 12/11 - 08h00 15/11), hãy gán đúng thời gian sản xuất cho từng dòng.
-        2. Mác thép phải ghi đầy đủ kể cả thông tin chiều dài trong ngoặc nếu có (ví dụ: Gr60 (L=12m), CB400V, CB500V, Gr40).
-        3. Mác phôi phải trích xuất đầy đủ toàn bộ văn bản trong cột Mác phôi (ví dụ: CT5, CT5V, B500B2/ CT5/ W 60 3/11 loại 1+2/ S60 3/11 loại 2, Gr80-1).
-        Chỉ trả về JSON thuần trong cặp dấu ```json ... ```, không thêm lời chào.
+
+        QUY TẮC BẮT BUỘC ĐỂ CHÍNH XÁC 100%:
+        1. SỐ DÒNG (stt): Phải lấy ĐẦY ĐỦ tất cả các dòng từ TT = 1 đến hết bảng (ví dụ bảng có 12 dòng từ 1 đến 12 thì phải trả về đủ 12 phần tử, tuyệt đối không dừng ở 6 dòng). Không đưa dòng "Tổng" vào danhSachMuc.
+        2. CỘT THỜI GIAN DỰ KIẾN SẢN XUẤT (thoiGianDuKien):
+           - Cột thứ 2 ("Thời gian dự kiến sản xuất") được gộp ô (merged cells) theo từng cụm dòng dựa vào vạch kẻ ngang của cột đó (ví dụ: dòng 1-2 chung ô "08h00 16/11 - 08h00 19/11"; dòng 3-5 chung ô "08h00 19/11 - 08h00 22/11"; dòng 6-8 chung ô "08h00 22/11 - 08h00 24/11"; dòng 9-10 chung ô "08h00 24/11 - 08h00 25/11"; dòng 11-12 chung ô "08h00 25/11 - 08h00 26/11").
+           - Hãy nhìn vạch kẻ ngang chia ô ở cột Thời gian dự kiến sản xuất để gán ĐÚNG chuỗi thời gian dạng "08h00 dd/MM - 08h00 dd/MM" cho từng dòng thuộc ô gộp đó. Không được gán trùng 2 mốc ngày giống nhau (như 24/11 - 24/11).
+        3. CỘT KÍCH CỠ (kichCo): Lấy chính xác chuỗi ở cột "Sản phẩm -> Kích cỡ", giữ nguyên hậu tố chữ nếu có (ví dụ: "D10", "D12", "D12HP", "D14", "D14HP", "D16", "D18", "D20", "D22", "D25").
+        4. CỘT MÁC THÉP (macThep): Lấy đầy đủ chuỗi ở cột "Sản phẩm -> Mác thép", kể cả thông tin trong ngoặc như "(L=12m)" nếu có (ví dụ: "CB300V", "CB400V", "CB500V", "Gr40", "Gr60 (L=12m)").
+        5. CỘT SẢN LƯỢNG (sanLuong):
+           - CHỈ LẤY số ở cột "Sản phẩm -> Sản lượng (tấn)" (nằm ngay giữa cột Mác thép và cột Cơ tính, ví dụ: "2,000", "4,000", "3,000", "1,500", "3,500", "40").
+           - TUYỆT ĐỐI KHÔNG lấy nhầm sang cột "Phôi cán -> Sản lượng (tấn)" ở phía bên phải (như 2,060; 4,120; 3,090; 1,545; 3,605; 41).
+           - Định dạng có dấu phẩy ngăn cách hàng nghìn (ví dụ: "4,000", "2,000", "1,500").
+        6. CỘT CƠ TÍNH (coTinh): Lấy đầy đủ chuỗi ở cột "Sản phẩm -> Cơ tính" (ví dụ: "40.2025/YCCN - P.CN", "158.2026/YCTN-P.CNLT").
+        7. CỘT MÁC PHÔI (macPhoi): Lấy đầy đủ toàn bộ văn bản trong cột "Phôi cán -> Mác" (ví dụ: "CT5", "CT5V", "B500B2/ CT5/ W 60 3/11 loại 1+2/ S60 3/11 loại 2", "Gr80-1").
+        8. CỘT SỐ ORDER (soOrder): Lấy đúng mã 10 chữ số bắt đầu bằng 104... ở cột "Số Order" (ví dụ: "1040004605"), không lấy cột Số Batch (1111...).
+        Chỉ trả về duy nhất JSON hợp lệ, không thêm lời giải thích.
         """
-        let key = KhoDuLieu.dungChung.caiDat.geminiApiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !key.isEmpty else {
-            hoanThanh(.failure(NSError(domain: "Gemini", code: 401, userInfo: [NSLocalizedDescriptionKey: "Chưa có Gemini API Key. Hãy vào Cài đặt để nhập Key!"])))
+
+        let danhSachModels = danhSachModelThuNghiem()
+        goiAnhTheoDanhSachModel(prompt: prompt, base64Image: b64, key: key, models: danhSachModels, chiSo: 0, hoanThanh: hoanThanh)
+    }
+
+    private func goiAnhTheoDanhSachModel(
+        prompt: String,
+        base64Image: String,
+        key: String,
+        models: [String],
+        chiSo: Int,
+        hoanThanh: @escaping (Result<DuLieuLenhSanXuat, Error>) -> Void
+    ) {
+        guard chiSo < models.count else {
+            DispatchQueue.main.async {
+                hoanThanh(.failure(NSError(domain: "Gemini", code: -10, userInfo: [NSLocalizedDescriptionKey: "Các model Gemini (3.5 Flash Lite & 3.1 Flash Lite) hiện đang quá tải hoặc hết quota. Bạn hãy thử lại sau vài giây hoặc chuyển sang model còn lại!"])))
+            }
             return
         }
-        guard let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=\(key)") else { return }
+
+        let model = models[chiSo]
+        guard let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent?key=\(key)") else {
+            goiAnhTheoDanhSachModel(prompt: prompt, base64Image: base64Image, key: key, models: models, chiSo: chiSo + 1, hoanThanh: hoanThanh)
+            return
+        }
 
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
+        req.timeoutInterval = 45
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
         let body: [String: Any] = [
             "contents": [
                 [
                     "parts": [
                         ["text": prompt],
-                        ["inline_data": ["mime_type": "image/jpeg", "data": b64]]
+                        ["inline_data": ["mime_type": "image/jpeg", "data": base64Image]]
                     ]
                 ]
+            ],
+            "generationConfig": [
+                "temperature": 0.1,
+                "responseMimeType": "application/json"
             ]
         ]
         req.httpBody = try? JSONSerialization.data(withJSONObject: body)
 
-        URLSession.shared.dataTask(with: req) { data, _, error in
+        URLSession.shared.dataTask(with: req) { [weak self] data, response, error in
+            guard let self else { return }
             if let error {
                 DispatchQueue.main.async { hoanThanh(.failure(error)) }
                 return
             }
-            guard let data,
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let candidates = json["candidates"] as? [[String: Any]],
-                  let content = candidates.first?["content"] as? [String: Any],
-                  let parts = content["parts"] as? [[String: Any]],
-                  let text = parts.first?["text"] as? String else {
-                DispatchQueue.main.async {
-                    hoanThanh(.failure(NSError(domain: "Gemini", code: -2, userInfo: [NSLocalizedDescriptionKey: "Không nhận được nội dung từ Gemini."])))
-                }
-                return
-            }
-            var clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            if clean.hasPrefix("```json") { clean = String(clean.dropFirst(7)) }
-            else if clean.hasPrefix("```") { clean = String(clean.dropFirst(3)) }
-            if clean.hasSuffix("```") { clean = String(clean.dropLast(3)) }
-            clean = clean.trimmingCharacters(in: .whitespacesAndNewlines)
 
-            guard let jsonData = clean.data(using: .utf8),
-                  let duLieu = try? JSONDecoder().decode(DuLieuLenhSanXuat.self, from: jsonData) else {
-                DispatchQueue.main.async {
-                    hoanThanh(.failure(NSError(domain: "Gemini", code: -3, userInfo: [NSLocalizedDescriptionKey: "Cấu trúc phản hồi AI không đúng định dạng Lệnh SX."])))
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+            guard let data,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                if chiSo + 1 < models.count {
+                    self.goiAnhTheoDanhSachModel(prompt: prompt, base64Image: base64Image, key: key, models: models, chiSo: chiSo + 1, hoanThanh: hoanThanh)
+                } else {
+                    DispatchQueue.main.async {
+                        hoanThanh(.failure(NSError(domain: "Gemini", code: -2, userInfo: [NSLocalizedDescriptionKey: "Phản hồi từ máy chủ Gemini không hợp lệ."])))
+                    }
                 }
                 return
             }
-            DispatchQueue.main.async {
-                hoanThanh(.success(duLieu))
+
+            if let candidates = json["candidates"] as? [[String: Any]],
+               let content = candidates.first?["content"] as? [String: Any],
+               let parts = content["parts"] as? [[String: Any]] {
+                let ghepText = parts.compactMap { $0["text"] as? String }.joined(separator: "\n")
+                if let duLieu = Self.bocTachJSONLenhSX(tu: ghepText), !duLieu.danhSachMuc.isEmpty {
+                    self.modelVuaSuDung = model
+                    DispatchQueue.main.async {
+                        hoanThanh(.success(duLieu))
+                    }
+                    return
+                }
+            }
+
+            let errObj = json["error"] as? [String: Any]
+            let msg = (errObj?["message"] as? String) ?? "HTTP \(statusCode)"
+            let msgLower = msg.lowercased()
+
+            if msgLower.contains("api_key_invalid") || msgLower.contains("api key not valid") {
+                DispatchQueue.main.async {
+                    hoanThanh(.failure(NSError(domain: "Gemini", code: 401, userInfo: [NSLocalizedDescriptionKey: "Gemini API Key không hợp lệ. Vui lòng kiểm tra lại Key của bạn."])))
+                }
+                return
+            }
+
+            if chiSo + 1 < models.count {
+                self.goiAnhTheoDanhSachModel(prompt: prompt, base64Image: base64Image, key: key, models: models, chiSo: chiSo + 1, hoanThanh: hoanThanh)
+            } else {
+                DispatchQueue.main.async {
+                    hoanThanh(.failure(NSError(domain: "Gemini", code: statusCode, userInfo: [NSLocalizedDescriptionKey: "Lỗi gọi Gemini AI (\(model)): \(msg)"])))
+                }
             }
         }.resume()
+    }
+
+    static func bocTachJSONLenhSX(tu text: String) -> DuLieuLenhSanXuat? {
+        var clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if clean.hasPrefix("```json") { clean = String(clean.dropFirst(7)) }
+        else if clean.hasPrefix("```") { clean = String(clean.dropFirst(3)) }
+        if clean.hasSuffix("```") { clean = String(clean.dropLast(3)) }
+        clean = clean.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Trích xuất khối JSON nằm giữa { ... } hoặc [ ... ] nếu AI có kèm văn bản phụ
+        if let firstBrace = clean.firstIndex(of: "{"),
+           let lastBrace = clean.lastIndex(of: "}"),
+           firstBrace <= lastBrace {
+            let sub = String(clean[firstBrace...lastBrace])
+            if let data = sub.data(using: .utf8) {
+                if let decoded = try? JSONDecoder().decode(DuLieuLenhSanXuat.self, from: data), !decoded.danhSachMuc.isEmpty {
+                    return decoded
+                }
+                if let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let parsed = parseTuDictLinhHoat(dict), !parsed.danhSachMuc.isEmpty {
+                    return parsed
+                }
+            }
+        }
+
+        if let firstBracket = clean.firstIndex(of: "["),
+           let lastBracket = clean.lastIndex(of: "]"),
+           firstBracket <= lastBracket {
+            let sub = String(clean[firstBracket...lastBracket])
+            if let data = sub.data(using: .utf8) {
+                if let arr = try? JSONDecoder().decode([MucDongLenhSX].self, from: data), !arr.isEmpty {
+                    var ds = arr
+                    for i in 0..<ds.count { ds[i].stt = i + 1 }
+                    return DuLieuLenhSanXuat(tieuDe: "BẢNG LỆNH SẢN XUẤT", capNhatLuc: Date(), danhSachMuc: ds)
+                }
+                if let rawArr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+                    let ds = parseMangMucLinhHoat(rawArr)
+                    if !ds.isEmpty {
+                        return DuLieuLenhSanXuat(tieuDe: "BẢNG LỆNH SẢN XUẤT", capNhatLuc: Date(), danhSachMuc: ds)
+                    }
+                }
+            }
+        }
+
+        return nil
+    }
+
+    private static func parseTuDictLinhHoat(_ dict: [String: Any]) -> DuLieuLenhSanXuat? {
+        let tieuDe = (dict["tieuDe"] as? String) ?? (dict["title"] as? String) ?? "BẢNG LỆNH SẢN XUẤT"
+        let cacKhoaMang = ["danhSachMuc", "danh_sach_muc", "rows", "items", "data"]
+        for k in cacKhoaMang {
+            if let rawArr = dict[k] as? [[String: Any]] {
+                let ds = parseMangMucLinhHoat(rawArr)
+                if !ds.isEmpty {
+                    return DuLieuLenhSanXuat(tieuDe: tieuDe, capNhatLuc: Date(), danhSachMuc: ds)
+                }
+            }
+        }
+        return nil
+    }
+
+    private static func parseMangMucLinhHoat(_ rawArr: [[String: Any]]) -> [MucDongLenhSX] {
+        var ketQua: [MucDongLenhSX] = []
+        for (idx, item) in rawArr.enumerated() {
+            func str(_ keys: [String]) -> String {
+                for k in keys {
+                    if let s = item[k] as? String, !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        return s.trimmingCharacters(in: .whitespacesAndNewlines)
+                    }
+                    if let n = item[k] as? NSNumber {
+                        return n.stringValue
+                    }
+                }
+                return ""
+            }
+            let sttVal = Int(str(["stt", "tt", "index"])) ?? (idx + 1)
+            let tg = str(["thoiGianDuKien", "thoi_gian_du_kien", "thoiGian", "time"])
+            let kc = str(["kichCo", "kich_co", "size"])
+            let mt = str(["macThep", "mac_thep", "steelGrade"])
+            let sl = str(["sanLuong", "san_luong", "quantity", "tonnage"])
+            let ct = str(["coTinh", "co_tinh", "mechanical"])
+            let mp = str(["macPhoi", "mac_phoi", "mac", "billetGrade"])
+            let ord = str(["soOrder", "so_order", "order"])
+
+            let muc = MucDongLenhSX(
+                stt: idx + 1 > 0 ? (idx + 1) : sttVal,
+                thoiGianDuKien: tg,
+                kichCo: kc,
+                macThep: mt,
+                sanLuong: sl,
+                coTinh: ct,
+                macPhoi: mp,
+                soOrder: ord
+            )
+            ketQua.append(muc)
+        }
+        return ketQua
     }
 }

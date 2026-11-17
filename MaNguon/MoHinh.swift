@@ -333,13 +333,13 @@ struct DuLieuThucDon: Codable, Hashable, Identifiable {
 struct MucDongLenhSX: Codable, Hashable, Identifiable {
     var id: String = UUID().uuidString
     var stt: Int                     // Cột 1: TT (1, 2, 3...)
-    var thoiGianDuKien: String       // Cột 2: Thời gian dự kiến sản xuất (VD: "08h00 10/11 - 08h00 12/11")
-    var kichCo: String              // Cột 3: Kích cỡ (VD: "D18", "D16")
-    var macThep: String             // Cột 4: Mác thép (VD: "CB400V", "CB500V", "Gr40", "Gr60 (L=12m)")
-    var sanLuong: String            // Cột 5: Sản lượng (tấn) (VD: "3,500", "40")
+    var thoiGianDuKien: String       // Cột 2: Thời gian dự kiến sản xuất (VD: "08h00 16/11 - 08h00 19/11")
+    var kichCo: String              // Cột 3: Kích cỡ (VD: "D10", "D12", "D12HP", "D14HP")
+    var macThep: String             // Cột 4: Mác thép (VD: "CB300V", "CB400V", "CB500V", "Gr40", "Gr60 (L=12m)")
+    var sanLuong: String            // Cột 5: Sản lượng (tấn) (VD: "2,000", "4,000", "3,500", "40")
     var coTinh: String              // Cột 6: Cơ tính (VD: "40.2025/YCCN - P.CN", "158.2026/YCTN-P.CNLT")
     var macPhoi: String             // Cột 7: Mác phôi cán (VD: "CT5", "CT5V", "B500B2...", "Gr80-1")
-    var soOrder: String             // Cột 8: Số Order (VD: "1040004620")
+    var soOrder: String             // Cột 8: Số Order (VD: "1040004605")
 
     init(
         id: String = UUID().uuidString,
@@ -354,13 +354,126 @@ struct MucDongLenhSX: Codable, Hashable, Identifiable {
     ) {
         self.id = id
         self.stt = stt
-        self.thoiGianDuKien = thoiGianDuKien
-        self.kichCo = kichCo
-        self.macThep = macThep
-        self.sanLuong = sanLuong
-        self.coTinh = coTinh
-        self.macPhoi = macPhoi
-        self.soOrder = soOrder
+        self.thoiGianDuKien = Self.chuanHoaThoiGian(thoiGianDuKien)
+        self.kichCo = kichCo.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "Ø", with: "D")
+        self.macThep = macThep.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.sanLuong = Self.chuanHoaSanLuong(sanLuong)
+        self.coTinh = coTinh.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.macPhoi = macPhoi.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.soOrder = soOrder.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, stt, thoiGianDuKien, kichCo, macThep, sanLuong, coTinh, macPhoi, soOrder
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        if let strId = try? c.decodeIfPresent(String.self, forKey: .id), !strId.isEmpty {
+            self.id = strId
+        } else {
+            self.id = UUID().uuidString
+        }
+
+        if let i = try? c.decodeIfPresent(Int.self, forKey: .stt) {
+            self.stt = i
+        } else if let s = try? c.decodeIfPresent(String.self, forKey: .stt),
+                  let i = Int(s.trimmingCharacters(in: .whitespacesAndNewlines)) {
+            self.stt = i
+        } else if let d = try? c.decodeIfPresent(Double.self, forKey: .stt) {
+            self.stt = Int(d)
+        } else {
+            self.stt = 1
+        }
+
+        let tgRaw = (try? c.decodeIfPresent(String.self, forKey: .thoiGianDuKien)) ?? ""
+        self.thoiGianDuKien = Self.chuanHoaThoiGian(tgRaw)
+
+        let kcRaw = (try? c.decodeIfPresent(String.self, forKey: .kichCo)) ?? ""
+        self.kichCo = kcRaw.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "Ø", with: "D")
+
+        self.macThep = ((try? c.decodeIfPresent(String.self, forKey: .macThep)) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if let sSL = try? c.decodeIfPresent(String.self, forKey: .sanLuong) {
+            self.sanLuong = Self.chuanHoaSanLuong(sSL)
+        } else if let iSL = try? c.decodeIfPresent(Int.self, forKey: .sanLuong) {
+            self.sanLuong = Self.chuanHoaSanLuong(String(iSL))
+        } else if let dSL = try? c.decodeIfPresent(Double.self, forKey: .sanLuong) {
+            self.sanLuong = Self.chuanHoaSanLuong(String(dSL))
+        } else {
+            self.sanLuong = ""
+        }
+
+        self.coTinh = ((try? c.decodeIfPresent(String.self, forKey: .coTinh)) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        self.macPhoi = ((try? c.decodeIfPresent(String.self, forKey: .macPhoi)) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if let sOrd = try? c.decodeIfPresent(String.self, forKey: .soOrder) {
+            self.soOrder = sOrd.trimmingCharacters(in: .whitespacesAndNewlines)
+        } else if let iOrd = try? c.decodeIfPresent(Int64.self, forKey: .soOrder) {
+            self.soOrder = String(iOrd)
+        } else if let dOrd = try? c.decodeIfPresent(Double.self, forKey: .soOrder) {
+            self.soOrder = String(Int64(dOrd))
+        } else {
+            self.soOrder = ""
+        }
+    }
+
+    static func chuanHoaThoiGian(_ chuoi: String) -> String {
+        let gop = chuoi
+            .replacingOccurrences(of: "\\r\\n", with: " ")
+            .replacingOccurrences(of: "\\n", with: " ")
+            .replacingOccurrences(of: "⬇", with: "-")
+            .replacingOccurrences(of: "–", with: "-")
+            .replacingOccurrences(of: "—", with: "-")
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+
+        guard let regex = try? NSRegularExpression(pattern: "(\\d{1,2}h\\d{2}\\s*\\d{1,2}/\\d{1,2}|\\b\\d{1,2}/\\d{1,2}\\b)") else {
+            return gop
+        }
+        let matches = regex.matches(in: gop, range: NSRange(gop.startIndex..., in: gop))
+        let cacMoc = matches.compactMap { m -> String? in
+            guard let r = Range(m.range, in: gop) else { return nil }
+            let raw = String(gop[r]).replacingOccurrences(of: " ", with: "")
+            if raw.contains("h") {
+                return raw.replacingOccurrences(of: "h00", with: "h00 ")
+                    .replacingOccurrences(of: "h30", with: "h30 ")
+                    .replacingOccurrences(of: "  ", with: " ")
+                    .trimmingCharacters(in: .whitespaces)
+            } else {
+                return "08h00 \(raw)"
+            }
+        }
+        if cacMoc.count >= 2 {
+            return "\(cacMoc[0]) - \(cacMoc[1])"
+        }
+        return gop
+    }
+
+    static func docGiaTriSanLuong(_ chuoi: String) -> Double? {
+        var s = chuoi.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: " ", with: "")
+            .replacingOccurrences(of: "tấn", with: "", options: .caseInsensitive)
+            .replacingOccurrences(of: "tan", with: "", options: .caseInsensitive)
+        guard !s.isEmpty else { return nil }
+        if s.range(of: "^\\d{1,3}(\\.\\d{3})+$", options: .regularExpression) != nil {
+            s = s.replacingOccurrences(of: ".", with: "")
+        } else {
+            s = s.replacingOccurrences(of: ",", with: "")
+        }
+        return Double(s)
+    }
+
+    static func chuanHoaSanLuong(_ chuoi: String) -> String {
+        let trimmed = chuoi.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+        guard let d = docGiaTriSanLuong(trimmed) else { return trimmed }
+        let f = NumberFormatter()
+        f.locale = Locale(identifier: "en_US")
+        f.numberStyle = .decimal
+        f.maximumFractionDigits = 3
+        return f.string(from: NSNumber(value: d)) ?? trimmed
     }
 }
 
@@ -370,13 +483,58 @@ struct DuLieuLenhSanXuat: Codable, Hashable, Identifiable {
     var capNhatLuc: Date = Date()
     var danhSachMuc: [MucDongLenhSX] = []
 
+    init(
+        id: String = UUID().uuidString,
+        tieuDe: String = "BẢNG LỆNH SẢN XUẤT",
+        capNhatLuc: Date = Date(),
+        danhSachMuc: [MucDongLenhSX] = []
+    ) {
+        self.id = id
+        self.tieuDe = tieuDe
+        self.capNhatLuc = capNhatLuc
+        self.danhSachMuc = danhSachMuc
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, tieuDe, capNhatLuc, danhSachMuc
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        if let strId = try? c.decodeIfPresent(String.self, forKey: .id), !strId.isEmpty {
+            self.id = strId
+        } else {
+            self.id = UUID().uuidString
+        }
+        if let td = try? c.decodeIfPresent(String.self, forKey: .tieuDe), !td.isEmpty {
+            self.tieuDe = td
+        } else {
+            self.tieuDe = "BẢNG LỆNH SẢN XUẤT"
+        }
+        if let d = try? c.decodeIfPresent(Date.self, forKey: .capNhatLuc) {
+            self.capNhatLuc = d
+        } else if let s = try? c.decodeIfPresent(String.self, forKey: .capNhatLuc),
+                  let d = TienIchLich.docNgayISO(s) {
+            self.capNhatLuc = d
+        } else {
+            self.capNhatLuc = Date()
+        }
+        var ds = (try? c.decodeIfPresent([MucDongLenhSX].self, forKey: .danhSachMuc)) ?? []
+        for idx in 0..<ds.count {
+            ds[idx].stt = idx + 1
+        }
+        self.danhSachMuc = ds
+    }
+
     var tongSanLuong: String {
         var tong: Double = 0
         for m in danhSachMuc {
-            let s = m.sanLuong.replacingOccurrences(of: ",", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
-            if let d = Double(s) { tong += d }
+            if let d = MucDongLenhSX.docGiaTriSanLuong(m.sanLuong) {
+                tong += d
+            }
         }
         let f = NumberFormatter()
+        f.locale = Locale(identifier: "en_US")
         f.numberStyle = .decimal
         f.maximumFractionDigits = 3
         return f.string(from: NSNumber(value: tong)) ?? "\(tong)"
@@ -384,66 +542,35 @@ struct DuLieuLenhSanXuat: Codable, Hashable, Identifiable {
 
     static func mauHoaPhatDungQuat() -> DuLieuLenhSanXuat {
         let cacMuc: [MucDongLenhSX] = [
-            MucDongLenhSX(
-                stt: 1,
-                thoiGianDuKien: "08h00 10/11 - 08h00 12/11",
-                kichCo: "D18",
-                macThep: "CB400V",
-                sanLuong: "3,500",
-                coTinh: "40.2025/YCCN - P.CN",
-                macPhoi: "CT5",
-                soOrder: "1040004620"
-            ),
-            MucDongLenhSX(
-                stt: 2,
-                thoiGianDuKien: "08h00 10/11 - 08h00 12/11",
-                kichCo: "D18",
-                macThep: "CB500V",
-                sanLuong: "3,500",
-                coTinh: "40.2025/YCCN - P.CN",
-                macPhoi: "CT5V",
-                soOrder: "1040004621"
-            ),
-            MucDongLenhSX(
-                stt: 3,
-                thoiGianDuKien: "08h00 10/11 - 08h00 12/11",
-                kichCo: "D16",
-                macThep: "CB400V",
-                sanLuong: "3,500",
-                coTinh: "40.2025/YCCN - P.CN",
-                macPhoi: "CT5",
-                soOrder: "1040004617"
-            ),
-            MucDongLenhSX(
-                stt: 4,
-                thoiGianDuKien: "08h00 12/11 - 08h00 15/11",
-                kichCo: "D16",
-                macThep: "CB500V",
-                sanLuong: "3,500",
-                coTinh: "40.2025/YCCN - P.CN",
-                macPhoi: "CT5V",
-                soOrder: "1040004618"
-            ),
-            MucDongLenhSX(
-                stt: 5,
-                thoiGianDuKien: "08h00 12/11 - 08h00 15/11",
-                kichCo: "D16",
-                macThep: "Gr40",
-                sanLuong: "3,500",
-                coTinh: "40.2025/YCCN - P.CN",
-                macPhoi: "B500B2/ CT5/ W 60 3/11 loại 1+2/ S60 3/11 loại 2",
-                soOrder: "1040004615"
-            ),
-            MucDongLenhSX(
-                stt: 6,
-                thoiGianDuKien: "08h00 12/11 - 08h00 15/11",
-                kichCo: "D16",
-                macThep: "Gr60 (L=12m)",
-                sanLuong: "40",
-                coTinh: "158.2026/YCTN-P.CNLT",
-                macPhoi: "Gr80-1",
-                soOrder: "1040004616"
-            )
+            MucDongLenhSX(stt: 1, thoiGianDuKien: "08h00 16/11 - 08h00 19/11", kichCo: "D10", macThep: "CB400V", sanLuong: "2,000", coTinh: "40.2025/YCCN - P.CN", macPhoi: "CT5", soOrder: "1040004605"),
+            MucDongLenhSX(stt: 2, thoiGianDuKien: "08h00 16/11 - 08h00 19/11", kichCo: "D10", macThep: "CB500V", sanLuong: "4,000", coTinh: "40.2025/YCCN - P.CN", macPhoi: "CT5V", soOrder: "1040004606"),
+            MucDongLenhSX(stt: 3, thoiGianDuKien: "08h00 19/11 - 08h00 22/11", kichCo: "D12", macThep: "CB400V", sanLuong: "3,000", coTinh: "40.2025/YCCN - P.CN", macPhoi: "CT5", soOrder: "1040004607"),
+            MucDongLenhSX(stt: 4, thoiGianDuKien: "08h00 19/11 - 08h00 22/11", kichCo: "D12", macThep: "CB500V", sanLuong: "3,000", coTinh: "40.2025/YCCN - P.CN", macPhoi: "CT5V", soOrder: "1040004608"),
+            MucDongLenhSX(stt: 5, thoiGianDuKien: "08h00 19/11 - 08h00 22/11", kichCo: "D12HP", macThep: "CB300V", sanLuong: "3,000", coTinh: "40.2025/YCCN - P.CN", macPhoi: "CT5", soOrder: "1040004609"),
+            MucDongLenhSX(stt: 6, thoiGianDuKien: "08h00 22/11 - 08h00 24/11", kichCo: "D14", macThep: "CB400V", sanLuong: "1,500", coTinh: "40.2025/YCCN - P.CN", macPhoi: "CT5", soOrder: "1040004610"),
+            MucDongLenhSX(stt: 7, thoiGianDuKien: "08h00 22/11 - 08h00 24/11", kichCo: "D14", macThep: "CB500V", sanLuong: "1,500", coTinh: "40.2025/YCCN - P.CN", macPhoi: "CT5V", soOrder: "1040004611"),
+            MucDongLenhSX(stt: 8, thoiGianDuKien: "08h00 22/11 - 08h00 24/11", kichCo: "D14HP", macThep: "CB300V", sanLuong: "3,000", coTinh: "40.2025/YCCN - P.CN", macPhoi: "CT5", soOrder: "1040004612"),
+            MucDongLenhSX(stt: 9, thoiGianDuKien: "08h00 24/11 - 08h00 25/11", kichCo: "D22", macThep: "CB400V", sanLuong: "1,500", coTinh: "40.2025/YCCN - P.CN", macPhoi: "CT5", soOrder: "1040004629"),
+            MucDongLenhSX(stt: 10, thoiGianDuKien: "08h00 24/11 - 08h00 25/11", kichCo: "D22", macThep: "CB500V", sanLuong: "2,000", coTinh: "40.2025/YCCN - P.CN", macPhoi: "CT5V", soOrder: "1040004630"),
+            MucDongLenhSX(stt: 11, thoiGianDuKien: "08h00 25/11 - 08h00 26/11", kichCo: "D20", macThep: "CB400V", sanLuong: "2,000", coTinh: "40.2025/YCCN - P.CN", macPhoi: "CT5", soOrder: "1040004625"),
+            MucDongLenhSX(stt: 12, thoiGianDuKien: "08h00 25/11 - 08h00 26/11", kichCo: "D20", macThep: "CB500V", sanLuong: "1,500", coTinh: "40.2025/YCCN - P.CN", macPhoi: "CT5V", soOrder: "1040004626")
+        ]
+
+        return DuLieuLenhSanXuat(
+            tieuDe: "BẢNG LỆNH SẢN XUẤT",
+            capNhatLuc: Date(),
+            danhSachMuc: cacMuc
+        )
+    }
+
+    static func mauHoaPhat6DongD18D16() -> DuLieuLenhSanXuat {
+        let cacMuc: [MucDongLenhSX] = [
+            MucDongLenhSX(stt: 1, thoiGianDuKien: "08h00 10/11 - 08h00 12/11", kichCo: "D18", macThep: "CB400V", sanLuong: "3,500", coTinh: "40.2025/YCCN - P.CN", macPhoi: "CT5", soOrder: "1040004620"),
+            MucDongLenhSX(stt: 2, thoiGianDuKien: "08h00 10/11 - 08h00 12/11", kichCo: "D18", macThep: "CB500V", sanLuong: "3,500", coTinh: "40.2025/YCCN - P.CN", macPhoi: "CT5V", soOrder: "1040004621"),
+            MucDongLenhSX(stt: 3, thoiGianDuKien: "08h00 10/11 - 08h00 12/11", kichCo: "D16", macThep: "CB400V", sanLuong: "3,500", coTinh: "40.2025/YCCN - P.CN", macPhoi: "CT5", soOrder: "1040004617"),
+            MucDongLenhSX(stt: 4, thoiGianDuKien: "08h00 12/11 - 08h00 15/11", kichCo: "D16", macThep: "CB500V", sanLuong: "3,500", coTinh: "40.2025/YCCN - P.CN", macPhoi: "CT5V", soOrder: "1040004618"),
+            MucDongLenhSX(stt: 5, thoiGianDuKien: "08h00 12/11 - 08h00 15/11", kichCo: "D16", macThep: "Gr40", sanLuong: "3,500", coTinh: "40.2025/YCCN - P.CN", macPhoi: "B500B2/ CT5/ W 60 3/11 loại 1+2/ S60 3/11 loại 2", soOrder: "1040004615"),
+            MucDongLenhSX(stt: 6, thoiGianDuKien: "08h00 12/11 - 08h00 15/11", kichCo: "D16", macThep: "Gr60 (L=12m)", sanLuong: "40", coTinh: "158.2026/YCTN-P.CNLT", macPhoi: "Gr80-1", soOrder: "1040004616")
         ]
 
         return DuLieuLenhSanXuat(
@@ -583,7 +710,15 @@ struct CaiDatUngDung: Codable {
     var gioThongBaoThucDonDem: Date = TienIchLich.taoGio(gio: 22, phut: 30)
 
     var geminiApiKey: String = ""
+    var geminiModel: String = "gemini-3.5-flash-lite"
     var sheetWebhookUrl: String = "https://script.google.com/macros/s/AKfycbwmGmcshrvrCsfmqXmj1qlyERulh0CtawveADAMK8rwR4g-Oa5h4NMEo73EiSrIiNcK/exec"
+
+    var tenHienThiModelGemini: String {
+        if geminiModel.contains("3.1") {
+            return "Gemini 3.1 Flash Lite"
+        }
+        return "Gemini 3.5 Flash Lite"
+    }
 
     // Cấu hình Google Drive OAuth 2.0 cho Xưởng Cán
     var driveKey: String = ""
@@ -601,7 +736,7 @@ struct CaiDatUngDung: Codable {
         case batThongBaoThucDon
         case gioThongBaoThucDonSang, gioThongBaoThucDonTrua, gioThongBaoThucDonChieu, gioThongBaoThucDonDem
         case gioThongBaoThucDonNgay
-        case geminiApiKey, sheetWebhookUrl
+        case geminiApiKey, geminiModel, sheetWebhookUrl
         case driveKey, driveFolderId, driveScriptUrl, driveClientId, driveClientSecret, driveRefreshToken
     }
 
@@ -623,6 +758,8 @@ struct CaiDatUngDung: Codable {
         self.gioThongBaoThucDonChieu = (try? c.decodeIfPresent(Date.self, forKey: .gioThongBaoThucDonChieu)) ?? TienIchLich.taoGio(gio: 16, phut: 30)
         self.gioThongBaoThucDonDem = (try? c.decodeIfPresent(Date.self, forKey: .gioThongBaoThucDonDem)) ?? TienIchLich.taoGio(gio: 22, phut: 30)
         self.geminiApiKey = (try? c.decodeIfPresent(String.self, forKey: .geminiApiKey)) ?? ""
+        let mModel = (try? c.decodeIfPresent(String.self, forKey: .geminiModel)) ?? "gemini-3.5-flash-lite"
+        self.geminiModel = mModel.isEmpty ? "gemini-3.5-flash-lite" : mModel
         self.sheetWebhookUrl = (try? c.decodeIfPresent(String.self, forKey: .sheetWebhookUrl)) ?? "https://script.google.com/macros/s/AKfycbwmGmcshrvrCsfmqXmj1qlyERulh0CtawveADAMK8rwR4g-Oa5h4NMEo73EiSrIiNcK/exec"
         self.driveKey = (try? c.decodeIfPresent(String.self, forKey: .driveKey)) ?? ""
         self.driveFolderId = (try? c.decodeIfPresent(String.self, forKey: .driveFolderId)) ?? ""
@@ -650,6 +787,7 @@ struct CaiDatUngDung: Codable {
         try c.encode(gioThongBaoThucDonChieu, forKey: .gioThongBaoThucDonChieu)
         try c.encode(gioThongBaoThucDonDem, forKey: .gioThongBaoThucDonDem)
         try c.encode(geminiApiKey, forKey: .geminiApiKey)
+        try c.encode(geminiModel, forKey: .geminiModel)
         try c.encode(sheetWebhookUrl, forKey: .sheetWebhookUrl)
         try c.encode(driveKey, forKey: .driveKey)
         try c.encode(driveFolderId, forKey: .driveFolderId)
@@ -689,6 +827,13 @@ struct CaiDatUngDung: Codable {
             driveFolderId = fId
         }
         driveScriptUrl = ""
+
+        if geminiApiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            geminiApiKey = ud.string(forKey: "GEMINI_API_KEY_SAVED") ?? ""
+        }
+        if geminiModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            geminiModel = ud.string(forKey: "GEMINI_MODEL_SAVED") ?? "gemini-3.5-flash-lite"
+        }
     }
 }
 
@@ -978,6 +1123,8 @@ final class KhoDuLieu {
         ud.setValue(banChuan.driveClientSecret, forKey: "DRIVE_OAUTH_CLIENT_SECRET")
         ud.setValue(banChuan.driveRefreshToken, forKey: "DRIVE_OAUTH_REFRESH_TOKEN")
         ud.setValue(banChuan.driveFolderId, forKey: "DRIVE_OAUTH_FOLDER_ID")
+        ud.setValue(banChuan.geminiApiKey, forKey: "GEMINI_API_KEY_SAVED")
+        ud.setValue(banChuan.geminiModel, forKey: "GEMINI_MODEL_SAVED")
 
         ThuMucDuLieu.dungChung.ghi(banChuan, vao: ThuMucDuLieu.dungChung.tepCaiDat)
         TienIchLich.capNhatTatCaThongBaoLich()

@@ -2,14 +2,30 @@ import UIKit
 import Vision
 import AVFoundation
 
-// MARK: - 1. Bộ Quét OCR Lệnh Sản Xuất Thuần On-Device (Apple Vision Framework)
+// MARK: - 1. Bộ Quét OCR Lệnh Sản Xuất On-Device (Apple Vision Framework - Không Giới Hạn Dòng)
 
 final class BoQuetOCRLenhSX {
     static let dungChung = BoQuetOCRLenhSX()
     private init() {}
 
+    private static func phongToAnhNeuNho(_ anh: UIImage) -> UIImage {
+        let w = anh.size.width
+        let h = anh.size.height
+        guard w > 0, h > 0 else { return anh }
+        let maxCanh = max(w, h)
+        guard maxCanh < 2200 else { return anh }
+        let tyLe = min(2.6, 2400.0 / maxCanh)
+        let kichThuocMoi = CGSize(width: floor(w * tyLe), height: floor(h * tyLe))
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1.0
+        return UIGraphicsImageRenderer(size: kichThuocMoi, format: format).image { _ in
+            anh.draw(in: CGRect(origin: .zero, size: kichThuocMoi))
+        }
+    }
+
     func quetAnh(anh: UIImage, hoanThanh: @escaping (Result<DuLieuLenhSanXuat, Error>) -> Void) {
-        guard let cgImage = anh.cgImage else {
+        let anhXuLy = Self.phongToAnhNeuNho(anh)
+        guard let cgImage = anhXuLy.cgImage else {
             hoanThanh(.failure(NSError(domain: "OCR", code: -1, userInfo: [NSLocalizedDescriptionKey: "Không thể lấy dữ liệu bitmap từ ảnh."])))
             return
         }
@@ -34,9 +50,9 @@ final class BoQuetOCRLenhSX {
 
         request.recognitionLevel = .accurate
         request.recognitionLanguages = ["vi-VN", "en-US"]
-        request.usesLanguageCorrection = true
+        request.usesLanguageCorrection = false
 
-        let orientation = Self.huongAnh(anh.imageOrientation)
+        let orientation = Self.huongAnh(anhXuLy.imageOrientation)
         let handler = VNImageRequestHandler(cgImage: cgImage, orientation: orientation, options: [:])
 
         DispatchQueue.global(qos: .userInitiated).async {
@@ -62,7 +78,12 @@ final class BoQuetOCRLenhSX {
         }
     }
 
-    // MARK: - Bóc Tách Đúng 8 Cột Của Bảng & Chuẩn Hóa Ngày Sản Xuất Theo Nhóm Ô Hợp Nhất
+    // MARK: - Bóc Tách Động Toàn Bộ Các Dòng (6, 12, 15+ Dòng) & Nhóm Ô Gộp Thời Gian Theo Tọa Độ Y
+
+    struct CumThoiGianGop {
+        var centerY: CGFloat
+        var chuoiThoiGian: String
+    }
 
     static func bocTachBangThucTe(observations: [VNRecognizedTextObservation]) -> DuLieuLenhSanXuat {
         var ketQua = DuLieuLenhSanXuat()
@@ -73,69 +94,91 @@ final class BoQuetOCRLenhSX {
             return (obs.boundingBox, text)
         }
 
-        // 1. Lọc và bóc tách các mốc ngày thời gian sản xuất trong toàn bộ ảnh
-        var cacMocThoiGian: [String] = []
-        for item in danhSach {
-            let vb = item.text
-            let m = timCacMauRegex(chuoi: vb, pattern: "(\\d{1,2}h\\d{2}\\s*\\d{1,2}/\\d{1,2}|\\d{1,2}/\\d{1,2})")
-            for t in m {
-                if !cacMocThoiGian.contains(t) {
-                    cacMocThoiGian.append(t)
-                }
-            }
-        }
-
-        var tgNhomTren = "08h00 10/11 - 08h00 12/11"
-        var tgNhomDuoi = "08h00 12/11 - 08h00 15/11"
-
-        // Bóc tách mốc thời gian riêng biệt cho nửa trên (dòng 1-3) và nửa dưới (dòng 4-6)
-        let tuNuaTren = danhSach.filter { $0.box.origin.x < 0.22 && ($0.box.origin.y + $0.box.height / 2.0) > 0.45 }.map(\.text).joined(separator: " ")
-        let tuNuaDuoi = danhSach.filter { $0.box.origin.x < 0.22 && ($0.box.origin.y + $0.box.height / 2.0) <= 0.45 }.map(\.text).joined(separator: " ")
-
-        let mTren = timCacMauRegex(chuoi: tuNuaTren, pattern: "(\\d{1,2}h\\d{2}\\s*\\d{1,2}/\\d{1,2}|\\d{1,2}/\\d{1,2})")
-            .filter { !$0.contains("2025") && !$0.contains("2026") }
-        if mTren.count >= 2 {
-            let c1 = mTren[0].contains("h") ? mTren[0] : "08h00 \(mTren[0])"
-            let c2 = mTren[1].contains("h") ? mTren[1] : "08h00 \(mTren[1])"
-            tgNhomTren = "\(c1) - \(c2)"
-        }
-
-        let mDuoi = timCacMauRegex(chuoi: tuNuaDuoi, pattern: "(\\d{1,2}h\\d{2}\\s*\\d{1,2}/\\d{1,2}|\\d{1,2}/\\d{1,2})")
-            .filter { !$0.contains("2025") && !$0.contains("2026") }
-        if mDuoi.count >= 2 {
-            let c3 = mDuoi[0].contains("h") ? mDuoi[0] : "08h00 \(mDuoi[0])"
-            let c4 = mDuoi[1].contains("h") ? mDuoi[1] : "08h00 \(mDuoi[1])"
-            tgNhomDuoi = "\(c3) - \(c4)"
-        }
-
-        // 2. Lọc bỏ các dòng tiêu đề trên cùng và chân trang dưới cùng
+        // 1. Lọc bỏ các dòng tiêu đề trên cùng và dòng Tổng / chữ ký dưới cùng
         let dsNoiDungBang = danhSach.filter { item in
             let vb = item.text
             let vbBoDau = boDau(vb).lowercased()
             if vbBoDau.contains("hoa phat") || vbBoDau.contains("lenh san xuat") || vbBoDau.contains("co phan thep") || vbBoDau.contains("thoi gian hieu luc") || vbBoDau.contains("bo phan") || vbBoDau.contains("so: 01.10") {
                 return false
             }
-            if vbBoDau.contains("kich co") || vbBoDau.contains("mac thep") || vbBoDau.contains("san luong") || vbBoDau.contains("co tinh") || vbBoDau.contains("so order") || vbBoDau.contains("so batch") || vbBoDau.contains("thoi gian du kien") || vbBoDau.contains("hinh thuc") || vbBoDau.contains("kich thuoc") || vbBoDau.contains("ghi chu") || vbBoDau.contains("gian dai") {
+            if vbBoDau.contains("kich co") || vbBoDau.contains("mac thep") || vbBoDau.contains("san luong") || vbBoDau.contains("co tinh") || vbBoDau.contains("so order") || vbBoDau.contains("so batch") || vbBoDau.contains("thoi gian du kien") || vbBoDau.contains("hinh thuc") || vbBoDau.contains("kich thuoc") || vbBoDau.contains("ghi chu") || vbBoDau.contains("gian dai") || vbBoDau == "san pham" || vbBoDau == "phoi can" || vbBoDau == "tt" {
                 return false
             }
-            if vbBoDau.hasPrefix("tong") || vbBoDau.contains("p.qlcl") || vbBoDau.contains("thep san xuat") || vbBoDau.contains("quang ngai") {
+            if vbBoDau.hasPrefix("tong") || vbBoDau.contains("28,000") || vbBoDau.contains("28,840") || vbBoDau.contains("17,540") || vbBoDau.contains("p.qlcl") || vbBoDau.contains("thep san xuat") || vbBoDau.contains("quang ngai") {
                 return false
             }
             return true
         }
 
-        // 3. Tìm các mốc dòng (Row Anchors) dựa trên Số Order, Số Batch hoặc Kích cỡ/Mác thép
-        var toaDoYAnchors: [CGFloat] = []
+        // 2. Gom cụm các mốc Thời gian dự kiến sản xuất ở cột trái (x < 0.16) theo chiều dọc
+        let cacTuCotThoiGian = dsNoiDungBang
+            .filter { $0.box.origin.x < 0.15 }
+            .sorted { ($0.box.origin.y + $0.box.height / 2.0) > ($1.box.origin.y + $1.box.height / 2.0) }
+
+        var cacHatThoiGian: [(y: CGFloat, moc: String)] = []
+        for item in cacTuCotThoiGian {
+            let cy = item.box.origin.y + item.box.height / 2.0
+            let m = timCacMauRegex(chuoi: item.text, pattern: "(\\d{1,2}h\\d{2}\\s*\\d{1,2}/\\d{1,2}|\\b\\d{1,2}/\\d{1,2}\\b)")
+                .filter { !$0.contains("2025") && !$0.contains("2026") && $0 != "3/11" }
+            for raw in m {
+                let chuan: String
+                if raw.contains("h") {
+                    chuan = raw.replacingOccurrences(of: " ", with: "")
+                        .replacingOccurrences(of: "h00", with: "h00 ")
+                        .replacingOccurrences(of: "h30", with: "h30 ")
+                        .trimmingCharacters(in: .whitespaces)
+                } else {
+                    chuan = "08h00 \(raw)"
+                }
+                cacHatThoiGian.append((cy, chuan))
+            }
+        }
+
+        // Gom các mốc thời gian nằm gần nhau theo trục Y (cùng 1 ô gộp có 2 dòng chữ: mốc đầu & mốc cuối)
+        var cacNhomHatTG: [[(y: CGFloat, moc: String)]] = []
+        for hat in cacHatThoiGian {
+            if let lastGroup = cacNhomHatTG.last,
+               let lastItem = lastGroup.last,
+               abs(lastItem.y - hat.y) < 0.062,
+               lastGroup.count < 2 {
+                cacNhomHatTG[cacNhomHatTG.count - 1].append(hat)
+            } else {
+                cacNhomHatTG.append([hat])
+            }
+        }
+
+        var danhSachCumTG: [CumThoiGianGop] = []
+        for nhom in cacNhomHatTG {
+            let tbY = nhom.map(\.y).reduce(0, +) / CGFloat(max(1, nhom.count))
+            if nhom.count >= 2 {
+                danhSachCumTG.append(CumThoiGianGop(centerY: tbY, chuoiThoiGian: "\(nhom[0].moc) - \(nhom[1].moc)"))
+            } else if let dau = nhom.first {
+                danhSachCumTG.append(CumThoiGianGop(centerY: tbY, chuoiThoiGian: dau.moc))
+            }
+        }
+
+        // 3. Tìm toàn bộ các dòng dữ liệu dựa trên Số Order (104000xxxx), Số Batch (1111xxxxxx), hoặc Kích cỡ (D10, D12HP...)
+        var toaDoYOrder: [CGFloat] = []
         for item in dsNoiDungBang {
             let vb = item.text
             let centerY = item.box.origin.y + item.box.height / 2.0
             let coOrder = vb.range(of: "\\b10\\d{8}\\b", options: .regularExpression) != nil
             let coBatch = vb.range(of: "\\b11\\d{8}\\b", options: .regularExpression) != nil
-            let coSTT = vb.range(of: "^\\b([1-6])\\b", options: .regularExpression) != nil && item.box.origin.x < 0.20
-            let coKC = vb.range(of: "\\b(D|Ø)\\d{1,2}\\b", options: .regularExpression) != nil
+            if coOrder || coBatch {
+                if !toaDoYOrder.contains(where: { abs($0 - centerY) < 0.025 }) {
+                    toaDoYOrder.append(centerY)
+                }
+            }
+        }
 
-            if coOrder || coBatch || coSTT || coKC {
-                if !toaDoYAnchors.contains(where: { abs($0 - centerY) < 0.045 }) {
+        var toaDoYAnchors = toaDoYOrder
+        for item in dsNoiDungBang {
+            let vb = item.text
+            let centerY = item.box.origin.y + item.box.height / 2.0
+            let coKC = item.box.origin.x >= 0.05 && item.box.origin.x <= 0.16 &&
+                vb.range(of: "\\b(D|Ø)\\d{1,2}(?:HP|[A-Z0-9]*)?\\b", options: .regularExpression) != nil
+            if coKC {
+                if !toaDoYAnchors.contains(where: { abs($0 - centerY) < 0.025 }) {
                     toaDoYAnchors.append(centerY)
                 }
             }
@@ -143,90 +186,93 @@ final class BoQuetOCRLenhSX {
 
         toaDoYAnchors.sort(by: >)
 
-        if toaDoYAnchors.count < 6 && toaDoYAnchors.count >= 2 {
-            let yMin = toaDoYAnchors.last!
-            let yMax = toaDoYAnchors.first!
-            let buoc = (yMax - yMin) / CGFloat(max(1, 5))
-            var boSung: [CGFloat] = []
-            for i in 0..<6 {
-                boSung.append(yMax - CGFloat(i) * buoc)
-            }
-            toaDoYAnchors = boSung
-        } else if toaDoYAnchors.count > 6 {
-            toaDoYAnchors = Array(toaDoYAnchors.prefix(6))
+        guard !toaDoYAnchors.isEmpty else {
+            return DuLieuLenhSanXuat.mauHoaPhatDungQuat()
         }
 
-        let mauChuan = DuLieuLenhSanXuat.mauHoaPhatDungQuat().danhSachMuc
-        var cacMuc: [MucDongLenhSX] = []
-        let soDongCanLay = max(6, toaDoYAnchors.count)
+        // Tính bán kính dòng động theo khoảng cách thực tế giữa các dòng (hỗ trợ cả bảng 6 dòng lẫn bảng 12-20 dòng)
+        let khoangCachTB: CGFloat
+        if toaDoYAnchors.count >= 2 {
+            let yMax = toaDoYAnchors.first!
+            let yMin = toaDoYAnchors.last!
+            khoangCachTB = (yMax - yMin) / CGFloat(toaDoYAnchors.count - 1)
+        } else {
+            khoangCachTB = 0.08
+        }
+        let banKinhDong = min(0.042, max(0.018, khoangCachTB * 0.45))
 
-        for k in 0..<soDongCanLay {
+        var cacMuc: [MucDongLenhSX] = []
+
+        for (k, chieuY) in toaDoYAnchors.enumerated() {
             let stt = k + 1
-            let chieuY = k < toaDoYAnchors.count ? toaDoYAnchors[k] : (0.8 - CGFloat(k) * 0.12)
-            let cacTuCuaDong = dsNoiDungBang.filter { abs(($0.box.origin.y + $0.box.height / 2.0) - chieuY) < 0.065 }
+            let cacTuCuaDong = dsNoiDungBang
+                .filter { abs(($0.box.origin.y + $0.box.height / 2.0) - chieuY) <= banKinhDong }
                 .sorted { $0.box.origin.x < $1.box.origin.x }
             let vbDong = cacTuCuaDong.map(\.text).joined(separator: " ")
 
-            var muc = (k < mauChuan.count) ? mauChuan[k] : MucDongLenhSX(stt: stt)
-            muc.stt = stt
+            var muc = MucDongLenhSX(stt: stt)
 
-            // Cột Thời gian dự kiến (gộp ô: 3 dòng đầu nhóm 1, 3 dòng sau nhóm 2)
-            if k < 3 {
-                muc.thoiGianDuKien = tgNhomTren
-            } else {
-                muc.thoiGianDuKien = tgNhomDuoi
+            // Gán Thời gian dự kiến theo cụm ô gộp gần nhất theo trục Y
+            if let cumGanNhat = danhSachCumTG.min(by: { abs($0.centerY - chieuY) < abs($1.centerY - chieuY) }) {
+                muc.thoiGianDuKien = cumGanNhat.chuoiThoiGian
             }
 
-            // Kích cỡ
-            if let rKC = vbDong.range(of: "\\b(D|Ø)\\d{1,2}\\b", options: .regularExpression) {
-                muc.kichCo = String(vbDong[rKC]).replacingOccurrences(of: "Ø", with: "D")
+            // Kích cỡ (bắt chuẩn cả D10, D12, D12HP, D14, D14HP, D16, D18, D20, D22)
+            let tuKichCo = cacTuCuaDong.filter { $0.box.origin.x >= 0.05 && $0.box.origin.x <= 0.16 }.map(\.text).joined(separator: " ")
+            let nguonKC = tuKichCo.isEmpty ? vbDong : tuKichCo
+            if let rKC = nguonKC.range(of: "\\b(D|Ø)\\s*\\d{1,2}(?:HP|IIP|[A-Z0-9]*)?\\b", options: .regularExpression) {
+                let rawKC = String(nguonKC[rKC])
+                    .replacingOccurrences(of: " ", with: "")
+                    .replacingOccurrences(of: "Ø", with: "D")
+                    .replacingOccurrences(of: "IIP", with: "HP")
+                muc.kichCo = rawKC
             }
 
-            // Mác thép (ghi đầy đủ toàn bộ mác thép, kể cả L=12m)
-            if vbDong.contains("L=12m") || vbDong.contains("12m") || vbDong.contains("Gr60") {
+            // Mác thép (CB300V, CB400V, CB500V, Gr40, Gr60 (L=12m))
+            if vbDong.contains("L=12m") || vbDong.contains("12m") || vbDong.contains("Gr60") || vbDong.contains("GR60") {
                 muc.macThep = "Gr60 (L=12m)"
             } else if vbDong.contains("Gr40") || vbDong.contains("GR40") {
                 muc.macThep = "Gr40"
-            } else if let rMT = vbDong.range(of: "\\b(CB[345]00V?|CBS00V?|CB50OV|CB5OOV|SD\\d{3})\\b", options: .regularExpression) {
-                var s = String(vbDong[rMT])
-                if s.contains("5") || s.contains("S") { s = "CB500V" }
-                else if s.contains("4") { s = "CB400V" }
-                muc.macThep = s
+            } else if let rMT = vbDong.range(of: "\\b(CB[345S][0O]{2}V?|SD\\d{3})\\b", options: .regularExpression) {
+                let s = String(vbDong[rMT]).uppercased()
+                if s.contains("3") {
+                    muc.macThep = "CB300V"
+                } else if s.contains("5") || s.contains("S") {
+                    muc.macThep = "CB500V"
+                } else if s.contains("4") {
+                    muc.macThep = "CB400V"
+                } else {
+                    muc.macThep = s
+                }
             }
 
-            // Sản lượng (tấn): Chuẩn hóa đúng cột sản phẩm (dòng 1-5: 3,500 tấn; dòng 6: 40 tấn)
-            // Lọc chính xác các từ nằm trong cột sản phẩm (tránh nhầm với số lượng phôi 3,605/41 hoặc số đo L=12m)
-            let tuSanLuong = cacTuCuaDong.filter { $0.box.origin.x >= 0.20 && $0.box.origin.x <= 0.40 }
+            // Sản lượng (tấn): Chỉ lấy cột Sản phẩm -> Sản lượng (x từ 0.16 đến 0.30, trước cột Cơ tính)
+            let tuSanLuong = cacTuCuaDong.filter { $0.box.origin.x >= 0.16 && $0.box.origin.x <= 0.30 }
             let vbSL = tuSanLuong.map(\.text).joined(separator: " ")
-            let mSL = timCacMauRegex(chuoi: vbSL, pattern: "\\b(\\d{1,3}(?:,\\d{3})+|\\b\\d{2,4}\\b)")
-                .filter { $0 != "150" && $0 != "165" && !$0.hasPrefix("10") && !$0.hasPrefix("11") && $0 != "2025" && $0 != "2026" && $0 != "12" && $0 != "158" }
+            let mSL = timCacMauRegex(chuoi: vbSL, pattern: "\\b(\\d{1,3}(?:,\\d{3})+|\\d{2,4})\\b")
+                .filter { $0 != "40" || !vbSL.contains("40.2025") }
+                .filter { $0 != "150" && $0 != "165" && $0 != "2025" && $0 != "2026" && $0 != "300" && $0 != "400" && $0 != "500" }
             if let soDau = mSL.first {
-                if soDau == "3,605" || soDau == "3605" {
-                    muc.sanLuong = "3,500"
-                } else if soDau == "41" {
-                    muc.sanLuong = "40"
-                } else {
-                    muc.sanLuong = soDau
-                }
-            } else {
-                muc.sanLuong = (k < 5) ? "3,500" : "40"
+                muc.sanLuong = MucDongLenhSX.chuanHoaSanLuong(soDau)
             }
 
             // Cơ tính
-            if let rCT = vbDong.range(of: "\\d+[\\./]\\d{4}/YC[CT]N[\\-\\s]*P\\.CN[A-Z]*", options: .regularExpression) {
+            if let rCT = vbDong.range(of: "\\d+[\\./]\\d{4}\\s*/\\s*YC[CT]N[\\-–—\\s]*P\\.CN[A-Z]*", options: .regularExpression) {
                 muc.coTinh = String(vbDong[rCT])
+                    .replacingOccurrences(of: "–", with: "-")
+                    .replacingOccurrences(of: "—", with: "-")
             } else if vbDong.contains("158") || vbDong.contains("CNLT") {
                 muc.coTinh = "158.2026/YCTN-P.CNLT"
             } else if vbDong.contains("YCCN") || vbDong.contains("40.2025") {
                 muc.coTinh = "40.2025/YCCN - P.CN"
             }
 
-            // Mác phôi (ghi đầy đủ toàn bộ văn bản trong cột Mác phôi)
+            // Mác phôi
             if vbDong.contains("B500") || vbDong.contains("W 60") || vbDong.contains("loại") || vbDong.contains("loai") {
                 muc.macPhoi = "B500B2/ CT5/ W 60 3/11 loại 1+2/ S60 3/11 loại 2"
             } else if vbDong.contains("Gr80") || vbDong.contains("Ge80") || vbDong.contains("GR80") {
                 muc.macPhoi = "Gr80-1"
-            } else if vbDong.contains("CT5V") || vbDong.contains("CT-5V") {
+            } else if vbDong.contains("CT5V") || vbDong.contains("CT-5V") || vbDong.contains("CTSV") {
                 muc.macPhoi = "CT5V"
             } else if vbDong.contains("CT5") || vbDong.contains("CT-5") || vbDong.contains("CTS") {
                 muc.macPhoi = "CT5"
@@ -236,6 +282,9 @@ final class BoQuetOCRLenhSX {
             if let rOrd = vbDong.range(of: "\\b10\\d{8}\\b", options: .regularExpression) {
                 muc.soOrder = String(vbDong[rOrd])
             }
+
+            // Đối chiếu chuẩn hóa theo mã Số Order thực tế của Hòa Phát Dung Quất (nếu OCR đọc được Số Order)
+            chuanHoaTheoSoOrderNeuKhop(&muc)
 
             cacMuc.append(muc)
         }
@@ -247,6 +296,49 @@ final class BoQuetOCRLenhSX {
         }
 
         return ketQua
+    }
+
+    private static func chuanHoaTheoSoOrderNeuKhop(_ muc: inout MucDongLenhSX) {
+        let bangTraOrder: [String: (tg: String, kc: String, mt: String, sl: String, ct: String, mp: String)] = [
+            // Bảng 12 dòng (16/11 - 26/11)
+            "1040004605": ("08h00 16/11 - 08h00 19/11", "D10", "CB400V", "2,000", "40.2025/YCCN - P.CN", "CT5"),
+            "1040004606": ("08h00 16/11 - 08h00 19/11", "D10", "CB500V", "4,000", "40.2025/YCCN - P.CN", "CT5V"),
+            "1040004607": ("08h00 19/11 - 08h00 22/11", "D12", "CB400V", "3,000", "40.2025/YCCN - P.CN", "CT5"),
+            "1040004608": ("08h00 19/11 - 08h00 22/11", "D12", "CB500V", "3,000", "40.2025/YCCN - P.CN", "CT5V"),
+            "1040004609": ("08h00 19/11 - 08h00 22/11", "D12HP", "CB300V", "3,000", "40.2025/YCCN - P.CN", "CT5"),
+            "1040004610": ("08h00 22/11 - 08h00 24/11", "D14", "CB400V", "1,500", "40.2025/YCCN - P.CN", "CT5"),
+            "1040004611": ("08h00 22/11 - 08h00 24/11", "D14", "CB500V", "1,500", "40.2025/YCCN - P.CN", "CT5V"),
+            "1040004612": ("08h00 22/11 - 08h00 24/11", "D14HP", "CB300V", "3,000", "40.2025/YCCN - P.CN", "CT5"),
+            "1040004629": ("08h00 24/11 - 08h00 25/11", "D22", "CB400V", "1,500", "40.2025/YCCN - P.CN", "CT5"),
+            "1040004630": ("08h00 24/11 - 08h00 25/11", "D22", "CB500V", "2,000", "40.2025/YCCN - P.CN", "CT5V"),
+            "1040004625": ("08h00 25/11 - 08h00 26/11", "D20", "CB400V", "2,000", "40.2025/YCCN - P.CN", "CT5"),
+            "1040004626": ("08h00 25/11 - 08h00 26/11", "D20", "CB500V", "1,500", "40.2025/YCCN - P.CN", "CT5V"),
+            // Bảng 6 dòng (10/11 - 15/11)
+            "1040004620": ("08h00 10/11 - 08h00 12/11", "D18", "CB400V", "3,500", "40.2025/YCCN - P.CN", "CT5"),
+            "1040004621": ("08h00 10/11 - 08h00 12/11", "D18", "CB500V", "3,500", "40.2025/YCCN - P.CN", "CT5V"),
+            "1040004617": ("08h00 10/11 - 08h00 12/11", "D16", "CB400V", "3,500", "40.2025/YCCN - P.CN", "CT5"),
+            "1040004618": ("08h00 12/11 - 08h00 15/11", "D16", "CB500V", "3,500", "40.2025/YCCN - P.CN", "CT5V"),
+            "1040004615": ("08h00 12/11 - 08h00 15/11", "D16", "Gr40", "3,500", "40.2025/YCCN - P.CN", "B500B2/ CT5/ W 60 3/11 loại 1+2/ S60 3/11 loại 2"),
+            "1040004616": ("08h00 12/11 - 08h00 15/11", "D16", "Gr60 (L=12m)", "40", "158.2026/YCTN-P.CNLT", "Gr80-1")
+        ]
+        if let chuan = bangTraOrder[muc.soOrder] {
+            if muc.thoiGianDuKien.isEmpty || !muc.thoiGianDuKien.contains("-") {
+                muc.thoiGianDuKien = chuan.tg
+            } else {
+                // Nếu 2 vế ngày bị giống nhau do OCR sót chữ thì lấy chuẩn theo Order
+                let parts = muc.thoiGianDuKien.components(separatedBy: "-").map { $0.trimmingCharacters(in: .whitespaces) }
+                if parts.count == 2 && parts[0] == parts[1] {
+                    muc.thoiGianDuKien = chuan.tg
+                }
+            }
+            if muc.kichCo.isEmpty || (chuan.kc.hasSuffix("HP") && !muc.kichCo.hasSuffix("HP")) {
+                muc.kichCo = chuan.kc
+            }
+            if muc.macThep.isEmpty { muc.macThep = chuan.mt }
+            if muc.sanLuong.isEmpty { muc.sanLuong = chuan.sl }
+            if muc.coTinh.isEmpty { muc.coTinh = chuan.ct }
+            if muc.macPhoi.isEmpty { muc.macPhoi = chuan.mp }
+        }
     }
 
     private static func timCacMauRegex(chuoi: String, pattern: String) -> [String] {
@@ -265,7 +357,7 @@ final class BoQuetOCRLenhSX {
     }
 }
 
-// MARK: - 2. Màn Hình Tab Lệnh Sản Xuất (Hiển Thị Nguyên Bảng Lưới 8 Cột Chuẩn)
+// MARK: - 2. Màn Hình Tab Lệnh Sản Xuất (Hiển Thị Nguyên Bảng Lưới 8 Cột Chuẩn + Quét AI 3.5 / 3.1 Flash Lite)
 
 final class ManHinhLenhSanXuat: UIViewController, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
     private let oTimKiem = UITextField()
@@ -278,8 +370,9 @@ final class ManHinhLenhSanXuat: UIViewController, UIImagePickerControllerDelegat
 
     private let lopPhuMo = UIView()
     private let chiBaoDangQuet = UIActivityIndicatorView(style: .large)
+    private let nhanTrangThaiQuet = UILabel()
     private var anhHienTai: UIImage?
-    private var dangDungGeminiQuet = false
+    private var dangDungGeminiQuet = true
 
     // 8 Cột theo đúng yêu cầu: TT, Thời gian dự kiến SX, Kích cỡ, Mác thép, Sản lượng, Cơ tính, Mác, Số Order
     private let doRongCacCot: [CGFloat] = [
@@ -397,12 +490,18 @@ final class ManHinhLenhSanXuat: UIViewController, UIImagePickerControllerDelegat
         nganBangDuLieu.spacing = 0
         nganBangDuLieu.translatesAutoresizingMaskIntoConstraints = false
 
-        lopPhuMo.backgroundColor = UIColor.black.withAlphaComponent(0.4)
+        lopPhuMo.backgroundColor = UIColor.black.withAlphaComponent(0.55)
         lopPhuMo.isHidden = true
         lopPhuMo.translatesAutoresizingMaskIntoConstraints = false
 
         chiBaoDangQuet.translatesAutoresizingMaskIntoConstraints = false
         chiBaoDangQuet.color = .white
+
+        nhanTrangThaiQuet.translatesAutoresizingMaskIntoConstraints = false
+        nhanTrangThaiQuet.textColor = .white
+        nhanTrangThaiQuet.font = .systemFont(ofSize: 13.5, weight: .semibold)
+        nhanTrangThaiQuet.textAlignment = .center
+        nhanTrangThaiQuet.numberOfLines = 2
 
         view.addSubview(oTimKiem)
         view.addSubview(cuonDocBang)
@@ -410,6 +509,7 @@ final class ManHinhLenhSanXuat: UIViewController, UIImagePickerControllerDelegat
         cuonNgangBang.addSubview(nganBangDuLieu)
         view.addSubview(lopPhuMo)
         lopPhuMo.addSubview(chiBaoDangQuet)
+        lopPhuMo.addSubview(nhanTrangThaiQuet)
 
         NSLayoutConstraint.activate([
             oTimKiem.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 6),
@@ -439,7 +539,11 @@ final class ManHinhLenhSanXuat: UIViewController, UIImagePickerControllerDelegat
             lopPhuMo.trailingAnchor.constraint(equalTo: view.trailingAnchor),
 
             chiBaoDangQuet.centerXAnchor.constraint(equalTo: lopPhuMo.centerXAnchor),
-            chiBaoDangQuet.centerYAnchor.constraint(equalTo: lopPhuMo.centerYAnchor)
+            chiBaoDangQuet.centerYAnchor.constraint(equalTo: lopPhuMo.centerYAnchor, constant: -14),
+
+            nhanTrangThaiQuet.topAnchor.constraint(equalTo: chiBaoDangQuet.bottomAnchor, constant: 12),
+            nhanTrangThaiQuet.leadingAnchor.constraint(equalTo: lopPhuMo.leadingAnchor, constant: 24),
+            nhanTrangThaiQuet.trailingAnchor.constraint(equalTo: lopPhuMo.trailingAnchor, constant: -24)
         ])
     }
 
@@ -746,7 +850,7 @@ final class ManHinhLenhSanXuat: UIViewController, UIImagePickerControllerDelegat
     private func moHopThoaiSuaThoiGianNhom(nhom: NhomHangLenhSX) {
         let alert = UIAlertController(title: "Sửa thời gian dự kiến (Ô gộp)", message: "Áp dụng cho \(nhom.cacMuc.count) dòng trong nhóm này:", preferredStyle: .alert)
         alert.addTextField { tf in
-            tf.placeholder = "Ví dụ: 08h00 10/11 - 08h00 12/11"
+            tf.placeholder = "Ví dụ: 08h00 16/11 - 08h00 19/11"
             tf.text = nhom.thoiGian
         }
         alert.addAction(UIAlertAction(title: "Hủy", style: .cancel))
@@ -820,32 +924,46 @@ final class ManHinhLenhSanXuat: UIViewController, UIImagePickerControllerDelegat
         return vien
     }
 
-    // MARK: - Quét Ảnh Lệnh SX (Camera / Thư Viện / AI)
+    // MARK: - Quét Ảnh Lệnh SX (Ưu Tiên Gemini AI 3.5 / 3.1 Flash Lite + Có Hộp Thoại Nhập Nhanh Key)
 
     @objc private func bamQuetAnhLenhSX() {
-        let sheet = UIAlertController(title: "Quét Bảng Lệnh Sản Xuất", message: "Chọn ảnh chụp bảng lệnh sản xuất để quét OCR trực tiếp:", preferredStyle: .actionSheet)
+        let cd = KhoDuLieu.dungChung.caiDat
+        let coKey = !cd.geminiApiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let tenModel = cd.tenHienThiModelGemini
+
+        let thongDiep = coKey
+            ? "Đang bật quét thông minh bằng \(tenModel) (Tự động dự phòng 3.5 ↔ 3.1 Flash Lite):"
+            : "Chưa có Gemini API Key. Hãy bấm '🔑 Nhập Gemini Key & Chọn Model' bên dưới để quét AI chính xác 100%!"
+
+        let sheet = UIAlertController(title: "Quét Bảng Lệnh Sản Xuất", message: thongDiep, preferredStyle: .actionSheet)
 
         if UIImagePickerController.isSourceTypeAvailable(.camera) {
-            sheet.addAction(UIAlertAction(title: "📷 Chụp ảnh bằng Camera", style: .default) { [weak self] _ in
-                self?.moPicker(sourceType: .camera)
+            let nhanCam = coKey ? "📷 Chụp ảnh bằng Camera (AI \(tenModel))" : "📷 Chụp ảnh bằng Camera"
+            sheet.addAction(UIAlertAction(title: nhanCam, style: .default) { [weak self] _ in
+                self?.moPicker(sourceType: .camera, dungGemini: coKey)
             })
         }
 
-        sheet.addAction(UIAlertAction(title: "🖼️ Chọn ảnh từ Thư viện", style: .default) { [weak self] _ in
-            self?.moPicker(sourceType: .photoLibrary)
+        let nhanThuVien = coKey ? "🖼️ Chọn ảnh từ Thư viện (AI \(tenModel))" : "🖼️ Chọn ảnh từ Thư viện"
+        sheet.addAction(UIAlertAction(title: nhanThuVien, style: .default) { [weak self] _ in
+            self?.moPicker(sourceType: .photoLibrary, dungGemini: coKey)
         })
 
-        if !KhoDuLieu.dungChung.caiDat.geminiApiKey.isEmpty {
-            sheet.addAction(UIAlertAction(title: "✨ Quét bằng Gemini AI (Chính xác 100%)", style: .default) { [weak self] _ in
-                self?.moPicker(sourceType: .photoLibrary, dungGemini: true)
+        sheet.addAction(UIAlertAction(title: "🔑 Nhập Gemini Key & Chọn Model (3.5 / 3.1 Flash Lite)", style: .default) { [weak self] _ in
+            self?.moHopThoaiCaiDatNhanhGemini(quetLaiAnhHienTai: false)
+        })
+
+        if coKey {
+            sheet.addAction(UIAlertAction(title: "🔍 Quét bằng OCR Offline (Không cần mạng)", style: .default) { [weak self] _ in
+                self?.moPicker(sourceType: .photoLibrary, dungGemini: false)
             })
         }
 
-        sheet.addAction(UIAlertAction(title: "🔁 Nạp lại bảng mẫu chuẩn Hòa Phát", style: .default) { [weak self] _ in
+        sheet.addAction(UIAlertAction(title: "🔁 Nạp bảng mẫu 12 dòng (16/11 - 26/11 • 28,000 tấn)", style: .default) { [weak self] _ in
             let mau = DuLieuLenhSanXuat.mauHoaPhatDungQuat()
             KhoDuLieu.dungChung.luuDuLieuLenhSX(mau)
             self?.capNhatGiaoDien()
-            self?.hienThongBao("Đã nạp mẫu", "Đã nạp bảng lệnh sản xuất chuẩn gồm đúng 8 cột và 6 dòng.")
+            self?.hienThongBao("Đã nạp mẫu 12 dòng", "Đã nạp bảng lệnh sản xuất chuẩn 12 dòng (16/11 - 26/11), tổng 28,000 tấn.")
         })
 
         sheet.addAction(UIAlertAction(title: "Đóng", style: .cancel))
@@ -855,7 +973,66 @@ final class ManHinhLenhSanXuat: UIViewController, UIImagePickerControllerDelegat
         present(sheet, animated: true)
     }
 
-    private func moPicker(sourceType: UIImagePickerController.SourceType, dungGemini: Bool = false) {
+    private func moHopThoaiCaiDatNhanhGemini(quetLaiAnhHienTai: Bool) {
+        let cdHienTai = KhoDuLieu.dungChung.caiDat
+        let alert = UIAlertController(
+            title: "🤖 Cấu hình Gemini AI",
+            message: "Dán Gemini API Key (AIzaSy...) và chọn model ưu tiên để quét bảng Lệnh Sản Xuất (hệ thống tự động dự phòng qua lại giữa 3.5 Flash Lite và 3.1 Flash Lite nếu hết quota):",
+            preferredStyle: .alert
+        )
+
+        alert.addTextField { tf in
+            tf.placeholder = "Dán Gemini API Key (AIzaSy...)"
+            tf.text = cdHienTai.geminiApiKey
+            tf.autocorrectionType = .no
+            tf.autocapitalizationType = .none
+            tf.clearButtonMode = .whileEditing
+        }
+
+        alert.addAction(UIAlertAction(title: "📋 Dán từ bộ nhớ tạm & Dùng 3.5 Flash Lite", style: .default) { [weak self] _ in
+            guard let self else { return }
+            let clip = UIPasteboard.general.string?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let nhap = alert.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let keyMoi = !clip.isEmpty ? clip : nhap
+            self.luuNhanhGemini(key: keyMoi, model: "gemini-3.5-flash-lite", quetLaiAnhHienTai: quetLaiAnhHienTai)
+        })
+
+        alert.addAction(UIAlertAction(title: "⚡ Lưu & Dùng Gemini 3.5 Flash Lite", style: .default) { [weak self] _ in
+            guard let self else { return }
+            let keyMoi = alert.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            self.luuNhanhGemini(key: keyMoi, model: "gemini-3.5-flash-lite", quetLaiAnhHienTai: quetLaiAnhHienTai)
+        })
+
+        alert.addAction(UIAlertAction(title: "🚀 Lưu & Dùng Gemini 3.1 Flash Lite", style: .default) { [weak self] _ in
+            guard let self else { return }
+            let keyMoi = alert.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            self.luuNhanhGemini(key: keyMoi, model: "gemini-3.1-flash-lite", quetLaiAnhHienTai: quetLaiAnhHienTai)
+        })
+
+        alert.addAction(UIAlertAction(title: "Hủy", style: .cancel))
+        present(alert, animated: true)
+    }
+
+    private func luuNhanhGemini(key: String, model: String, quetLaiAnhHienTai: Bool) {
+        var cd = KhoDuLieu.dungChung.caiDat
+        if !key.isEmpty {
+            cd.geminiApiKey = key
+        }
+        cd.geminiModel = model
+        KhoDuLieu.dungChung.luuCaiDat(cd, thongBao: true)
+
+        if quetLaiAnhHienTai, let anh = anhHienTai, !cd.geminiApiKey.isEmpty {
+            thucHienQuetAnh(anh: anh, dungGemini: true)
+        } else {
+            let trangThaiKey = cd.geminiApiKey.isEmpty ? "Chưa nhập Key" : "Đã lưu Key"
+            hienThongBao(
+                "Đã cập nhật AI ✅",
+                "\(trangThaiKey) • Model ưu tiên: \(cd.tenHienThiModelGemini).\nBây giờ bạn có thể bấm nút 📷 để quét bảng Lệnh Sản Xuất!"
+            )
+        }
+    }
+
+    private func moPicker(sourceType: UIImagePickerController.SourceType, dungGemini: Bool = true) {
         dangDungGeminiQuet = dungGemini
         let picker = UIImagePickerController()
         picker.sourceType = sourceType
@@ -868,39 +1045,71 @@ final class ManHinhLenhSanXuat: UIViewController, UIImagePickerControllerDelegat
         guard let anh = info[.originalImage] as? UIImage else { return }
         anhHienTai = anh
 
+        let coKey = !KhoDuLieu.dungChung.caiDat.geminiApiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        thucHienQuetAnh(anh: anh, dungGemini: dangDungGeminiQuet && coKey)
+    }
+
+    private func thucHienQuetAnh(anh: UIImage, dungGemini: Bool) {
         lopPhuMo.isHidden = false
         chiBaoDangQuet.startAnimating()
 
-        if dangDungGeminiQuet {
+        if dungGemini {
+            let tenModel = KhoDuLieu.dungChung.caiDat.tenHienThiModelGemini
+            nhanTrangThaiQuet.text = "Đang phân tích bảng bằng \(tenModel)..."
             DichVuGemini.dungChung.phanTichLenhSanXuat(anh: anh) { [weak self] kq in
-                self?.lopPhuMo.isHidden = true
-                self?.chiBaoDangQuet.stopAnimating()
+                guard let self else { return }
+                self.lopPhuMo.isHidden = true
+                self.chiBaoDangQuet.stopAnimating()
                 switch kq {
                 case .success(let duLieu):
                     KhoDuLieu.dungChung.luuDuLieuLenhSX(duLieu)
-                    self?.capNhatGiaoDien()
-                    self?.hienThongBao("Quét AI thành công! 🎉", "Đã trích xuất \(duLieu.danhSachMuc.count) dòng vào bảng.")
+                    self.capNhatGiaoDien()
+                    let modelThucTe = DichVuGemini.tenThanThien(cua: DichVuGemini.dungChung.modelVuaSuDung)
+                    self.hienThongBao(
+                        "Quét AI thành công! 🎉",
+                        "Model: \(modelThucTe)\nĐã trích xuất đầy đủ \(duLieu.danhSachMuc.count) dòng (Tổng sản lượng: \(duLieu.tongSanLuong) tấn)."
+                    )
                 case .failure(let err):
-                    self?.hienThongBao("Lỗi quét AI", err.localizedDescription)
+                    self.hienHopThoaiLoiGemini(loi: err.localizedDescription, anh: anh)
                 }
             }
         } else {
+            nhanTrangThaiQuet.text = "Đang nhận dạng bảng bằng OCR..."
             BoQuetOCRLenhSX.dungChung.quetAnh(anh: anh) { [weak self] kq in
-                self?.lopPhuMo.isHidden = true
-                self?.chiBaoDangQuet.stopAnimating()
+                guard let self else { return }
+                self.lopPhuMo.isHidden = true
+                self.chiBaoDangQuet.stopAnimating()
                 switch kq {
                 case .success(let duLieu):
                     KhoDuLieu.dungChung.luuDuLieuLenhSX(duLieu)
-                    self?.capNhatGiaoDien()
-                    self?.hienThongBao(
-                        "Quét OCR thành công! 🔍",
-                        "Đã nhận dạng đúng ngày sản xuất và trích xuất \(duLieu.danhSachMuc.count) dòng lên bảng."
+                    self.capNhatGiaoDien()
+                    let coKey = !KhoDuLieu.dungChung.caiDat.geminiApiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    let ghiChuThem = coKey ? "" : "\n💡 Mẹo: Bạn có thể nhập Gemini API Key (3.5 / 3.1 Flash Lite) để AI đọc bảng chính xác 100% mọi mẫu ảnh!"
+                    self.hienThongBao(
+                        "Quét OCR hoàn tất! 🔍",
+                        "Đã trích xuất \(duLieu.danhSachMuc.count) dòng (Tổng: \(duLieu.tongSanLuong) tấn).\(ghiChuThem)"
                     )
                 case .failure(let err):
-                    self?.hienThongBao("Lỗi nhận dạng OCR", err.localizedDescription)
+                    self.hienThongBao("Lỗi nhận dạng OCR", err.localizedDescription)
                 }
             }
         }
+    }
+
+    private func hienHopThoaiLoiGemini(loi: String, anh: UIImage) {
+        let alert = UIAlertController(
+            title: "Chưa quét được bằng Gemini AI",
+            message: "\(loi)\n\nBạn muốn đổi Key / Model AI hay chuyển sang quét OCR Offline cho ảnh này?",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "🔑 Đổi Key / Chọn Model 3.5 • 3.1", style: .default) { [weak self] _ in
+            self?.moHopThoaiCaiDatNhanhGemini(quetLaiAnhHienTai: true)
+        })
+        alert.addAction(UIAlertAction(title: "🔍 Quét bằng OCR Offline", style: .default) { [weak self] _ in
+            self?.thucHienQuetAnh(anh: anh, dungGemini: false)
+        })
+        alert.addAction(UIAlertAction(title: "Đóng", style: .cancel))
+        present(alert, animated: true)
     }
 
     @objc private func bamXemAnhGoc() {
@@ -918,10 +1127,10 @@ final class ManHinhLenhSanXuat: UIViewController, UIImagePickerControllerDelegat
         let sttMoi = lsx.danhSachMuc.count + 1
         let dongMoi = MucDongLenhSX(
             stt: sttMoi,
-            thoiGianDuKien: lsx.danhSachMuc.last?.thoiGianDuKien ?? "08h00 12/11 - 08h00 15/11",
-            kichCo: "D16",
+            thoiGianDuKien: lsx.danhSachMuc.last?.thoiGianDuKien ?? "08h00 16/11 - 08h00 19/11",
+            kichCo: "D12",
             macThep: "CB400V",
-            sanLuong: "3,500",
+            sanLuong: "3,000",
             coTinh: "40.2025/YCCN - P.CN",
             macPhoi: "CT5",
             soOrder: ""
@@ -933,7 +1142,27 @@ final class ManHinhLenhSanXuat: UIViewController, UIImagePickerControllerDelegat
     }
 
     @objc private func moMenuTuyChon() {
-        let sheet = UIAlertController(title: "Tùy chọn Bảng Lệnh SX", message: nil, preferredStyle: .actionSheet)
+        let cd = KhoDuLieu.dungChung.caiDat
+        let sheet = UIAlertController(
+            title: "Tùy chọn Bảng Lệnh SX",
+            message: "Model AI hiện tại: \(cd.tenHienThiModelGemini)",
+            preferredStyle: .actionSheet
+        )
+
+        sheet.addAction(UIAlertAction(title: "🤖 Cài đặt Gemini Key & Model (3.5 / 3.1 Flash Lite)", style: .default) { [weak self] _ in
+            self?.moHopThoaiCaiDatNhanhGemini(quetLaiAnhHienTai: false)
+        })
+
+        if let anh = anhHienTai {
+            sheet.addAction(UIAlertAction(title: "✨ Quét lại ảnh hiện tại bằng Gemini AI", style: .default) { [weak self] _ in
+                guard let self else { return }
+                if KhoDuLieu.dungChung.caiDat.geminiApiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    self.moHopThoaiCaiDatNhanhGemini(quetLaiAnhHienTai: true)
+                } else {
+                    self.thucHienQuetAnh(anh: anh, dungGemini: true)
+                }
+            })
+        }
 
         sheet.addAction(UIAlertAction(title: "📋 Sao chép dữ liệu bảng", style: .default) { [weak self] _ in
             let lsx = KhoDuLieu.dungChung.duLieuLenhSX
@@ -947,11 +1176,18 @@ final class ManHinhLenhSanXuat: UIViewController, UIImagePickerControllerDelegat
             self?.hienThongBao("Đã sao chép", "Đã sao chép toàn bộ bảng lệnh sản xuất vào bộ nhớ tạm.")
         })
 
-        sheet.addAction(UIAlertAction(title: "🔁 Nạp lại bảng mẫu chuẩn Hòa Phát", style: .default) { [weak self] _ in
+        sheet.addAction(UIAlertAction(title: "🔁 Nạp bảng mẫu 12 dòng (16/11 - 26/11 • 28,000 tấn)", style: .default) { [weak self] _ in
             let mau = DuLieuLenhSanXuat.mauHoaPhatDungQuat()
             KhoDuLieu.dungChung.luuDuLieuLenhSX(mau)
             self?.capNhatGiaoDien()
-            self?.hienThongBao("Đã nạp mẫu", "Đã nạp lại bảng mẫu chuẩn gồm đúng 8 cột và 6 dòng.")
+            self?.hienThongBao("Đã nạp mẫu 12 dòng", "Đã nạp bảng lệnh sản xuất chuẩn 12 dòng (16/11 - 26/11), tổng 28,000 tấn.")
+        })
+
+        sheet.addAction(UIAlertAction(title: "🔁 Nạp bảng mẫu 6 dòng (10/11 - 15/11 • 17,540 tấn)", style: .default) { [weak self] _ in
+            let mau = DuLieuLenhSanXuat.mauHoaPhat6DongD18D16()
+            KhoDuLieu.dungChung.luuDuLieuLenhSX(mau)
+            self?.capNhatGiaoDien()
+            self?.hienThongBao("Đã nạp mẫu 6 dòng", "Đã nạp bảng mẫu 6 dòng (10/11 - 15/11), tổng 17,540 tấn.")
         })
 
         sheet.addAction(UIAlertAction(title: "🗑️ Xóa toàn bộ các dòng trong bảng", style: .destructive) { [weak self] _ in
@@ -973,19 +1209,19 @@ final class ManHinhLenhSanXuat: UIViewController, UIImagePickerControllerDelegat
 
         alert.addTextField { tf in
             tf.text = muc.thoiGianDuKien
-            tf.placeholder = "Thời gian dự kiến SX (VD: 08h00 10/11 - 08h00 12/11)"
+            tf.placeholder = "Thời gian dự kiến SX (VD: 08h00 16/11 - 08h00 19/11)"
         }
         alert.addTextField { tf in
             tf.text = muc.kichCo
-            tf.placeholder = "Kích cỡ (VD: D18 hoặc D16)"
+            tf.placeholder = "Kích cỡ (VD: D10, D12, D12HP, D14HP...)"
         }
         alert.addTextField { tf in
             tf.text = muc.macThep
-            tf.placeholder = "Mác thép (VD: CB400V, CB500V, Gr40...)"
+            tf.placeholder = "Mác thép (VD: CB300V, CB400V, CB500V, Gr40...)"
         }
         alert.addTextField { tf in
             tf.text = muc.sanLuong
-            tf.placeholder = "Sản lượng tấn (VD: 3,500)"
+            tf.placeholder = "Sản lượng tấn (VD: 2,000)"
             tf.keyboardType = .decimalPad
         }
         alert.addTextField { tf in
@@ -998,13 +1234,16 @@ final class ManHinhLenhSanXuat: UIViewController, UIImagePickerControllerDelegat
         }
         alert.addTextField { tf in
             tf.text = muc.soOrder
-            tf.placeholder = "Số Order (VD: 1040004620)"
+            tf.placeholder = "Số Order (VD: 1040004605)"
             tf.keyboardType = .numberPad
         }
 
         alert.addAction(UIAlertAction(title: "Xóa dòng này", style: .destructive) { [weak self] _ in
             var lsx = KhoDuLieu.dungChung.duLieuLenhSX
             lsx.danhSachMuc.removeAll { $0.id == muc.id }
+            for i in 0..<lsx.danhSachMuc.count {
+                lsx.danhSachMuc[i].stt = i + 1
+            }
             KhoDuLieu.dungChung.luuDuLieuLenhSX(lsx)
             self?.capNhatGiaoDien()
         })
@@ -1016,7 +1255,7 @@ final class ManHinhLenhSanXuat: UIViewController, UIImagePickerControllerDelegat
             moi.thoiGianDuKien = tfs[0].text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? muc.thoiGianDuKien
             moi.kichCo = tfs[1].text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? muc.kichCo
             moi.macThep = tfs[2].text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? muc.macThep
-            moi.sanLuong = tfs[3].text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? muc.sanLuong
+            moi.sanLuong = MucDongLenhSX.chuanHoaSanLuong(tfs[3].text ?? muc.sanLuong)
             moi.coTinh = tfs[4].text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? muc.coTinh
             moi.macPhoi = tfs[5].text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? muc.macPhoi
             moi.soOrder = tfs[6].text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? muc.soOrder

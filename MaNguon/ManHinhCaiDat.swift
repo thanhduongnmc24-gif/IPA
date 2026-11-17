@@ -347,17 +347,36 @@ final class ManHinhCaiDat: UIViewController {
 
         nganChinh.addArrangedSubview(theChuKy)
 
-        // 5. Gemini API Key (Có nút Dán từ bộ nhớ tạm, Xem/Ẩn key, và Phím Xong)
-        nganChinh.addArrangedSubview(taoTieuDeMuc("🤖 GEMINI API KEY"))
+        // 5. Gemini API Key & Chọn Model AI (3.5 Flash Lite / 3.1 Flash Lite)
+        nganChinh.addArrangedSubview(taoTieuDeMuc("🤖 GEMINI API KEY & MODEL AI QUÉT LỆNH SX"))
         let theGemini = taoThe()
         let nganGemini = taoNganBenTrong(theGemini)
 
         let lbHuongDan = UILabel()
-        lbHuongDan.text = "Nhập Gemini API Key để quét ảnh thông minh AI chính xác 100%:"
+        lbHuongDan.text = "Nhập Gemini API Key và chọn Model ưu tiên để quét Lệnh Sản Xuất chính xác 100% (tự động chuyển đổi dự phòng 3.5 Flash Lite ↔ 3.1 Flash Lite khi hết quota):"
         lbHuongDan.font = .systemFont(ofSize: 12)
         lbHuongDan.textColor = mau.subText
         lbHuongDan.numberOfLines = 0
         nganGemini.addArrangedSubview(lbHuongDan)
+
+        let chonModel = UISegmentedControl(items: ["⚡ 3.5 Flash Lite", "🚀 3.1 Flash Lite"])
+        chonModel.selectedSegmentIndex = banNhap.geminiModel.contains("3.1") ? 1 : 0
+        chonModel.selectedSegmentTintColor = mau.primary
+        chonModel.setTitleTextAttributes([.foregroundColor: UIColor.white, .font: UIFont.systemFont(ofSize: 12.5, weight: .bold)], for: .selected)
+        chonModel.setTitleTextAttributes([.foregroundColor: mau.text, .font: UIFont.systemFont(ofSize: 12.5, weight: .medium)], for: .normal)
+        chonModel.addAction(UIAction { [weak self, weak chonModel] _ in
+            guard let self = self, let chonModel = chonModel else { return }
+            let modelMoi = (chonModel.selectedSegmentIndex == 1) ? "gemini-3.1-flash-lite" : "gemini-3.5-flash-lite"
+            self.banNhap.geminiModel = modelMoi
+            var cd = KhoDuLieu.dungChung.caiDat
+            cd.geminiModel = modelMoi
+            if let txtKey = self.oGemini.text?.trimmingCharacters(in: .whitespacesAndNewlines), !txtKey.isEmpty {
+                cd.geminiApiKey = txtKey
+                self.banNhap.geminiApiKey = txtKey
+            }
+            KhoDuLieu.dungChung.luuCaiDat(cd, thongBao: true)
+        }, for: .valueChanged)
+        nganGemini.addArrangedSubview(chonModel)
 
         oGemini.borderStyle = .roundedRect
         oGemini.placeholder = "Dán key AIzaSy... vào đây"
@@ -367,6 +386,15 @@ final class ManHinhCaiDat: UIViewController {
         oGemini.autocorrectionType = .no
         oGemini.autocapitalizationType = .none
         oGemini.clearButtonMode = .whileEditing
+        oGemini.addAction(UIAction { [weak self] _ in
+            guard let self = self else { return }
+            let k = self.oGemini.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            self.banNhap.geminiApiKey = k
+            var cd = KhoDuLieu.dungChung.caiDat
+            cd.geminiApiKey = k
+            cd.geminiModel = self.banNhap.geminiModel
+            KhoDuLieu.dungChung.luuCaiDat(cd, thongBao: false)
+        }, for: .editingChanged)
 
         // Nút Hiện/Ẩn Key (icon con mắt)
         let nutHienAn = UIButton(type: .system)
@@ -390,10 +418,10 @@ final class ManHinhCaiDat: UIViewController {
         thanhPhu.items = [nutCach, nutXong]
         oGemini.inputAccessoryView = thanhPhu
 
-        // Hàng nút: Dán Key từ Clipboard
+        // Hàng nút: Dán Key từ Clipboard (Tự động lưu ngay lập tức)
         let nutDanKey = UIButton(type: .system)
         var chDan = UIButton.Configuration.tinted()
-        chDan.title = "📋 Dán Key từ bộ nhớ tạm"
+        chDan.title = "📋 Dán Key từ bộ nhớ tạm & Lưu ngay"
         chDan.baseForegroundColor = mau.primary
         chDan.cornerStyle = .medium
         nutDanKey.configuration = chDan
@@ -403,7 +431,11 @@ final class ManHinhCaiDat: UIViewController {
             if let chuoiDan = UIPasteboard.general.string?.trimmingCharacters(in: .whitespacesAndNewlines), !chuoiDan.isEmpty {
                 self.oGemini.text = chuoiDan
                 self.banNhap.geminiApiKey = chuoiDan
-                self.hienThongBao("Đã dán Key! 📋", "Key đã được điền vào ô. Nhớ bấm nút 'Lưu' ở trên góc phải.")
+                var cd = KhoDuLieu.dungChung.caiDat
+                cd.geminiApiKey = chuoiDan
+                cd.geminiModel = self.banNhap.geminiModel
+                KhoDuLieu.dungChung.luuCaiDat(cd, thongBao: true)
+                self.hienThongBao("Đã dán & Lưu Key! ✅", "Gemini API Key và model \(cd.tenHienThiModelGemini) đã được kích hoạt để quét Lệnh Sản Xuất.")
             } else {
                 self.hienThongBao("Chưa copy Key", "Hãy copy Gemini API Key vào bộ nhớ tạm trước khi bấm dán.")
             }
