@@ -4,8 +4,9 @@ final class ManHinhBaoCao: UIViewController, UITextViewDelegate, UITextFieldDele
     private let cuon = UIScrollView()
     private let nganChinh = UIStackView()
 
-    // Các ô điều khiển phía trên (gọn gàng trong 2 hàng: Kíp + Ngày cùng 1 hàng, Nhân sự 1 hàng)
+    // Các ô điều khiển phía trên
     private let nutComboboxKip = UIButton(type: .system)
+    private let nhanHienThiNgay = UILabel()
     private let chonNgay = UIDatePicker()
     private let oNhanVienDiLam = UITextField()
     private let oTongSoNhanVien = UITextField()
@@ -70,6 +71,9 @@ final class ManHinhBaoCao: UIViewController, UITextViewDelegate, UITextFieldDele
         super.viewWillAppear(animated)
         capNhatMauGiaoDien()
         capNhatMenuComboboxKip()
+        // Tự động cập nhật lại số nhân viên đi làm dựa trên số người nghỉ ở tab Lịch làm việc của ngày đang chọn
+        capNhatNhanVienDiLamTuLich()
+        dongBoThongSoVaoVanBan()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -110,7 +114,7 @@ final class ManHinhBaoCao: UIViewController, UITextViewDelegate, UITextFieldDele
         chamNgoai.cancelsTouchesInView = false
         view.addGestureRecognizer(chamNgoai)
 
-        // 1. Thẻ thông số đầu vào gọn gàng: Hàng 1 (Kíp + Ngày), Hàng 2 (Nhân sự)
+        // 1. Thẻ thông số đầu vào phân bố đều, cân đối thẩm mỹ
         let theThongSo = taoKhungThe()
         let nganThongSo = UIStackView()
         nganThongSo.axis = .vertical
@@ -119,13 +123,13 @@ final class ManHinhBaoCao: UIViewController, UITextViewDelegate, UITextFieldDele
         theThongSo.addSubview(nganThongSo)
 
         NSLayoutConstraint.activate([
-            nganThongSo.topAnchor.constraint(equalTo: theThongSo.topAnchor, constant: 10),
-            nganThongSo.bottomAnchor.constraint(equalTo: theThongSo.bottomAnchor, constant: -10),
-            nganThongSo.leadingAnchor.constraint(equalTo: theThongSo.leadingAnchor, constant: 12),
-            nganThongSo.trailingAnchor.constraint(equalTo: theThongSo.trailingAnchor, constant: -12)
+            nganThongSo.topAnchor.constraint(equalTo: theThongSo.topAnchor, constant: 12),
+            nganThongSo.bottomAnchor.constraint(equalTo: theThongSo.bottomAnchor, constant: -12),
+            nganThongSo.leadingAnchor.constraint(equalTo: theThongSo.leadingAnchor, constant: 14),
+            nganThongSo.trailingAnchor.constraint(equalTo: theThongSo.trailingAnchor, constant: -14)
         ])
 
-        // Hàng 1: Kíp (1A / 2A) và Ngày cùng 1 hàng
+        // Hàng 1: Kíp và Ngày nằm cùng 1 hàng, phân bố cân xứng 2 bên, không bị khoảng trống lệch
         let lbKip = taoNhanTieuDe("Kíp:")
         lbKip.setContentHuggingPriority(.required, for: .horizontal)
 
@@ -133,8 +137,8 @@ final class ManHinhBaoCao: UIViewController, UITextViewDelegate, UITextFieldDele
         nutComboboxKip.titleLabel?.font = .systemFont(ofSize: 15, weight: .bold)
         nutComboboxKip.layer.cornerRadius = 8
         nutComboboxKip.layer.borderWidth = 1
-        nutComboboxKip.widthAnchor.constraint(equalToConstant: 76).isActive = true
-        nutComboboxKip.heightAnchor.constraint(equalToConstant: 34).isActive = true
+        nutComboboxKip.widthAnchor.constraint(equalToConstant: 82).isActive = true
+        nutComboboxKip.heightAnchor.constraint(equalToConstant: 36).isActive = true
 
         let nhomKip = UIStackView(arrangedSubviews: [lbKip, nutComboboxKip])
         nhomKip.axis = .horizontal
@@ -144,16 +148,45 @@ final class ManHinhBaoCao: UIViewController, UITextViewDelegate, UITextFieldDele
         let lbNgay = taoNhanTieuDe("Ngày:")
         lbNgay.setContentHuggingPriority(.required, for: .horizontal)
 
+        // Khung hiển thị ngày đồng bộ kích thước & kiểu dáng với ô Kíp và ô Nhân sự
+        let khungNgay = UIView()
+        khungNgay.translatesAutoresizingMaskIntoConstraints = false
+        khungNgay.widthAnchor.constraint(equalToConstant: 118).isActive = true
+        khungNgay.heightAnchor.constraint(equalToConstant: 36).isActive = true
+
+        nhanHienThiNgay.font = .systemFont(ofSize: 15, weight: .bold)
+        nhanHienThiNgay.textAlignment = .center
+        nhanHienThiNgay.layer.cornerRadius = 8
+        nhanHienThiNgay.layer.borderWidth = 1
+        nhanHienThiNgay.layer.masksToBounds = true
+        nhanHienThiNgay.translatesAutoresizingMaskIntoConstraints = false
+        khungNgay.addSubview(nhanHienThiNgay)
+
         chonNgay.datePickerMode = .date
         chonNgay.preferredDatePickerStyle = .compact
         chonNgay.locale = Locale(identifier: "vi_VN")
         chonNgay.calendar = TienIchLich.lich
         chonNgay.date = Date()
+        chonNgay.alpha = 0.02
+        chonNgay.translatesAutoresizingMaskIntoConstraints = false
         chonNgay.addTarget(self, action: #selector(khiDoiNgay(_:)), for: .valueChanged)
+        khungNgay.addSubview(chonNgay)
 
-        let nhomNgay = UIStackView(arrangedSubviews: [lbNgay, chonNgay])
+        NSLayoutConstraint.activate([
+            nhanHienThiNgay.topAnchor.constraint(equalTo: khungNgay.topAnchor),
+            nhanHienThiNgay.bottomAnchor.constraint(equalTo: khungNgay.bottomAnchor),
+            nhanHienThiNgay.leadingAnchor.constraint(equalTo: khungNgay.leadingAnchor),
+            nhanHienThiNgay.trailingAnchor.constraint(equalTo: khungNgay.trailingAnchor),
+
+            chonNgay.centerXAnchor.constraint(equalTo: khungNgay.centerXAnchor),
+            chonNgay.centerYAnchor.constraint(equalTo: khungNgay.centerYAnchor),
+            chonNgay.widthAnchor.constraint(equalTo: khungNgay.widthAnchor),
+            chonNgay.heightAnchor.constraint(equalTo: khungNgay.heightAnchor)
+        ])
+
+        let nhomNgay = UIStackView(arrangedSubviews: [lbNgay, khungNgay])
         nhomNgay.axis = .horizontal
-        nhomNgay.spacing = 6
+        nhomNgay.spacing = 8
         nhomNgay.alignment = .center
 
         let hangKipVaNgay = UIStackView(arrangedSubviews: [nhomKip, nhomNgay])
@@ -161,12 +194,12 @@ final class ManHinhBaoCao: UIViewController, UITextViewDelegate, UITextFieldDele
         hangKipVaNgay.distribution = .equalSpacing
         hangKipVaNgay.alignment = .center
 
-        // Hàng 2: Nhân sự (textbox đi làm / textbox tổng số)
+        // Hàng 2: Nhân sự (tự động trừ số người nghỉ ở tab Lịch làm việc)
         let lbNhanSu = taoNhanTieuDe("Nhân sự:")
         lbNhanSu.setContentHuggingPriority(.required, for: .horizontal)
 
-        cauHinhOTextNhanSu(oNhanVienDiLam, placeholder: "9")
-        cauHinhOTextNhanSu(oTongSoNhanVien, placeholder: "9")
+        cauHinhOTextNhanSu(oNhanVienDiLam, placeholder: "9", action: #selector(khiDoiNhanVienDiLam))
+        cauHinhOTextNhanSu(oTongSoNhanVien, placeholder: "9", action: #selector(khiDoiTongSoNhanVien))
 
         let lbGachCheo = UILabel()
         lbGachCheo.text = "/"
@@ -176,16 +209,16 @@ final class ManHinhBaoCao: UIViewController, UITextViewDelegate, UITextFieldDele
 
         let lbDonViNV = UILabel()
         lbDonViNV.text = "nhân viên"
-        lbDonViNV.font = .systemFont(ofSize: 13.5, weight: .medium)
+        lbDonViNV.font = .systemFont(ofSize: 14, weight: .medium)
         lbDonViNV.setContentHuggingPriority(.required, for: .horizontal)
 
         let nhomONhanSu = UIStackView(arrangedSubviews: [oNhanVienDiLam, lbGachCheo, oTongSoNhanVien, lbDonViNV])
         nhomONhanSu.axis = .horizontal
-        nhomONhanSu.spacing = 6
+        nhomONhanSu.spacing = 8
         nhomONhanSu.alignment = .center
 
-        oNhanVienDiLam.widthAnchor.constraint(equalToConstant: 56).isActive = true
-        oTongSoNhanVien.widthAnchor.constraint(equalToConstant: 56).isActive = true
+        oNhanVienDiLam.widthAnchor.constraint(equalToConstant: 62).isActive = true
+        oTongSoNhanVien.widthAnchor.constraint(equalToConstant: 62).isActive = true
 
         let hangNhanSu = UIStackView(arrangedSubviews: [lbNhanSu, nhomONhanSu])
         hangNhanSu.axis = .horizontal
@@ -236,7 +269,7 @@ final class ManHinhBaoCao: UIViewController, UITextViewDelegate, UITextFieldDele
         oVanBanBaoCao.inputAccessoryView = taoThanhCongCuBanPhim()
         oVanBanBaoCao.heightAnchor.constraint(greaterThanOrEqualToConstant: 260).isActive = true
 
-        // Hàng nút thao tác nhanh (1 dòng gọn đẹp, không bị tràn hay xuống dòng chữ)
+        // Hàng nút thao tác nhanh
         nutSaoChep.setTitle("📋 Sao chép nội dung", for: .normal)
         nutSaoChep.setTitleColor(.white, for: .normal)
         nutSaoChep.titleLabel?.font = .systemFont(ofSize: 14, weight: .bold)
@@ -265,16 +298,18 @@ final class ManHinhBaoCao: UIViewController, UITextViewDelegate, UITextFieldDele
         nganChinh.addArrangedSubview(theKetQua)
     }
 
-    private func cauHinhOTextNhanSu(_ tf: UITextField, placeholder: String) {
-        tf.borderStyle = .roundedRect
+    private func cauHinhOTextNhanSu(_ tf: UITextField, placeholder: String, action: Selector) {
+        tf.borderStyle = .none
         tf.font = .systemFont(ofSize: 15, weight: .bold)
         tf.textAlignment = .center
         tf.placeholder = placeholder
         tf.keyboardType = .numberPad
+        tf.layer.cornerRadius = 8
+        tf.layer.borderWidth = 1
         tf.delegate = self
         tf.inputAccessoryView = taoThanhCongCuBanPhim()
-        tf.heightAnchor.constraint(equalToConstant: 34).isActive = true
-        tf.addTarget(self, action: #selector(khiDoiNhanSu), for: .editingChanged)
+        tf.heightAnchor.constraint(equalToConstant: 36).isActive = true
+        tf.addTarget(self, action: action, for: .editingChanged)
     }
 
     private func taoThanhCongCuBanPhim() -> UIToolbar {
@@ -288,16 +323,30 @@ final class ManHinhBaoCao: UIViewController, UITextViewDelegate, UITextFieldDele
 
     // MARK: - Nạp & Đồng bộ dữ liệu
 
+    private func capNhatNhanNgay() {
+        nhanHienThiNgay.text = TienIchLich.dinhDangNgayViet.string(from: ngayHienTai)
+    }
+
+    /// Tự động tính số nhân viên đi làm = Tổng số nhân viên - Số người nghỉ trong tab Lịch làm việc của ngày đang chọn
+    private func capNhatNhanVienDiLamTuLich() {
+        let chuoiTong = oTongSoNhanVien.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let tongSo = Int(chuoiTong) ?? 9
+        let soNguoiNghi = TienIchLich.demSoNguoiNghiTrongLich(cho: ngayHienTai)
+        let diLam = max(0, tongSo - soNguoiNghi)
+        oNhanVienDiLam.text = "\(diLam)"
+    }
+
     private func napDuLieuBanDau() {
         let duLieu = KhoDuLieu.dungChung.duLieuBaoCao
         let homNay = Date()
         ngayHienTai = homNay
         chonNgay.date = homNay
+        capNhatNhanNgay()
 
-        let diLam = duLieu.soNhanVienDiLam.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "9" : duLieu.soNhanVienDiLam
         let tongSo = duLieu.tongSoNhanVien.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "9" : duLieu.tongSoNhanVien
-        oNhanVienDiLam.text = diLam
         oTongSoNhanVien.text = tongSo
+        capNhatNhanVienDiLamTuLich()
+        let diLam = oNhanVienDiLam.text ?? "9"
 
         let khoaHomNay = TienIchLich.dinhDangKhoaNgay.string(from: homNay)
         let goiYLich = TienIchLich.xacDinhKipTheoLich(cho: homNay)
@@ -329,14 +378,15 @@ final class ManHinhBaoCao: UIViewController, UITextViewDelegate, UITextFieldDele
 
     @objc private func khiDongBoXong() {
         let duLieu = KhoDuLieu.dungChung.duLieuBaoCao
-        oNhanVienDiLam.text = duLieu.soNhanVienDiLam.isEmpty ? "9" : duLieu.soNhanVienDiLam
         oTongSoNhanVien.text = duLieu.tongSoNhanVien.isEmpty ? "9" : duLieu.tongSoNhanVien
+        capNhatNhanVienDiLamTuLich()
         if duLieu.kip == "1A" || duLieu.kip == "2A" {
             kipHienTai = duLieu.kip
         }
         if !duLieu.noiDungMau.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             oVanBanBaoCao.text = duLieu.noiDungMau
         }
+        dongBoThongSoVaoVanBan()
         capNhatMenuComboboxKip()
         capNhatMauGiaoDien()
     }
@@ -418,11 +468,21 @@ final class ManHinhBaoCao: UIViewController, UITextViewDelegate, UITextFieldDele
 
     @objc private func khiDoiNgay(_ sender: UIDatePicker) {
         ngayHienTai = sender.date
+        capNhatNhanNgay()
         capNhatThongTinTheoLich(tuDongDoiKip: true)
+        capNhatNhanVienDiLamTuLich()
+        dongBoThongSoVaoVanBan()
+        if let presented = presentedViewController {
+            presented.dismiss(animated: true)
+        }
+    }
+
+    @objc private func khiDoiNhanVienDiLam() {
         dongBoThongSoVaoVanBan()
     }
 
-    @objc private func khiDoiNhanSu() {
+    @objc private func khiDoiTongSoNhanVien() {
+        capNhatNhanVienDiLamTuLich()
         dongBoThongSoVaoVanBan()
     }
 
@@ -450,7 +510,7 @@ final class ManHinhBaoCao: UIViewController, UITextViewDelegate, UITextFieldDele
         view.endEditing(true)
         let alert = UIAlertController(
             title: "Khôi phục mẫu gốc?",
-            message: "Đặt lại nhân sự 9/9, ngày hiện tại và khôi phục nội dung văn bản về mẫu TBM mặc định?",
+            message: "Đặt lại tổng nhân sự 9 người (trừ số người nghỉ trên lịch), ngày hiện tại và khôi phục văn bản về mẫu TBM mặc định?",
             preferredStyle: .alert
         )
         alert.addAction(UIAlertAction(title: "Hủy", style: .cancel))
@@ -458,13 +518,15 @@ final class ManHinhBaoCao: UIViewController, UITextViewDelegate, UITextFieldDele
             guard let self else { return }
             self.ngayHienTai = Date()
             self.chonNgay.date = self.ngayHienTai
-            self.oNhanVienDiLam.text = "9"
+            self.capNhatNhanNgay()
             self.oTongSoNhanVien.text = "9"
+            self.capNhatNhanVienDiLamTuLich()
             self.capNhatThongTinTheoLich(tuDongDoiKip: true)
+            let diLam = self.oNhanVienDiLam.text ?? "9"
             self.oVanBanBaoCao.text = DuLieuBaoCaoTBM.taoVanBanMacDinh(
                 kip: self.kipHienTai,
                 ngay: self.ngayHienTai,
-                diLam: "9",
+                diLam: diLam,
                 tongSo: "9"
             )
             self.luuTrangThaiHienTai()
@@ -499,10 +561,17 @@ final class ManHinhBaoCao: UIViewController, UITextViewDelegate, UITextFieldDele
             the.layer.borderColor = mau.border.cgColor
         }
 
+        nhanHienThiNgay.backgroundColor = mau.iconBg
+        nhanHienThiNgay.textColor = mau.text
+        nhanHienThiNgay.layer.borderColor = mau.border.cgColor
+
         oNhanVienDiLam.backgroundColor = mau.iconBg
         oNhanVienDiLam.textColor = mau.text
+        oNhanVienDiLam.layer.borderColor = mau.border.cgColor
+
         oTongSoNhanVien.backgroundColor = mau.iconBg
         oTongSoNhanVien.textColor = mau.text
+        oTongSoNhanVien.layer.borderColor = mau.border.cgColor
 
         oVanBanBaoCao.backgroundColor = mau.iconBg
         oVanBanBaoCao.textColor = mau.text

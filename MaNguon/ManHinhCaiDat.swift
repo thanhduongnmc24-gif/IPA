@@ -478,16 +478,7 @@ final class ManHinhCaiDat: UIViewController {
         nganGemini.addArrangedSubview(hangGemini)
         nganChinh.addArrangedSubview(theGemini)
 
-        // 6. Nút Lưu Cài Đặt nổi bật ở cuối trang
-        let nutLuuCuoi = UIButton(type: .system)
-        var chLuu = UIButton.Configuration.filled()
-        chLuu.title = "💾 LƯU CÀI ĐẶT"
-        chLuu.baseBackgroundColor = mau.primary
-        chLuu.cornerStyle = .medium
-        nutLuuCuoi.configuration = chLuu
-        nutLuuCuoi.heightAnchor.constraint(equalToConstant: 42).isActive = true
-        nutLuuCuoi.addTarget(self, action: #selector(bamLuuCaiDat), for: .touchUpInside)
-        nganChinh.addArrangedSubview(nutLuuCuoi)
+
     }
 
     private func capNhatTextChuKy() {

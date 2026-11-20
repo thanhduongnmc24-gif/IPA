@@ -867,6 +867,12 @@ final class ManHinhThucDon: UIViewController, UITableViewDataSource, UITableView
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         capNhatGiaoDien()
+        cuonDenNgayHienTai(animated: false)
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        cuonDenNgayHienTai(animated: false)
     }
 
     deinit {
@@ -907,6 +913,26 @@ final class ManHinhThucDon: UIViewController, UITableViewDataSource, UITableView
 
     @objc private func doiBoLoc() {
         bang.reloadData()
+        cuonDenNgayHienTai(animated: false)
+    }
+
+    private func cuonDenNgayHienTai(animated: Bool) {
+        let ds = danhSachHienThi
+        guard !ds.isEmpty else { return }
+        let homNayKhoa = TienIchLich.dinhDangKhoaNgay.string(from: Date())
+        let homNayViet = TienIchLich.dinhDangNgayViet.string(from: Date())
+
+        let chiSo = ds.firstIndex(where: { $0.khoaNgay == homNayKhoa || $0.ngayVaoCa == homNayViet })
+            ?? ds.firstIndex(where: { !$0.khoaNgay.isEmpty && $0.khoaNgay >= homNayKhoa })
+            ?? (ds.count - 1)
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.bang.layoutIfNeeded()
+            let soDong = self.bang.numberOfRows(inSection: 0)
+            guard chiSo >= 0, chiSo < soDong else { return }
+            self.bang.scrollToRow(at: IndexPath(row: chiSo, section: 0), at: .top, animated: animated)
+        }
     }
 
     // MARK: - Chọn File Thực Đơn Tên Bất Kỳ

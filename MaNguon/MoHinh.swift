@@ -1679,6 +1679,25 @@ enum TienIchLich {
         return cd.chuKyLamViec[du]
     }
 
+    /// Đếm số người nghỉ được ghi chú trong tab Lịch làm việc của ngày được chọn
+    static func demSoNguoiNghiTrongLich(cho ngay: Date) -> Int {
+        let khoa = dinhDangKhoaNgay.string(from: ngay)
+        guard let gc = KhoDuLieu.dungChung.ghiChuLich[khoa], !gc.noteLines.isEmpty else {
+            return 0
+        }
+        var soNguoi = 0
+        for dong in gc.noteLines {
+            let cacPhan = dong.components(separatedBy: CharacterSet(charactersIn: ",;"))
+            for phan in cacPhan {
+                let ten = phan.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !ten.isEmpty {
+                    soNguoi += 1
+                }
+            }
+        }
+        return soNguoi
+    }
+
     /// Xác định kíp 1A (Ca Ngày) hoặc 2A (Ca Đêm) tương ứng theo lịch làm việc của ngày được chọn
     static func xacDinhKipTheoLich(
         cho ngay: Date,

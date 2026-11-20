@@ -410,13 +410,7 @@ final class ManHinhLenhSanXuat: UIViewController, UIImagePickerControllerDelegat
         super.viewDidLoad()
         navigationItem.title = "Lệnh Sản Xuất"
 
-        let nutXemAnh = UIBarButtonItem(
-            image: UIImage(systemName: "photo.on.rectangle.angled"),
-            style: .plain,
-            target: self,
-            action: #selector(bamXemAnhGoc)
-        )
-        navigationItem.leftBarButtonItem = nutXemAnh
+// Đã bỏ nút xem ảnh gốc đã quét theo yêu cầu
 
         let nutMenu = UIBarButtonItem(
             image: UIImage(systemName: "ellipsis.circle"),
