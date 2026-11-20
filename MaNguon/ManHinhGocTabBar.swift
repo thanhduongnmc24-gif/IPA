@@ -1,12 +1,14 @@
 import UIKit
 
-final class ManHinhGocTabBar: UITabBarController {
+final class ManHinhGocTabBar: UITabBarController, UITabBarControllerDelegate {
     private let huyHieuDongBo = UIView()
     private let bieuTuongDongBo = UIImageView()
     private let nhanDongBo = UILabel()
+    private var boNhoTab: [LoaiTabUngDung: UINavigationController] = [:]
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        delegate = self
         taoHuyHieuDongBo()
         capNhatDanhSachTab(giuTabCaiDat: false)
         capNhatGiaoDien()
@@ -21,6 +23,18 @@ final class ManHinhGocTabBar: UITabBarController {
             self,
             selector: #selector(khiTrangThaiDongBoThayDoi(_:)),
             name: .trangThaiDongBoThayDoi,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(luuThuTuTabHienTaiKhiTamDung),
+            name: UIApplication.didEnterBackgroundNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(luuThuTuTabHienTaiKhiTamDung),
+            name: UIApplication.willTerminateNotification,
             object: nil
         )
     }
@@ -49,84 +63,162 @@ final class ManHinhGocTabBar: UITabBarController {
         tabBar.tintColor = mau.primary
         tabBar.unselectedItemTintColor = mau.subText
 
+        moreNavigationController.navigationBar.tintColor = mau.primary
+
         huyHieuDongBo.backgroundColor = mau.card
         huyHieuDongBo.layer.borderColor = mau.border.cgColor
         nhanDongBo.textColor = mau.text
     }
 
+    private func taoHoacLayNavigationController(cho loai: LoaiTabUngDung) -> UINavigationController {
+        if let daCo = boNhoTab[loai] {
+            daCo.tabBarItem = taoTabBarItem(cho: loai)
+            return daCo
+        }
+
+        let rootVC: UIViewController
+        switch loai {
+        case .xuongCan:
+            rootVC = ManHinhXuongCan()
+        case .lenhSanXuat:
+            rootVC = ManHinhLenhSanXuat()
+        case .baoCao:
+            rootVC = ManHinhBaoCao()
+        case .calendar:
+            rootVC = ManHinhLich()
+        case .thucDon:
+            rootVC = ManHinhThucDon()
+        case .notes:
+            rootVC = ManHinhGhiChu()
+        case .sheets:
+            rootVC = ManHinhSheets()
+        case .media:
+            rootVC = ManHinhMedia()
+        case .reminders:
+            rootVC = ManHinhNhacNho()
+        case .caiDat:
+            rootVC = ManHinhCaiDat()
+        }
+
+        let nav = UINavigationController(rootViewController: rootVC)
+        nav.tabBarItem = taoTabBarItem(cho: loai)
+        boNhoTab[loai] = nav
+        return nav
+    }
+
+    private func taoTabBarItem(cho loai: LoaiTabUngDung) -> UITabBarItem {
+        let img = UIImage(systemName: loai.bieuTuong) ?? UIImage(systemName: "doc.text")
+        let item = UITabBarItem(title: loai.tieuDeTab, image: img, tag: loai.tagSo)
+        item.accessibilityIdentifier = loai.rawValue
+        return item
+    }
+
+    private func xacDinhLoaiTab(cua vc: UIViewController) -> LoaiTabUngDung? {
+        if let id = vc.tabBarItem.accessibilityIdentifier,
+           let loai = LoaiTabUngDung(rawValue: id) {
+            return loai
+        }
+        guard let nav = vc as? UINavigationController,
+              let root = nav.viewControllers.first else {
+            return LoaiTabUngDung.allCases.first(where: { $0.tagSo == vc.tabBarItem.tag })
+        }
+        switch root {
+        case is ManHinhXuongCan: return .xuongCan
+        case is ManHinhLenhSanXuat: return .lenhSanXuat
+        case is ManHinhBaoCao: return .baoCao
+        case is ManHinhLich: return .calendar
+        case is ManHinhThucDon: return .thucDon
+        case is ManHinhGhiChu: return .notes
+        case is ManHinhSheets: return .sheets
+        case is ManHinhMedia: return .media
+        case is ManHinhNhacNho: return .reminders
+        case is ManHinhCaiDat: return .caiDat
+        default: return nil
+        }
+    }
+
     private func capNhatDanhSachTab(giuTabCaiDat: Bool) {
-        let tt = KhoDuLieu.dungChung.caiDat.trangThaiTab
+        let caiDat = KhoDuLieu.dungChung.caiDat
+        let tt = caiDat.trangThaiTab
+        let thuTu = caiDat.danhSachLoaiTabTheoThuTu
+
+        let loaiDangChon = selectedViewController.flatMap { xacDinhLoaiTab(cua: $0) }
+
         var danhSach: [UIViewController] = []
-
-        // Giữ lại instance ManHinhCaiDat hiện tại nếu đang đứng ở tab Cài đặt để không bị giật/mất trạng thái
-        let caiDatHienTai = viewControllers?.compactMap { $0 as? UINavigationController }
-            .first(where: { $0.viewControllers.first is ManHinhCaiDat })
-
-        // 1. Tab Xưởng Cán ở vị trí đầu tiên
-        if tt.xuongCan {
-            let vc = UINavigationController(rootViewController: ManHinhXuongCan())
-            vc.tabBarItem = UITabBarItem(title: "Xưởng Cán", image: UIImage(systemName: "tablecells"), tag: 0)
-            danhSach.append(vc)
+        for loai in thuTu {
+            if tt.dangBat(loai) {
+                let nav = taoHoacLayNavigationController(cho: loai)
+                danhSach.append(nav)
+            }
         }
-
-        // 2. Tab Lệnh sản xuất (Quét OCR ảnh / AI)
-        if tt.lenhSanXuat {
-            let vc = UINavigationController(rootViewController: ManHinhLenhSanXuat())
-            vc.tabBarItem = UITabBarItem(title: "Lệnh SX", image: UIImage(systemName: "doc.text.viewfinder"), tag: 1)
-            danhSach.append(vc)
-        }
-
-        // 3. Tab Lịch
-        if tt.calendar {
-            let vc = UINavigationController(rootViewController: ManHinhLich())
-            vc.tabBarItem = UITabBarItem(title: "Lịch", image: UIImage(systemName: "calendar"), tag: 2)
-            danhSach.append(vc)
-        }
-
-        // 3. Tab Thực đơn
-        if tt.thucDon {
-            let vc = UINavigationController(rootViewController: ManHinhThucDon())
-            vc.tabBarItem = UITabBarItem(title: "Thực đơn", image: UIImage(systemName: "fork.knife"), tag: 2)
-            danhSach.append(vc)
-        }
-
-        // 4. Tab Ghi chú
-        if tt.notes {
-            let vc = UINavigationController(rootViewController: ManHinhGhiChu())
-            vc.tabBarItem = UITabBarItem(title: "Ghi chú", image: UIImage(systemName: "doc.text"), tag: 3)
-            danhSach.append(vc)
-        }
-
-        // 5. Tab Sheets
-        if tt.sheets {
-            let vc = UINavigationController(rootViewController: ManHinhSheets())
-            vc.tabBarItem = UITabBarItem(title: "Sheets", image: UIImage(systemName: "square.grid.2x2"), tag: 4)
-            danhSach.append(vc)
-        }
-
-        // 6. Tab Media
-        if tt.media {
-            let vc = UINavigationController(rootViewController: ManHinhMedia())
-            vc.tabBarItem = UITabBarItem(title: "Media", image: UIImage(systemName: "sparkles.tv"), tag: 5)
-            danhSach.append(vc)
-        }
-
-        // 7. Tab Nhắc nhở
-        if tt.reminders {
-            let vc = UINavigationController(rootViewController: ManHinhNhacNho())
-            vc.tabBarItem = UITabBarItem(title: "Nhắc nhở", image: UIImage(systemName: "alarm"), tag: 6)
-            danhSach.append(vc)
-        }
-
-        // 8. Tab Cài đặt luôn hiển thị ở cuối
-        let caiDatVC = caiDatHienTai ?? UINavigationController(rootViewController: ManHinhCaiDat())
-        caiDatVC.tabBarItem = UITabBarItem(title: "Cài đặt", image: UIImage(systemName: "gearshape"), tag: 7)
-        danhSach.append(caiDatVC)
 
         setViewControllers(danhSach, animated: false)
+        customizableViewControllers = danhSach
+
         if giuTabCaiDat {
-            selectedIndex = danhSach.count - 1
+            if let idx = danhSach.firstIndex(where: { xacDinhLoaiTab(cua: $0) == .caiDat }) {
+                selectedIndex = idx
+            }
+        } else if let loaiDangChon,
+                  let idx = danhSach.firstIndex(where: { xacDinhLoaiTab(cua: $0) == loaiDangChon }) {
+            selectedIndex = idx
         }
+    }
+
+    // MARK: - Lưu thứ tự Tab khi người dùng sắp xếp trong TabBar (More -> Edit)
+
+    func tabBarController(
+        _ tabBarController: UITabBarController,
+        willEndCustomizing viewControllers: [UIViewController],
+        changed: Bool
+    ) {
+        luuThuTuTabTuDanhSachVC(viewControllers)
+    }
+
+    func tabBarController(
+        _ tabBarController: UITabBarController,
+        didEndCustomizing viewControllers: [UIViewController],
+        changed: Bool
+    ) {
+        luuThuTuTabTuDanhSachVC(viewControllers)
+    }
+
+    @objc private func luuThuTuTabHienTaiKhiTamDung() {
+        guard let vcs = viewControllers, !vcs.isEmpty else { return }
+        luuThuTuTabTuDanhSachVC(vcs)
+    }
+
+    private func luuThuTuTabTuDanhSachVC(_ vcs: [UIViewController]) {
+        let thuTuHienThi = vcs.compactMap { xacDinhLoaiTab(cua: $0) }
+        guard !thuTuHienThi.isEmpty else { return }
+
+        let thuTuGoc = KhoDuLieu.dungChung.caiDat.danhSachLoaiTabTheoThuTu
+        let tapHienThi = Set(thuTuHienThi)
+
+        // Ghép thứ tự mới của các tab đang hiển thị với vị trí của các tab đang ẩn (nếu có)
+        var ketQua: [LoaiTabUngDung] = []
+        var chiSoHienThi = 0
+
+        for loaiGoc in thuTuGoc {
+            if tapHienThi.contains(loaiGoc) {
+                if chiSoHienThi < thuTuHienThi.count {
+                    ketQua.append(thuTuHienThi[chiSoHienThi])
+                    chiSoHienThi += 1
+                }
+            } else {
+                ketQua.append(loaiGoc)
+            }
+        }
+
+        while chiSoHienThi < thuTuHienThi.count {
+            let conLai = thuTuHienThi[chiSoHienThi]
+            if !ketQua.contains(conLai) {
+                ketQua.append(conLai)
+            }
+            chiSoHienThi += 1
+        }
+
+        KhoDuLieu.dungChung.luuThuTuTab(ketQua.map(\.rawValue))
     }
 
     private func taoHuyHieuDongBo() {

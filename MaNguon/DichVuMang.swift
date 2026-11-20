@@ -668,9 +668,12 @@ final class DichVuSupabase {
         let xuongCanArr = (try? JSONSerialization.jsonObject(with: encoder.encode(kho.danhSachBangXuongCan))) ?? []
         let thucDonObj = (try? JSONSerialization.jsonObject(with: encoder.encode(kho.duLieuThucDon))) ?? [:]
         let lenhSXObj = (try? JSONSerialization.jsonObject(with: encoder.encode(kho.duLieuLenhSX))) ?? [:]
+        let baoCaoObj = (try? JSONSerialization.jsonObject(with: encoder.encode(kho.duLieuBaoCao))) ?? [:]
 
         let backupData: [String: Any] = [
             "LENH_SAN_XUAT": lenhSXObj,
+            "BAO_CAO_TBM": baoCaoObj,
+            "TAB_ORDER": kho.caiDat.thuTuTab,
             "QUICK_NOTES": notesArr,
             "CALENDAR_NOTES": calDict,
             "USER_REMINDERS": remArr,
@@ -863,8 +866,22 @@ final class DichVuSupabase {
            let lsx = tm.giaiMaDuLieu(DuLieuLenhSanXuat.self, tu: d) {
             kho.luuDuLieuLenhSX(lsx, dongBoSupabase: false)
         }
+        if let d = layDataJSON(tu: backup["BAO_CAO_TBM"]),
+           let bc = tm.giaiMaDuLieu(DuLieuBaoCaoTBM.self, tu: d),
+           !bc.noiDungMau.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            kho.luuDuLieuBaoCao(bc, dongBoSupabase: false)
+        }
 
         var cd = kho.caiDat
+        let daCoThuTuCucBo = (UserDefaults.standard.stringArray(forKey: "SAVED_TAB_ORDER_V1") != nil)
+        if !daCoThuTuCucBo {
+            if let tabOrd = backup["TAB_ORDER"] as? [String], !tabOrd.isEmpty {
+                cd.thuTuTab = CaiDatUngDung.chuanHoaDanhSachTab(tabOrd).map(\.rawValue)
+            } else if let dTab = layDataJSON(tu: backup["TAB_ORDER"]),
+                      let tabOrd = tm.giaiMaDuLieu([String].self, tu: dTab), !tabOrd.isEmpty {
+                cd.thuTuTab = CaiDatUngDung.chuanHoaDanhSachTab(tabOrd).map(\.rawValue)
+            }
+        }
         if let menuNotif = backup["MENU_NOTIF_ENABLED"] as? Bool {
             cd.batThongBaoThucDon = menuNotif
         }

@@ -103,6 +103,10 @@ final class ManHinhCaiDat: UIViewController {
         banNhap.driveClientSecret = hienTai.driveClientSecret
         banNhap.driveRefreshToken = hienTai.driveRefreshToken
         banNhap.driveFolderId = hienTai.driveFolderId
+        if banNhap.thuTuTab != hienTai.thuTuTab {
+            banNhap.thuTuTab = hienTai.thuTuTab
+            veGiaoDien()
+        }
     }
 
     @objc private func bamLuuCaiDat() {
@@ -115,7 +119,16 @@ final class ManHinhCaiDat: UIViewController {
         banNhap.geminiApiKey = oGemini.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         KhoDuLieu.dungChung.luuCaiDat(banNhap, thongBao: true)
         veGiaoDien()
-        hienThongBao("Đã lưu cài đặt", "Các thay đổi của bạn và lịch hẹn giờ thông báo đã được áp dụng!")
+        hienThongBao("Đã lưu cài đặt", "Thứ tự sắp xếp các Tab, cài đặt hiển thị và lịch hẹn giờ thông báo đã được lưu lại!")
+    }
+
+    private func diChuyenTab(tai chiSo: Int, lenTren: Bool) {
+        var ds = banNhap.danhSachLoaiTabTheoThuTu
+        let dich = lenTren ? (chiSo - 1) : (chiSo + 1)
+        guard chiSo >= 0, chiSo < ds.count, dich >= 0, dich < ds.count else { return }
+        ds.swapAt(chiSo, dich)
+        banNhap.thuTuTab = ds.map(\.rawValue)
+        veGiaoDien()
     }
 
     private func veGiaoDien() {
@@ -203,8 +216,8 @@ final class ManHinhCaiDat: UIViewController {
         nganDrive.addArrangedSubview(hangNutDrive)
         nganChinh.addArrangedSubview(theDrive)
 
-        // 3. Giao diện & Quản lý Tab
-        nganChinh.addArrangedSubview(taoTieuDeMuc("🎨 GIAO DIỆN & CÁC TAB HIỂN THỊ (BẤM LƯU ĐỂ ÁP DỤNG)"))
+        // 3. Giao diện, Ẩn/Hiện & Sắp xếp thứ tự Tab
+        nganChinh.addArrangedSubview(taoTieuDeMuc("🎨 GIAO DIỆN & SẮP XẾP THỨ TỰ CÁC TAB (BẤM LƯU ĐỂ ÁP DỤNG)"))
         let theTab = taoThe()
         let nganTab = taoNganBenTrong(theTab)
 
@@ -212,30 +225,25 @@ final class ManHinhCaiDat: UIViewController {
             self?.banNhap.giaoDienToi = bat
         })
         nganTab.addArrangedSubview(taoVachNgan())
-        nganTab.addArrangedSubview(taoHangCongTac(ten: "Tab Xưởng Cán (Đầu tiên)", dangBat: banNhap.trangThaiTab.xuongCan) { [weak self] bat in
-            self?.banNhap.trangThaiTab.xuongCan = bat
-        })
-        nganTab.addArrangedSubview(taoHangCongTac(ten: "Tab Lệnh sản xuất (OCR)", dangBat: banNhap.trangThaiTab.lenhSanXuat) { [weak self] bat in
-            self?.banNhap.trangThaiTab.lenhSanXuat = bat
-        })
-        nganTab.addArrangedSubview(taoHangCongTac(ten: "Tab Lịch làm việc", dangBat: banNhap.trangThaiTab.calendar) { [weak self] bat in
-            self?.banNhap.trangThaiTab.calendar = bat
-        })
-        nganTab.addArrangedSubview(taoHangCongTac(ten: "Tab Thực đơn 🍱", dangBat: banNhap.trangThaiTab.thucDon) { [weak self] bat in
-            self?.banNhap.trangThaiTab.thucDon = bat
-        })
-        nganTab.addArrangedSubview(taoHangCongTac(ten: "Tab Ghi chú", dangBat: banNhap.trangThaiTab.notes) { [weak self] bat in
-            self?.banNhap.trangThaiTab.notes = bat
-        })
-        nganTab.addArrangedSubview(taoHangCongTac(ten: "Tab Trang tính (Sheets)", dangBat: banNhap.trangThaiTab.sheets) { [weak self] bat in
-            self?.banNhap.trangThaiTab.sheets = bat
-        })
-        nganTab.addArrangedSubview(taoHangCongTac(ten: "Tab Media AI", dangBat: banNhap.trangThaiTab.media) { [weak self] bat in
-            self?.banNhap.trangThaiTab.media = bat
-        })
-        nganTab.addArrangedSubview(taoHangCongTac(ten: "Tab Nhắc nhở", dangBat: banNhap.trangThaiTab.reminders) { [weak self] bat in
-            self?.banNhap.trangThaiTab.reminders = bat
-        })
+
+        let lbHuongDanTab = UILabel()
+        lbHuongDanTab.text = "Mẹo: Bạn có thể bấm ▲ / ▼ bên dưới hoặc vào mục Thêm (...) -> Sửa trên thanh Tab để đổi thứ tự. Thứ tự sẽ tự động lưu lại cho lần mở sau."
+        lbHuongDanTab.font = .systemFont(ofSize: 11.5)
+        lbHuongDanTab.textColor = mau.subText
+        lbHuongDanTab.numberOfLines = 0
+        nganTab.addArrangedSubview(lbHuongDanTab)
+
+        let danhSachTab = banNhap.danhSachLoaiTabTheoThuTu
+        for (idx, loai) in danhSachTab.enumerated() {
+            let hang = taoHangQuanLyTab(
+                loai: loai,
+                viTri: idx,
+                tongSo: danhSachTab.count,
+                dangBat: banNhap.trangThaiTab.dangBat(loai)
+            )
+            nganTab.addArrangedSubview(hang)
+        }
+
         nganChinh.addArrangedSubview(theTab)
 
         // 4. Chu kỳ ca làm việc & Thông báo
@@ -545,6 +553,62 @@ final class ManHinhCaiDat: UIViewController {
         b.heightAnchor.constraint(equalToConstant: 32).isActive = true
         b.addAction(UIAction { _ in hanhDong() }, for: .touchUpInside)
         return b
+    }
+
+    private func taoHangQuanLyTab(loai: LoaiTabUngDung, viTri: Int, tongSo: Int, dangBat: Bool) -> UIStackView {
+        let mau = KhoDuLieu.dungChung.mauSac
+
+        let lb = UILabel()
+        lb.text = "\(viTri + 1). \(loai.tenCaiDat)"
+        lb.font = .systemFont(ofSize: 13.5, weight: .medium)
+        lb.textColor = mau.text
+        lb.lineBreakMode = .byTruncatingTail
+
+        let nutLen = UIButton(type: .system)
+        nutLen.setImage(UIImage(systemName: "chevron.up"), for: .normal)
+        nutLen.tintColor = mau.primary
+        nutLen.backgroundColor = mau.iconBg
+        nutLen.layer.cornerRadius = 6
+        nutLen.isEnabled = (viTri > 0)
+        nutLen.alpha = (viTri > 0) ? 1.0 : 0.35
+        nutLen.widthAnchor.constraint(equalToConstant: 28).isActive = true
+        nutLen.heightAnchor.constraint(equalToConstant: 26).isActive = true
+        nutLen.addAction(UIAction { [weak self] _ in
+            self?.diChuyenTab(tai: viTri, lenTren: true)
+        }, for: .touchUpInside)
+
+        let nutXuong = UIButton(type: .system)
+        nutXuong.setImage(UIImage(systemName: "chevron.down"), for: .normal)
+        nutXuong.tintColor = mau.primary
+        nutXuong.backgroundColor = mau.iconBg
+        nutXuong.layer.cornerRadius = 6
+        nutXuong.isEnabled = (viTri < tongSo - 1)
+        nutXuong.alpha = (viTri < tongSo - 1) ? 1.0 : 0.35
+        nutXuong.widthAnchor.constraint(equalToConstant: 28).isActive = true
+        nutXuong.heightAnchor.constraint(equalToConstant: 26).isActive = true
+        nutXuong.addAction(UIAction { [weak self] _ in
+            self?.diChuyenTab(tai: viTri, lenTren: false)
+        }, for: .touchUpInside)
+
+        let sw = UISwitch()
+        sw.isOn = dangBat
+        sw.onTintColor = mau.primary
+        sw.transform = CGAffineTransform(scaleX: 0.80, y: 0.80)
+        sw.isEnabled = (loai != .caiDat)
+        sw.addAction(UIAction { [weak self, weak sw] _ in
+            self?.banNhap.trangThaiTab.datTrangThai(loai, bat: sw?.isOn ?? true)
+        }, for: .valueChanged)
+
+        let nhomPhai = UIStackView(arrangedSubviews: [nutLen, nutXuong, sw])
+        nhomPhai.axis = .horizontal
+        nhomPhai.spacing = 6
+        nhomPhai.alignment = .center
+
+        let h = UIStackView(arrangedSubviews: [lb, nhomPhai])
+        h.distribution = .equalSpacing
+        h.alignment = .center
+        h.heightAnchor.constraint(equalToConstant: 32).isActive = true
+        return h
     }
 
     private func taoHangCongTac(ten: String, dangBat: Bool, khiDoi: @escaping (Bool) -> Void) -> UIStackView {

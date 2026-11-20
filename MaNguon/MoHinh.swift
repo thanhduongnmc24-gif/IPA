@@ -634,11 +634,209 @@ struct BangXuongCan: Codable, Hashable, Identifiable {
     var capNhatLuc: Date = Date()
 }
 
+// MARK: - 2B. Mô hình Báo Cáo TBM Đầu Ca
+
+struct DuLieuBaoCaoTBM: Codable, Hashable {
+    var kip: String = "1A"
+    var khoaNgayLuu: String = ""
+    var soNhanVienDiLam: String = "9"
+    var tongSoNhanVien: String = "9"
+    var noiDungMau: String = ""
+
+    static let noiDungMuc2Va3MacDinh = """
+2. Kiểm tra, phổ biến ATMT/NQLĐ
+- Kiểm tra BHLĐ
+- Kiểm tra sức khỏe
+- Phổ biến các mối nguy tại vị trí làm việc: Cuốn kẹp, điện giật, văng bắn hóa chất.
+- Hướng dẫn xử lý các lỗi cơ bản trong quá trình vận hành.
+- Phân công vệ sinh quét dọn khu vực quản lý
+- Phổ biến các quy định của Công ty
+- Phổ biến các tồn đọng/ vi phạm của ca trước. Phân công khắc phục
+3. Phân công bàn giao công việc sản xuất trong ca
+"""
+
+    static func taoVanBanMacDinh(kip: String, ngay: Date, diLam: String, tongSo: String) -> String {
+        let chuoiNgay = TienIchLich.dinhDangNgayViet.string(from: ngay)
+        let x = diLam.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "9" : diLam.trimmingCharacters(in: .whitespacesAndNewlines)
+        let y = tongSo.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "9" : tongSo.trimmingCharacters(in: .whitespacesAndNewlines)
+        return """
+Tổ Vận hành thực hiện TBM đầu ca \(kip) ngày \(chuoiNgay)
+1. Nhân sự: \(x)/\(y)
+\(noiDungMuc2Va3MacDinh)
+"""
+    }
+
+    static func capNhatThongSoTrongVanBan(
+        vanBanGoc: String,
+        kip: String,
+        ngay: Date,
+        diLam: String,
+        tongSo: String
+    ) -> String {
+        let chuoiNgay = TienIchLich.dinhDangNgayViet.string(from: ngay)
+        let x = diLam.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "9" : diLam.trimmingCharacters(in: .whitespacesAndNewlines)
+        let y = tongSo.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "9" : tongSo.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let trimmed = vanBanGoc.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return taoVanBanMacDinh(kip: kip, ngay: ngay, diLam: x, tongSo: y)
+        }
+
+        var cacDong = vanBanGoc.components(separatedBy: "\n")
+        var daCapNhatTieuDe = false
+        var daCapNhatNhanSu = false
+
+        for i in 0..<cacDong.count {
+            let dongTrim = cacDong[i].trimmingCharacters(in: .whitespaces)
+            let dongLower = dongTrim.lowercased()
+
+            if !daCapNhatTieuDe && (i == 0 || dongLower.contains("tbm") || dongLower.hasPrefix("tổ vận hành")) {
+                var dongMoi = cacDong[i]
+                // Thay thế placeholder "kip" hoặc mã kíp "1A"/"2A"
+                if let rKip = dongMoi.range(of: "\\b(1A|2A|kip)\\b", options: [.regularExpression, .caseInsensitive]) {
+                    dongMoi.replaceSubrange(rKip, with: kip)
+                } else if let rDauCa = dongMoi.range(of: "đầu ca", options: .caseInsensitive) {
+                    dongMoi.replaceSubrange(rDauCa, with: "đầu ca \(kip)")
+                }
+
+                // Thay thế ngày dạng dd/MM/yyyy hoặc chữ "ngày" ở cuối dòng tiêu đề
+                if let rNgaySo = dongMoi.range(of: "\\b\\d{1,2}/\\d{1,2}(?:/\\d{2,4})?\\b", options: .regularExpression) {
+                    dongMoi.replaceSubrange(rNgaySo, with: chuoiNgay)
+                } else if let rChuNgay = dongMoi.range(of: "\\bngày\\s*$", options: [.regularExpression, .caseInsensitive]) {
+                    dongMoi.replaceSubrange(rChuNgay, with: "ngày \(chuoiNgay)")
+                } else if !dongMoi.contains(chuoiNgay) {
+                    dongMoi += " ngày \(chuoiNgay)"
+                }
+
+                cacDong[i] = dongMoi
+                daCapNhatTieuDe = true
+                continue
+            }
+
+            if !daCapNhatNhanSu && (dongLower.hasPrefix("1. nhân sự") || dongLower.hasPrefix("1. nhan su") || dongLower.hasPrefix("nhân sự:")) {
+                if let rTyLe = cacDong[i].range(of: "(\\d+\\s*/\\s*\\d+|\\bx\\s*/\\s*y\\b)", options: [.regularExpression, .caseInsensitive]) {
+                    cacDong[i].replaceSubrange(rTyLe, with: "\(x)/\(y)")
+                } else {
+                    cacDong[i] = "1. Nhân sự: \(x)/\(y)"
+                }
+                daCapNhatNhanSu = true
+            }
+        }
+
+        return cacDong.joined(separator: "\n")
+    }
+
+    init(
+        kip: String = "1A",
+        khoaNgayLuu: String = "",
+        soNhanVienDiLam: String = "9",
+        tongSoNhanVien: String = "9",
+        noiDungMau: String = ""
+    ) {
+        self.kip = kip
+        self.khoaNgayLuu = khoaNgayLuu
+        self.soNhanVienDiLam = soNhanVienDiLam
+        self.tongSoNhanVien = tongSoNhanVien
+        self.noiDungMau = noiDungMau
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case kip, khoaNgayLuu, soNhanVienDiLam, tongSoNhanVien, noiDungMau
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.kip = (try? c.decodeIfPresent(String.self, forKey: .kip)) ?? "1A"
+        self.khoaNgayLuu = (try? c.decodeIfPresent(String.self, forKey: .khoaNgayLuu)) ?? ""
+        self.soNhanVienDiLam = (try? c.decodeIfPresent(String.self, forKey: .soNhanVienDiLam)) ?? "9"
+        self.tongSoNhanVien = (try? c.decodeIfPresent(String.self, forKey: .tongSoNhanVien)) ?? "9"
+        self.noiDungMau = (try? c.decodeIfPresent(String.self, forKey: .noiDungMau)) ?? ""
+    }
+}
+
 // MARK: - 3. Cấu hình & Cài đặt Ứng dụng
+
+enum LoaiTabUngDung: String, Codable, CaseIterable {
+    case xuongCan = "xuongCan"
+    case lenhSanXuat = "lenhSanXuat"
+    case baoCao = "baoCao"
+    case calendar = "calendar"
+    case thucDon = "thucDon"
+    case notes = "notes"
+    case sheets = "sheets"
+    case media = "media"
+    case reminders = "reminders"
+    case caiDat = "caiDat"
+
+    static var thuTuMacDinhChuoi: [String] {
+        allCases.map(\.rawValue)
+    }
+
+    var tieuDeTab: String {
+        switch self {
+        case .xuongCan: return "Xưởng Cán"
+        case .lenhSanXuat: return "Lệnh SX"
+        case .baoCao: return "Báo cáo"
+        case .calendar: return "Lịch"
+        case .thucDon: return "Thực đơn"
+        case .notes: return "Ghi chú"
+        case .sheets: return "Sheets"
+        case .media: return "Media"
+        case .reminders: return "Nhắc nhở"
+        case .caiDat: return "Cài đặt"
+        }
+    }
+
+    var tenCaiDat: String {
+        switch self {
+        case .xuongCan: return "Tab Xưởng Cán"
+        case .lenhSanXuat: return "Tab Lệnh sản xuất (OCR)"
+        case .baoCao: return "Tab Báo cáo (TBM)"
+        case .calendar: return "Tab Lịch làm việc"
+        case .thucDon: return "Tab Thực đơn 🍱"
+        case .notes: return "Tab Ghi chú"
+        case .sheets: return "Tab Trang tính (Sheets)"
+        case .media: return "Tab Media AI"
+        case .reminders: return "Tab Nhắc nhở"
+        case .caiDat: return "Tab Cài đặt (Luôn bật)"
+        }
+    }
+
+    var bieuTuong: String {
+        switch self {
+        case .xuongCan: return "tablecells"
+        case .lenhSanXuat: return "doc.text.viewfinder"
+        case .baoCao: return "list.clipboard"
+        case .calendar: return "calendar"
+        case .thucDon: return "fork.knife"
+        case .notes: return "doc.text"
+        case .sheets: return "square.grid.2x2"
+        case .media: return "sparkles.tv"
+        case .reminders: return "alarm"
+        case .caiDat: return "gearshape"
+        }
+    }
+
+    var tagSo: Int {
+        switch self {
+        case .xuongCan: return 0
+        case .lenhSanXuat: return 1
+        case .baoCao: return 2
+        case .calendar: return 3
+        case .thucDon: return 4
+        case .notes: return 5
+        case .sheets: return 6
+        case .media: return 7
+        case .reminders: return 8
+        case .caiDat: return 9
+        }
+    }
+}
 
 struct TrangThaiTab: Codable, Hashable {
     var xuongCan: Bool = true
     var lenhSanXuat: Bool = true
+    var baoCao: Bool = true
     var calendar: Bool = true
     var thucDon: Bool = true
     var notes: Bool = true
@@ -649,6 +847,7 @@ struct TrangThaiTab: Codable, Hashable {
     init(
         xuongCan: Bool = true,
         lenhSanXuat: Bool = true,
+        baoCao: Bool = true,
         calendar: Bool = true,
         thucDon: Bool = true,
         notes: Bool = true,
@@ -658,6 +857,7 @@ struct TrangThaiTab: Codable, Hashable {
     ) {
         self.xuongCan = xuongCan
         self.lenhSanXuat = lenhSanXuat
+        self.baoCao = baoCao
         self.calendar = calendar
         self.thucDon = thucDon
         self.notes = notes
@@ -667,13 +867,14 @@ struct TrangThaiTab: Codable, Hashable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case xuongCan, lenhSanXuat, calendar, thucDon, notes, sheets, media, reminders
+        case xuongCan, lenhSanXuat, baoCao, calendar, thucDon, notes, sheets, media, reminders
     }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.xuongCan = (try? c.decodeIfPresent(Bool.self, forKey: .xuongCan)) ?? true
         self.lenhSanXuat = (try? c.decodeIfPresent(Bool.self, forKey: .lenhSanXuat)) ?? true
+        self.baoCao = (try? c.decodeIfPresent(Bool.self, forKey: .baoCao)) ?? true
         self.calendar = (try? c.decodeIfPresent(Bool.self, forKey: .calendar)) ?? true
         self.thucDon = (try? c.decodeIfPresent(Bool.self, forKey: .thucDon)) ?? true
         self.notes = (try? c.decodeIfPresent(Bool.self, forKey: .notes)) ?? true
@@ -681,11 +882,65 @@ struct TrangThaiTab: Codable, Hashable {
         self.media = (try? c.decodeIfPresent(Bool.self, forKey: .media)) ?? true
         self.reminders = (try? c.decodeIfPresent(Bool.self, forKey: .reminders)) ?? true
     }
+
+    func dangBat(_ loai: LoaiTabUngDung) -> Bool {
+        switch loai {
+        case .xuongCan: return xuongCan
+        case .lenhSanXuat: return lenhSanXuat
+        case .baoCao: return baoCao
+        case .calendar: return calendar
+        case .thucDon: return thucDon
+        case .notes: return notes
+        case .sheets: return sheets
+        case .media: return media
+        case .reminders: return reminders
+        case .caiDat: return true
+        }
+    }
+
+    mutating func datTrangThai(_ loai: LoaiTabUngDung, bat: Bool) {
+        switch loai {
+        case .xuongCan: xuongCan = bat
+        case .lenhSanXuat: lenhSanXuat = bat
+        case .baoCao: baoCao = bat
+        case .calendar: calendar = bat
+        case .thucDon: thucDon = bat
+        case .notes: notes = bat
+        case .sheets: sheets = bat
+        case .media: media = bat
+        case .reminders: reminders = bat
+        case .caiDat: break
+        }
+    }
 }
 
 struct CaiDatUngDung: Codable {
     var giaoDienToi: Bool = false
     var trangThaiTab: TrangThaiTab = TrangThaiTab()
+    var thuTuTab: [String] = LoaiTabUngDung.thuTuMacDinhChuoi
+
+    var danhSachLoaiTabTheoThuTu: [LoaiTabUngDung] {
+        Self.chuanHoaDanhSachTab(thuTuTab)
+    }
+
+    static func chuanHoaDanhSachTab(_ danhSachChuoi: [String]) -> [LoaiTabUngDung] {
+        var ketQua: [LoaiTabUngDung] = []
+        for s in danhSachChuoi {
+            if let loai = LoaiTabUngDung(rawValue: s), !ketQua.contains(loai) {
+                ketQua.append(loai)
+            }
+        }
+        for macDinh in LoaiTabUngDung.allCases where !ketQua.contains(macDinh) {
+            if macDinh == .baoCao, let idxLenhSX = ketQua.firstIndex(of: .lenhSanXuat) {
+                ketQua.insert(.baoCao, at: min(idxLenhSX + 1, ketQua.count))
+            } else if let idxCaiDat = ketQua.firstIndex(of: .caiDat) {
+                ketQua.insert(macDinh, at: idxCaiDat)
+            } else {
+                ketQua.append(macDinh)
+            }
+        }
+        return ketQua
+    }
     var ngayBatDauChuKy: Date = Date()
     var daChonNgayBatDau: Bool = true
     var chuKyLamViec: [String] = ["ngay", "dem", "nghi"]
@@ -729,7 +984,7 @@ struct CaiDatUngDung: Codable {
     init() {}
 
     enum CodingKeys: String, CodingKey {
-        case giaoDienToi, trangThaiTab, ngayBatDauChuKy, daChonNgayBatDau, chuKyLamViec
+        case giaoDienToi, trangThaiTab, thuTuTab, ngayBatDauChuKy, daChonNgayBatDau, chuKyLamViec
         case batThongBao, gioCaNgay, gioCaDem, gioNgayNghi, gioBinhThuong
         case batThongBaoThucDon
         case gioThongBaoThucDonSang, gioThongBaoThucDonTrua, gioThongBaoThucDonChieu, gioThongBaoThucDonDem
@@ -743,6 +998,13 @@ struct CaiDatUngDung: Codable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.giaoDienToi = (try? c.decodeIfPresent(Bool.self, forKey: .giaoDienToi)) ?? false
         self.trangThaiTab = (try? c.decodeIfPresent(TrangThaiTab.self, forKey: .trangThaiTab)) ?? TrangThaiTab()
+        if let daLuuUD = UserDefaults.standard.stringArray(forKey: "SAVED_TAB_ORDER_V1"), !daLuuUD.isEmpty {
+            self.thuTuTab = Self.chuanHoaDanhSachTab(daLuuUD).map(\.rawValue)
+        } else if let daLuuJSON = try? c.decodeIfPresent([String].self, forKey: .thuTuTab), !daLuuJSON.isEmpty {
+            self.thuTuTab = Self.chuanHoaDanhSachTab(daLuuJSON).map(\.rawValue)
+        } else {
+            self.thuTuTab = LoaiTabUngDung.thuTuMacDinhChuoi
+        }
         self.ngayBatDauChuKy = (try? c.decodeIfPresent(Date.self, forKey: .ngayBatDauChuKy)) ?? Date()
         self.daChonNgayBatDau = (try? c.decodeIfPresent(Bool.self, forKey: .daChonNgayBatDau)) ?? true
         self.chuKyLamViec = (try? c.decodeIfPresent([String].self, forKey: .chuKyLamViec)) ?? ["ngay", "dem", "nghi"]
@@ -775,6 +1037,7 @@ struct CaiDatUngDung: Codable {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(giaoDienToi, forKey: .giaoDienToi)
         try c.encode(trangThaiTab, forKey: .trangThaiTab)
+        try c.encode(Self.chuanHoaDanhSachTab(thuTuTab).map(\.rawValue), forKey: .thuTuTab)
         try c.encode(ngayBatDauChuKy, forKey: .ngayBatDauChuKy)
         try c.encode(daChonNgayBatDau, forKey: .daChonNgayBatDau)
         try c.encode(chuKyLamViec, forKey: .chuKyLamViec)
@@ -839,6 +1102,11 @@ struct CaiDatUngDung: Codable {
         if geminiModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             geminiModel = ud.string(forKey: "GEMINI_MODEL_SAVED") ?? "gemini-3.5-flash-lite"
         }
+        if let daLuuUD = ud.stringArray(forKey: "SAVED_TAB_ORDER_V1"), !daLuuUD.isEmpty, thuTuTab == LoaiTabUngDung.thuTuMacDinhChuoi {
+            thuTuTab = Self.chuanHoaDanhSachTab(daLuuUD).map(\.rawValue)
+        } else {
+            thuTuTab = Self.chuanHoaDanhSachTab(thuTuTab).map(\.rawValue)
+        }
     }
 }
 
@@ -881,6 +1149,7 @@ final class ThuMucDuLieu {
     let tepXuongCan: URL
     let tepThucDon: URL
     let tepLenhSanXuat: URL
+    let tepBaoCao: URL
 
     private let maHoa: JSONEncoder = {
         let bo = JSONEncoder()
@@ -913,6 +1182,7 @@ final class ThuMucDuLieu {
         tepXuongCan = thuMuc.appendingPathComponent("xuong-can.json")
         tepThucDon = thuMuc.appendingPathComponent("thuc-don.json")
         tepLenhSanXuat = thuMuc.appendingPathComponent("lenh-san-xuat.json")
+        tepBaoCao = thuMuc.appendingPathComponent("bao-cao-tbm.json")
 
         try? FileManager.default.createDirectory(at: thuMuc, withIntermediateDirectories: true)
         try? FileManager.default.createDirectory(at: thuMucAnhCache, withIntermediateDirectories: true)
@@ -949,6 +1219,7 @@ final class KhoDuLieu {
     private(set) var danhSachBangXuongCan: [BangXuongCan] = []
     private(set) var duLieuThucDon: DuLieuThucDon = DuLieuThucDon.duLieuMauThang11()
     private(set) var duLieuLenhSX: DuLieuLenhSanXuat = DuLieuLenhSanXuat.mauHoaPhatDungQuat()
+    private(set) var duLieuBaoCao: DuLieuBaoCaoTBM = DuLieuBaoCaoTBM()
     var caiDat: CaiDatUngDung = CaiDatUngDung()
 
     var mauSac: BangMauChuDe {
@@ -1016,6 +1287,22 @@ final class KhoDuLieu {
         } else {
             duLieuLenhSX = DuLieuLenhSanXuat.mauHoaPhatDungQuat()
             tm.ghi(duLieuLenhSX, vao: tm.tepLenhSanXuat)
+        }
+
+        if let bc = tm.doc(DuLieuBaoCaoTBM.self, tu: tm.tepBaoCao) {
+            duLieuBaoCao = bc
+        } else {
+            let homNay = Date()
+            let kipGoiY = TienIchLich.xacDinhKipTheoLich(cho: homNay, caiDatOverride: caiDat, ghiChuLichOverride: ghiChuLich, thucDonOverride: duLieuThucDon).kip
+            let vanBan = DuLieuBaoCaoTBM.taoVanBanMacDinh(kip: kipGoiY, ngay: homNay, diLam: "9", tongSo: "9")
+            duLieuBaoCao = DuLieuBaoCaoTBM(
+                kip: kipGoiY,
+                khoaNgayLuu: TienIchLich.dinhDangKhoaNgay.string(from: homNay),
+                soNhanVienDiLam: "9",
+                tongSoNhanVien: "9",
+                noiDungMau: vanBan
+            )
+            tm.ghi(duLieuBaoCao, vao: tm.tepBaoCao)
         }
     }
 
@@ -1121,8 +1408,26 @@ final class KhoDuLieu {
         }
     }
 
+    func luuDuLieuBaoCao(_ moi: DuLieuBaoCaoTBM, dongBoSupabase: Bool = false) {
+        duLieuBaoCao = moi
+        ThuMucDuLieu.dungChung.ghi(moi, vao: ThuMucDuLieu.dungChung.tepBaoCao)
+        if dongBoSupabase {
+            DichVuSupabase.dungChung.dongBoDuLieuTuDong()
+        }
+    }
+
+    func luuThuTuTab(_ thuTuMoi: [String]) {
+        let chuan = CaiDatUngDung.chuanHoaDanhSachTab(thuTuMoi).map(\.rawValue)
+        UserDefaults.standard.set(chuan, forKey: "SAVED_TAB_ORDER_V1")
+        guard caiDat.thuTuTab != chuan else { return }
+        caiDat.thuTuTab = chuan
+        ThuMucDuLieu.dungChung.ghi(caiDat, vao: ThuMucDuLieu.dungChung.tepCaiDat)
+    }
+
     func luuCaiDat(_ moi: CaiDatUngDung, thongBao: Bool = true) {
         var banChuan = moi
+        banChuan.thuTuTab = CaiDatUngDung.chuanHoaDanhSachTab(banChuan.thuTuTab).map(\.rawValue)
+        UserDefaults.standard.set(banChuan.thuTuTab, forKey: "SAVED_TAB_ORDER_V1")
         banChuan.chuanHoaKeyDrive()
         caiDat = banChuan
 
@@ -1363,8 +1668,8 @@ enum TienIchLich {
         return ("\(ngayAm)", false)
     }
 
-    static func tinhCaTuDong(cho ngay: Date) -> String? {
-        let cd = KhoDuLieu.dungChung.caiDat
+    static func tinhCaTuDong(cho ngay: Date, caiDatOverride: CaiDatUngDung? = nil) -> String? {
+        let cd = caiDatOverride ?? KhoDuLieu.dungChung.caiDat
         guard cd.daChonNgayBatDau, !cd.chuKyLamViec.isEmpty else { return nil }
         let d1 = lich.startOfDay(for: cd.ngayBatDauChuKy)
         let d2 = lich.startOfDay(for: ngay)
@@ -1372,6 +1677,51 @@ enum TienIchLich {
         let doDai = cd.chuKyLamViec.count
         let du = ((soNgay % doDai) + doDai) % doDai
         return cd.chuKyLamViec[du]
+    }
+
+    /// Xác định kíp 1A (Ca Ngày) hoặc 2A (Ca Đêm) tương ứng theo lịch làm việc của ngày được chọn
+    static func xacDinhKipTheoLich(
+        cho ngay: Date,
+        caiDatOverride: CaiDatUngDung? = nil,
+        ghiChuLichOverride: [String: GhiChuNgay]? = nil,
+        thucDonOverride: DuLieuThucDon? = nil
+    ) -> (kip: String, moTaLich: String) {
+        let khoa = dinhDangKhoaNgay.string(from: ngay)
+        let dsLich = ghiChuLichOverride ?? KhoDuLieu.dungChung.ghiChuLich
+        let dsThucDon = (thucDonOverride ?? KhoDuLieu.dungChung.duLieuThucDon).danhSachNgay
+
+        // 1. Ưu tiên ca được gán trực tiếp trên Lịch của ngày đó
+        if let loaiGhiChu = dsLich[khoa]?.type, !loaiGhiChu.isEmpty {
+            if loaiGhiChu == "ngay" {
+                return ("1A", "📅 Theo lịch: Ca Ngày ☀️ → Kíp 1A")
+            } else if loaiGhiChu == "dem" {
+                return ("2A", "📅 Theo lịch: Ca Đêm 🌙 → Kíp 2A")
+            }
+        }
+
+        // 2. Kiểm tra chu kỳ ca tự động trong Lịch
+        let caTuDong = tinhCaTuDong(cho: ngay, caiDatOverride: caiDatOverride) ?? ""
+        if caTuDong == "ngay" {
+            return ("1A", "📅 Theo lịch: Ca Ngày ☀️ → Kíp 1A")
+        } else if caTuDong == "dem" {
+            return ("2A", "📅 Theo lịch: Ca Đêm 🌙 → Kíp 2A")
+        }
+
+        // 3. Kiểm tra lịch Thực đơn Kíp A nếu có
+        if let mucTD = dsThucDon.first(where: { $0.khoaNgay == khoa }) {
+            if mucTD.laCaDem {
+                return ("2A", "📅 Theo lịch: Ca Đêm 🌙 → Kíp 2A")
+            } else if mucTD.laCaNgay {
+                return ("1A", "📅 Theo lịch: Ca Ngày ☀️ → Kíp 1A")
+            }
+        }
+
+        // 4. Nếu ngày đó lịch báo Nghỉ thì mặc định giữ 1A (hoặc kíp hiện tại) và ghi chú rõ
+        if dsLich[khoa]?.type == "nghi" || caTuDong == "nghi" {
+            return ("1A", "📅 Theo lịch: Ngày nghỉ ☕ (Mặc định 1A)")
+        }
+
+        return ("1A", "📅 Theo lịch: Ca Ngày ☀️ → Kíp 1A")
     }
 
     static func xinQuyenThongBao() {
