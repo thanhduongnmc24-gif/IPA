@@ -144,7 +144,8 @@ final class ManHinhLich: UIViewController, UICollectionViewDataSource, UICollect
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        navigationController?.setNavigationBarHidden(true, animated: false)
+        navigationItem.title = "Lịch Làm Việc"
+        navigationController?.setNavigationBarHidden(false, animated: false)
         taoGiaoDien()
         napDuLieu()
 
@@ -155,7 +156,8 @@ final class ManHinhLich: UIViewController, UICollectionViewDataSource, UICollect
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        navigationController?.setNavigationBarHidden(true, animated: false)
+        navigationItem.title = "Lịch Làm Việc"
+        navigationController?.setNavigationBarHidden(false, animated: false)
         napDuLieu()
     }
 

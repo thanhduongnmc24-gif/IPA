@@ -4,9 +4,8 @@ final class ManHinhBaoCao: UIViewController, UITextViewDelegate, UITextFieldDele
     private let cuon = UIScrollView()
     private let nganChinh = UIStackView()
 
-    // Các ô điều khiển phía trên
+    // Các ô điều khiển phía trên (gọn gàng trong 2 hàng: Kíp + Ngày cùng 1 hàng, Nhân sự 1 hàng)
     private let nutComboboxKip = UIButton(type: .system)
-    private let nhanTrangThaiLich = UILabel()
     private let chonNgay = UIDatePicker()
     private let oNhanVienDiLam = UITextField()
     private let oTongSoNhanVien = UITextField()
@@ -14,6 +13,8 @@ final class ManHinhBaoCao: UIViewController, UITextViewDelegate, UITextFieldDele
     // Ô kết quả bản text phía dưới
     private let oVanBanBaoCao = UITextView()
     private let nhanTrangThaiLuu = UILabel()
+    private let nutSaoChep = UIButton(type: .system)
+    private let nutKhoiPhucMau = UIButton(type: .system)
 
     private var ngayHienTai: Date = Date()
     private var kipHienTai: String = "1A"
@@ -68,7 +69,7 @@ final class ManHinhBaoCao: UIViewController, UITextViewDelegate, UITextFieldDele
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         capNhatMauGiaoDien()
-        capNhatThongTinTheoLich(tuDongDoiKip: false)
+        capNhatMenuComboboxKip()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -89,7 +90,7 @@ final class ManHinhBaoCao: UIViewController, UITextViewDelegate, UITextFieldDele
         view.addSubview(cuon)
 
         nganChinh.axis = .vertical
-        nganChinh.spacing = 12
+        nganChinh.spacing = 10
         nganChinh.translatesAutoresizingMaskIntoConstraints = false
         cuon.addSubview(nganChinh)
 
@@ -99,8 +100,8 @@ final class ManHinhBaoCao: UIViewController, UITextViewDelegate, UITextFieldDele
             cuon.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             cuon.trailingAnchor.constraint(equalTo: view.trailingAnchor),
 
-            nganChinh.topAnchor.constraint(equalTo: cuon.contentLayoutGuide.topAnchor, constant: 12),
-            nganChinh.bottomAnchor.constraint(equalTo: cuon.contentLayoutGuide.bottomAnchor, constant: -28),
+            nganChinh.topAnchor.constraint(equalTo: cuon.contentLayoutGuide.topAnchor, constant: 10),
+            nganChinh.bottomAnchor.constraint(equalTo: cuon.contentLayoutGuide.bottomAnchor, constant: -24),
             nganChinh.leadingAnchor.constraint(equalTo: cuon.frameLayoutGuide.leadingAnchor, constant: 12),
             nganChinh.trailingAnchor.constraint(equalTo: cuon.frameLayoutGuide.trailingAnchor, constant: -12)
         ])
@@ -109,42 +110,40 @@ final class ManHinhBaoCao: UIViewController, UITextViewDelegate, UITextFieldDele
         chamNgoai.cancelsTouchesInView = false
         view.addGestureRecognizer(chamNgoai)
 
-        // 1. Thẻ thông số đầu vào (Kíp, Ngày, Nhân sự đi làm / Tổng số nhân viên)
+        // 1. Thẻ thông số đầu vào gọn gàng: Hàng 1 (Kíp + Ngày), Hàng 2 (Nhân sự)
         let theThongSo = taoKhungThe()
         let nganThongSo = UIStackView()
         nganThongSo.axis = .vertical
-        nganThongSo.spacing = 12
+        nganThongSo.spacing = 10
         nganThongSo.translatesAutoresizingMaskIntoConstraints = false
         theThongSo.addSubview(nganThongSo)
 
         NSLayoutConstraint.activate([
-            nganThongSo.topAnchor.constraint(equalTo: theThongSo.topAnchor, constant: 12),
-            nganThongSo.bottomAnchor.constraint(equalTo: theThongSo.bottomAnchor, constant: -12),
+            nganThongSo.topAnchor.constraint(equalTo: theThongSo.topAnchor, constant: 10),
+            nganThongSo.bottomAnchor.constraint(equalTo: theThongSo.bottomAnchor, constant: -10),
             nganThongSo.leadingAnchor.constraint(equalTo: theThongSo.leadingAnchor, constant: 12),
             nganThongSo.trailingAnchor.constraint(equalTo: theThongSo.trailingAnchor, constant: -12)
         ])
 
-        // Hàng 1: Ô chọn Kíp (Combobox 1A / 2A)
-        let lbKip = taoNhanTieuDe("Chọn Kíp:")
+        // Hàng 1: Kíp (1A / 2A) và Ngày cùng 1 hàng
+        let lbKip = taoNhanTieuDe("Kíp:")
         lbKip.setContentHuggingPriority(.required, for: .horizontal)
 
         nutComboboxKip.showsMenuAsPrimaryAction = true
+        nutComboboxKip.titleLabel?.font = .systemFont(ofSize: 15, weight: .bold)
         nutComboboxKip.layer.cornerRadius = 8
         nutComboboxKip.layer.borderWidth = 1
-        nutComboboxKip.contentHorizontalAlignment = .fill
-        nutComboboxKip.heightAnchor.constraint(equalToConstant: 38).isActive = true
+        nutComboboxKip.widthAnchor.constraint(equalToConstant: 76).isActive = true
+        nutComboboxKip.heightAnchor.constraint(equalToConstant: 34).isActive = true
 
-        nhanTrangThaiLich.font = .systemFont(ofSize: 12, weight: .medium)
-        nhanTrangThaiLich.textAlignment = .right
-        nhanTrangThaiLich.numberOfLines = 1
+        let nhomKip = UIStackView(arrangedSubviews: [lbKip, nutComboboxKip])
+        nhomKip.axis = .horizontal
+        nhomKip.spacing = 8
+        nhomKip.alignment = .center
 
-        let hangKip = UIStackView(arrangedSubviews: [lbKip, nutComboboxKip])
-        hangKip.axis = .horizontal
-        hangKip.spacing = 10
-        hangKip.alignment = .center
+        let lbNgay = taoNhanTieuDe("Ngày:")
+        lbNgay.setContentHuggingPriority(.required, for: .horizontal)
 
-        // Hàng 2: Ô chọn Ngày (Mặc định là ngày hiện tại)
-        let lbNgay = taoNhanTieuDe("Chọn Ngày:")
         chonNgay.datePickerMode = .date
         chonNgay.preferredDatePickerStyle = .compact
         chonNgay.locale = Locale(identifier: "vi_VN")
@@ -152,34 +151,26 @@ final class ManHinhBaoCao: UIViewController, UITextViewDelegate, UITextFieldDele
         chonNgay.date = Date()
         chonNgay.addTarget(self, action: #selector(khiDoiNgay(_:)), for: .valueChanged)
 
-        let nutHomNay = UIButton(type: .system)
-        var chHomNay = UIButton.Configuration.tinted()
-        chHomNay.title = "Hôm nay"
-        chHomNay.cornerStyle = .medium
-        chHomNay.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 10, bottom: 6, trailing: 10)
-        nutHomNay.configuration = chHomNay
-        nutHomNay.addTarget(self, action: #selector(bamChonHomNay), for: .touchUpInside)
+        let nhomNgay = UIStackView(arrangedSubviews: [lbNgay, chonNgay])
+        nhomNgay.axis = .horizontal
+        nhomNgay.spacing = 6
+        nhomNgay.alignment = .center
 
-        let nhomNgayPhai = UIStackView(arrangedSubviews: [chonNgay, nutHomNay])
-        nhomNgayPhai.axis = .horizontal
-        nhomNgayPhai.spacing = 8
-        nhomNgayPhai.alignment = .center
+        let hangKipVaNgay = UIStackView(arrangedSubviews: [nhomKip, nhomNgay])
+        hangKipVaNgay.axis = .horizontal
+        hangKipVaNgay.distribution = .equalSpacing
+        hangKipVaNgay.alignment = .center
 
-        let hangNgay = UIStackView(arrangedSubviews: [lbNgay, nhomNgayPhai])
-        hangNgay.axis = .horizontal
-        hangNgay.distribution = .equalSpacing
-        hangNgay.alignment = .center
-
-        // Hàng 3: Textbox nhân viên đi làm & Textbox tổng số nhân viên (Mặc định 9/9)
-        let lbNhanSu = taoNhanTieuDe("Nhân sự (x/y):")
+        // Hàng 2: Nhân sự (textbox đi làm / textbox tổng số)
+        let lbNhanSu = taoNhanTieuDe("Nhân sự:")
         lbNhanSu.setContentHuggingPriority(.required, for: .horizontal)
 
-        cauHinhOTextNhanSu(oNhanVienDiLam, placeholder: "Đi làm")
-        cauHinhOTextNhanSu(oTongSoNhanVien, placeholder: "Tổng số")
+        cauHinhOTextNhanSu(oNhanVienDiLam, placeholder: "9")
+        cauHinhOTextNhanSu(oTongSoNhanVien, placeholder: "9")
 
         let lbGachCheo = UILabel()
         lbGachCheo.text = "/"
-        lbGachCheo.font = .systemFont(ofSize: 18, weight: .bold)
+        lbGachCheo.font = .systemFont(ofSize: 17, weight: .bold)
         lbGachCheo.textAlignment = .center
         lbGachCheo.setContentHuggingPriority(.required, for: .horizontal)
 
@@ -193,24 +184,21 @@ final class ManHinhBaoCao: UIViewController, UITextViewDelegate, UITextFieldDele
         nhomONhanSu.spacing = 6
         nhomONhanSu.alignment = .center
 
-        oNhanVienDiLam.widthAnchor.constraint(equalToConstant: 58).isActive = true
-        oTongSoNhanVien.widthAnchor.constraint(equalToConstant: 58).isActive = true
+        oNhanVienDiLam.widthAnchor.constraint(equalToConstant: 56).isActive = true
+        oTongSoNhanVien.widthAnchor.constraint(equalToConstant: 56).isActive = true
 
         let hangNhanSu = UIStackView(arrangedSubviews: [lbNhanSu, nhomONhanSu])
         hangNhanSu.axis = .horizontal
         hangNhanSu.distribution = .equalSpacing
         hangNhanSu.alignment = .center
 
-        nganThongSo.addArrangedSubview(hangKip)
-        nganThongSo.addArrangedSubview(nhanTrangThaiLich)
-        nganThongSo.addArrangedSubview(taoVachNgan())
-        nganThongSo.addArrangedSubview(hangNgay)
+        nganThongSo.addArrangedSubview(hangKipVaNgay)
         nganThongSo.addArrangedSubview(taoVachNgan())
         nganThongSo.addArrangedSubview(hangNhanSu)
 
         nganChinh.addArrangedSubview(theThongSo)
 
-        // 2. Thẻ Kết quả bản text báo cáo TBM (Cho phép chỉnh sửa và tự động lưu mẫu)
+        // 2. Thẻ Kết quả bản text báo cáo TBM
         let theKetQua = taoKhungThe()
         let nganKetQua = UIStackView()
         nganKetQua.axis = .vertical
@@ -219,19 +207,20 @@ final class ManHinhBaoCao: UIViewController, UITextViewDelegate, UITextFieldDele
         theKetQua.addSubview(nganKetQua)
 
         NSLayoutConstraint.activate([
-            nganKetQua.topAnchor.constraint(equalTo: theKetQua.topAnchor, constant: 12),
-            nganKetQua.bottomAnchor.constraint(equalTo: theKetQua.bottomAnchor, constant: -12),
+            nganKetQua.topAnchor.constraint(equalTo: theKetQua.topAnchor, constant: 10),
+            nganKetQua.bottomAnchor.constraint(equalTo: theKetQua.bottomAnchor, constant: -10),
             nganKetQua.leadingAnchor.constraint(equalTo: theKetQua.leadingAnchor, constant: 12),
             nganKetQua.trailingAnchor.constraint(equalTo: theKetQua.trailingAnchor, constant: -12)
         ])
 
         let lbTieuDeKetQua = UILabel()
-        lbTieuDeKetQua.text = "📝 NỘI DUNG BÁO CÁO TBM (TỰ ĐỘNG LƯU MẪU)"
+        lbTieuDeKetQua.text = "📝 NỘI DUNG BÁO CÁO"
         lbTieuDeKetQua.font = .systemFont(ofSize: 12, weight: .bold)
 
         nhanTrangThaiLuu.text = "✓ Đã lưu"
-        nhanTrangThaiLuu.font = .systemFont(ofSize: 11.5, weight: .semibold)
+        nhanTrangThaiLuu.font = .systemFont(ofSize: 12, weight: .semibold)
         nhanTrangThaiLuu.textAlignment = .right
+        nhanTrangThaiLuu.setContentCompressionResistancePriority(.required, for: .horizontal)
 
         let hangTieuDeKetQua = UIStackView(arrangedSubviews: [lbTieuDeKetQua, nhanTrangThaiLuu])
         hangTieuDeKetQua.axis = .horizontal
@@ -241,28 +230,27 @@ final class ManHinhBaoCao: UIViewController, UITextViewDelegate, UITextFieldDele
         oVanBanBaoCao.font = .systemFont(ofSize: 15, weight: .regular)
         oVanBanBaoCao.layer.cornerRadius = 10
         oVanBanBaoCao.layer.borderWidth = 1
-        oVanBanBaoCao.textContainerInset = UIEdgeInsets(top: 12, left: 10, bottom: 12, right: 10)
+        oVanBanBaoCao.textContainerInset = UIEdgeInsets(top: 10, left: 8, bottom: 10, right: 8)
         oVanBanBaoCao.isScrollEnabled = false
         oVanBanBaoCao.delegate = self
         oVanBanBaoCao.inputAccessoryView = taoThanhCongCuBanPhim()
-        oVanBanBaoCao.heightAnchor.constraint(greaterThanOrEqualToConstant: 290).isActive = true
+        oVanBanBaoCao.heightAnchor.constraint(greaterThanOrEqualToConstant: 260).isActive = true
 
-        // Hàng nút thao tác nhanh (Sao chép bản text / Khôi phục mẫu mặc định)
-        let nutSaoChep = UIButton(type: .system)
-        var chCopy = UIButton.Configuration.filled()
-        chCopy.title = "📋 Sao chép nội dung"
-        chCopy.cornerStyle = .medium
-        nutSaoChep.configuration = chCopy
+        // Hàng nút thao tác nhanh (1 dòng gọn đẹp, không bị tràn hay xuống dòng chữ)
+        nutSaoChep.setTitle("📋 Sao chép nội dung", for: .normal)
+        nutSaoChep.setTitleColor(.white, for: .normal)
+        nutSaoChep.titleLabel?.font = .systemFont(ofSize: 14, weight: .bold)
+        nutSaoChep.titleLabel?.numberOfLines = 1
+        nutSaoChep.layer.cornerRadius = 10
         nutSaoChep.heightAnchor.constraint(equalToConstant: 40).isActive = true
         nutSaoChep.addTarget(self, action: #selector(bamSaoChep), for: .touchUpInside)
 
-        let nutKhoiPhucMau = UIButton(type: .system)
-        var chReset = UIButton.Configuration.tinted()
-        chReset.title = "🔄 Mẫu gốc"
-        chReset.cornerStyle = .medium
-        nutKhoiPhucMau.configuration = chReset
+        nutKhoiPhucMau.setTitle("🔄 Mẫu gốc", for: .normal)
+        nutKhoiPhucMau.titleLabel?.font = .systemFont(ofSize: 13.5, weight: .semibold)
+        nutKhoiPhucMau.titleLabel?.numberOfLines = 1
+        nutKhoiPhucMau.layer.cornerRadius = 10
         nutKhoiPhucMau.heightAnchor.constraint(equalToConstant: 40).isActive = true
-        nutKhoiPhucMau.widthAnchor.constraint(equalToConstant: 115).isActive = true
+        nutKhoiPhucMau.widthAnchor.constraint(equalToConstant: 112).isActive = true
         nutKhoiPhucMau.addTarget(self, action: #selector(bamKhoiPhucMauGoc), for: .touchUpInside)
 
         let hangNutThaoTac = UIStackView(arrangedSubviews: [nutSaoChep, nutKhoiPhucMau])
@@ -285,7 +273,7 @@ final class ManHinhBaoCao: UIViewController, UITextViewDelegate, UITextFieldDele
         tf.keyboardType = .numberPad
         tf.delegate = self
         tf.inputAccessoryView = taoThanhCongCuBanPhim()
-        tf.heightAnchor.constraint(equalToConstant: 36).isActive = true
+        tf.heightAnchor.constraint(equalToConstant: 34).isActive = true
         tf.addTarget(self, action: #selector(khiDoiNhanSu), for: .editingChanged)
     }
 
@@ -320,10 +308,8 @@ final class ManHinhBaoCao: UIViewController, UITextViewDelegate, UITextFieldDele
             kipHienTai = goiYLich.kip
         }
 
-        nhanTrangThaiLich.text = goiYLich.moTaLich
         capNhatMenuComboboxKip()
 
-        // Nếu đã có bản mẫu lưu từ lần trước thì nạp y hệt và đồng bộ thông số Kíp/Ngày/Nhân sự
         let vanBanDaLuu = duLieu.noiDungMau.trimmingCharacters(in: .whitespacesAndNewlines)
         if vanBanDaLuu.isEmpty {
             oVanBanBaoCao.text = DuLieuBaoCaoTBM.taoVanBanMacDinh(
@@ -357,7 +343,6 @@ final class ManHinhBaoCao: UIViewController, UITextViewDelegate, UITextFieldDele
 
     private func capNhatThongTinTheoLich(tuDongDoiKip: Bool) {
         let thongTin = TienIchLich.xacDinhKipTheoLich(cho: ngayHienTai)
-        nhanTrangThaiLich.text = thongTin.moTaLich
         if tuDongDoiKip {
             kipHienTai = thongTin.kip
         }
@@ -366,11 +351,9 @@ final class ManHinhBaoCao: UIViewController, UITextViewDelegate, UITextFieldDele
 
     private func capNhatMenuComboboxKip() {
         let mau = KhoDuLieu.dungChung.mauSac
-        let thongTinLich = TienIchLich.xacDinhKipTheoLich(cho: ngayHienTai)
 
         let hanhDong1A = UIAction(
-            title: "1A — Ca Ngày ☀️",
-            subtitle: (thongTinLich.kip == "1A") ? "Khớp với lịch ngày đang chọn" : nil,
+            title: "1A",
             state: (kipHienTai == "1A") ? .on : .off
         ) { [weak self] _ in
             guard let self else { return }
@@ -380,8 +363,7 @@ final class ManHinhBaoCao: UIViewController, UITextViewDelegate, UITextFieldDele
         }
 
         let hanhDong2A = UIAction(
-            title: "2A — Ca Đêm 🌙",
-            subtitle: (thongTinLich.kip == "2A") ? "Khớp với lịch ngày đang chọn" : nil,
+            title: "2A",
             state: (kipHienTai == "2A") ? .on : .off
         ) { [weak self] _ in
             guard let self else { return }
@@ -390,24 +372,9 @@ final class ManHinhBaoCao: UIViewController, UITextViewDelegate, UITextFieldDele
             self.dongBoThongSoVaoVanBan()
         }
 
-        let hanhDongTheoLich = UIAction(
-            title: "📅 Tự động theo lịch (\(thongTinLich.kip))",
-            image: UIImage(systemName: "calendar.badge.clock")
-        ) { [weak self] _ in
-            guard let self else { return }
-            self.kipHienTai = thongTinLich.kip
-            self.capNhatMenuComboboxKip()
-            self.dongBoThongSoVaoVanBan()
-        }
-
-        nutComboboxKip.menu = UIMenu(title: "Chọn Kíp (1A: Ca ngày • 2A: Ca đêm)", children: [hanhDong1A, hanhDong2A, hanhDongTheoLich])
-
-        let moTaCa = (kipHienTai == "1A") ? "1A (Ca ngày ☀️)" : "2A (Ca đêm 🌙)"
-        var config = UIButton.Configuration.plain()
-        config.title = "\(moTaCa)  ▾"
-        config.baseForegroundColor = mau.text
-        config.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12)
-        nutComboboxKip.configuration = config
+        nutComboboxKip.menu = UIMenu(children: [hanhDong1A, hanhDong2A])
+        nutComboboxKip.setTitle("\(kipHienTai) ▾", for: .normal)
+        nutComboboxKip.setTitleColor(mau.text, for: .normal)
         nutComboboxKip.backgroundColor = mau.iconBg
         nutComboboxKip.layer.borderColor = mau.border.cgColor
     }
@@ -444,20 +411,13 @@ final class ManHinhBaoCao: UIViewController, UITextViewDelegate, UITextFieldDele
             noiDungMau: vanBan
         )
         KhoDuLieu.dungChung.luuDuLieuBaoCao(moi)
-        nhanTrangThaiLuu.text = "✓ Đã lưu mẫu"
+        nhanTrangThaiLuu.text = "✓ Đã lưu"
     }
 
     // MARK: - Sự kiện người dùng
 
     @objc private func khiDoiNgay(_ sender: UIDatePicker) {
         ngayHienTai = sender.date
-        capNhatThongTinTheoLich(tuDongDoiKip: true)
-        dongBoThongSoVaoVanBan()
-    }
-
-    @objc private func bamChonHomNay() {
-        ngayHienTai = Date()
-        chonNgay.setDate(ngayHienTai, animated: true)
         capNhatThongTinTheoLich(tuDongDoiKip: true)
         dongBoThongSoVaoVanBan()
     }
@@ -548,7 +508,12 @@ final class ManHinhBaoCao: UIViewController, UITextViewDelegate, UITextFieldDele
         oVanBanBaoCao.textColor = mau.text
         oVanBanBaoCao.layer.borderColor = mau.border.cgColor
 
-        nhanTrangThaiLich.textColor = mau.primary
+        nutSaoChep.backgroundColor = mau.primary
+        nutSaoChep.setTitleColor(.white, for: .normal)
+
+        nutKhoiPhucMau.backgroundColor = mau.primary.withAlphaComponent(0.14)
+        nutKhoiPhucMau.setTitleColor(mau.primary, for: .normal)
+
         nhanTrangThaiLuu.textColor = mau.success
         capNhatMenuComboboxKip()
     }
