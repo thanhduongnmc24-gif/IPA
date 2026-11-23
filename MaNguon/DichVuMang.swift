@@ -1435,7 +1435,7 @@ final class DichVuGemini {
             sttAnh += 1
         }
         if coAnhK9K20 {
-            dsMoTa.append("Ảnh \(sttAnh): Ảnh màn hình TWS / HMI khu vực K9–K20 chứa Elongation (Setup vs Actual), Out speed, Motor RPM, Diameter, Groove fac, Lead speed, Loop height % và tải/mô-men từ K9 đến K20.")
+            dsMoTa.append("Ảnh \(sttAnh): Ảnh màn hình TWS / HMI khu vực K9–K20 và khối tinh FFB1.1–FFB2.2 (FFB1 = Line 1, FFB2 = Line 2) chứa Elongation, Out speed, Motor RPM, Diameter, Groove fac, Lead speed, Loop height % và tải/mô-men.")
         }
         let moTaAnh = dsMoTa.joined(separator: " ")
 
@@ -1477,11 +1477,11 @@ final class DichVuGemini {
            - Từ diện tích phôi đầu vào A0 (VD: 150x150 = 22500 mm², 165x165 = 27225 mm²) chia dồn theo Elongation dòng xanh (A_i = A_{i-1} / Elong_i).
            - Chiều cao thực H_i = H_thiết_kế + (Gap_thực - Gap_thiết_kế) (nếu chưa có Gap thực thì ước tính theo √(A_i / A_TK)).
            - Chiều rộng thực B_i = A_i / (k * H_i), với k = 0.92 (Hộp), k = 0.785 (Tròn), k = 0.74 (Ôvan). Ghi rõ dấu hiệu tràn biên nếu B_i lớn hơn thiết kế >4%.
-        7. PHÂN TÍCH MỞ RỘNG CHO K9–K20 (nếu có ảnh K9–K20 hoặc dòng K9–K20 trên TWS):
-           - Đọc đầy đủ các giá K9–K20 (lưu ý K10–K13 trở đi chạy chế độ LOOP với Loop height %, và một số sản phẩm như DB 2x14 có cán tách đôi 2 nhánh Slitting).
-           - Tính tiếp kích thước vật cán thực tế qua từng giá K9–K20 dựa trên Elongation thực tế và lỗ hình đọc từ ảnh K9–K20 (nếu tách đôi 2 nhánh thì chia đôi tiết diện mỗi nhánh sau giá tách).
-           - Đưa hướng xử lý mô-men xoắn, Loop height % và san tải Gap cho cả K1–K8 lẫn K9–K20 (ưu tiên các giá báo ĐỎ/VÀNG hoặc lệch Elongation/Loop lớn nhất).
-           - BẮT BUỘC trả về đầy đủ danhSachGia cho TẤT CẢ các giá đọc được từ K1 đến K20 (để app hiển thị bảng so sánh kích thước vật cán thực tế vs kích thước mẫu ở bảng cán cho toàn dãy K1–K20).
+        7. PHÂN TÍCH MỞ RỘNG CHO K9–K20 VÀ KHỐI TINH FFB1.1–FFB2.2 (2 LINE):
+           - Kiến trúc dây chuyền tách đôi: Vật cán khi qua K15 sẽ chẻ thành 2 line song song — Line 1 đi qua FFB1.1, FFB1.2 và Line 2 đi qua FFB2.1, FFB2.2 (lưu ý K10–K13 trở đi và FFB chạy chế độ LOOP với Loop height %).
+           - LƯU Ý KÍCH THƯỚC SAU K15: Các kích thước thiết kế trên bảng cán từ K15, K16 đến FFB1.1–FFB2.2 đã thể hiện sẵn kích thước sau khi chẻ nhánh, do đó TUYỆT ĐỐI KHÔNG tự chia đôi tiết diện thêm một lần nữa; hãy tính trực tiếp theo Elongation thực tế và so sánh thẳng với kích thước mẫu từng giá. Đồng thời so sánh tải/mô-men và Loop height giữa FFB1 (Line 1) và FFB2 (Line 2) để phát hiện lệch chẻ 2 nhánh.
+           - Đưa hướng xử lý mô-men xoắn, Loop height %, cân bằng 2 line FFB1/FFB2 và san tải Gap cho toàn dãy K1–K20 & FFB1.1–FFB2.2.
+           - BẮT BUỘC trả về đầy đủ danhSachGia cho TẤT CẢ các giá đọc được từ K1 đến K20 và FFB1.1, FFB1.2, FFB2.1, FFB2.2 (để app hiển thị bảng so sánh kích thước vật cán thực tế vs kích thước mẫu ở bảng cán).
 
         Hãy đọc CHÍNH XÁC toàn bộ các con số có trong ảnh (chú ý ảnh có thể bị xoay ngang 90 độ, hãy đọc đúng cột/hàng) và trả về DUY NHẤT JSON hợp lệ theo cấu trúc:
         {
@@ -1708,7 +1708,7 @@ final class DichVuGemini {
         - Số Gap thiết kế gạch chân ở góc trên bên phải mỗi ô (VD: 8.8, 8.5, 9.8, 6.7, 4.0, 1.5, 3.0, 2.20, 1.93, 1.78, 2.80).
         - Tên quy cách sản phẩm nếu có ở cuối cột (VD: "DB 2x14", "D10", "D12", "D16"...).
 
-        Hãy trích xuất các giá từ K9 đến K20 có trong ảnh (nếu ảnh có cả K7, K8 phía trên thì bỏ qua K1–K8, chỉ lấy các giá từ K9 trở đi; nếu ảnh chỉ chụp một cột sản phẩm từ K9 đến K16/K20 thì gán lần lượt K9, K10, K11...) thành DUY NHẤT JSON hợp lệ:
+        Hãy trích xuất các giá từ K9 đến K20 và khối tinh FFB1.1, FFB1.2 (Line 1), FFB2.1, FFB2.2 (Line 2) có trong ảnh (bỏ qua K1–K8; lưu ý khi qua K15 vật cán chẻ thành 2 line vào FFB1 và FFB2 — nếu bảng chỉ in 1 cột lỗ hình cho 2 nhánh giống nhau sau K16 thì gán cho FFB1.1, FFB1.2 và nhân bản tương ứng cho FFB2.1, FFB2.2 với soNhanh = 2) thành DUY NHẤT JSON hợp lệ:
         {
           "tenSanPhamGoiY": "VD: DB 2x14 (hoặc rỗng nếu không thấy)",
           "danhSachGia": [
