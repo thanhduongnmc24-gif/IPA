@@ -222,6 +222,7 @@ final class ManHinhTroLyCan: UIViewController,
 
     private let chonCheDo = UISegmentedControl(items: CheDoChanDoanCan.allCases.map(\.tieuDeNgan))
     private let lbMoTaCheDo = UILabel()
+    private let oCoPhoi = UITextField()
     private let oGapThucTe = UITextField()
     private let oGhiChu = UITextField()
     private let nutPhanTich = UIButton(type: .system)
@@ -341,27 +342,42 @@ final class ManHinhTroLyCan: UIViewController,
         lbPhoi.font = .systemFont(ofSize: 12.5, weight: .semibold)
         lbPhoi.tag = 901
 
-        let dsPhoi = ["130x130 mm", "150x150 mm", "160x160 mm"]
+        let dsPhoi = ["120x120 mm", "130x130 mm", "150x150 mm", "160x160 mm"]
         let hangPhoi = UIStackView()
         hangPhoi.axis = .horizontal
-        hangPhoi.spacing = 6
+        hangPhoi.spacing = 5
         hangPhoi.distribution = .fillEqually
         cacNutCoPhoi.removeAll()
         for co in dsPhoi {
             let b = UIButton(type: .system)
             b.setTitle(co.replacingOccurrences(of: " mm", with: ""), for: .normal)
-            b.titleLabel?.font = .systemFont(ofSize: 12.5, weight: .bold)
+            b.titleLabel?.font = .systemFont(ofSize: 12, weight: .bold)
             b.layer.cornerRadius = 8
-            b.heightAnchor.constraint(equalToConstant: 32).isActive = true
+            b.heightAnchor.constraint(equalToConstant: 30).isActive = true
             b.addAction(UIAction { [weak self] _ in
                 self?.kichThuocPhoiChon = co
+                self?.oCoPhoi.text = co
                 self?.capNhatTrangThaiNutPhoi()
             }, for: .touchUpInside)
             cacNutCoPhoi.append(b)
             hangPhoi.addArrangedSubview(b)
         }
+
+        oCoPhoi.borderStyle = .roundedRect
+        oCoPhoi.font = .systemFont(ofSize: 13)
+        oCoPhoi.text = kichThuocPhoiChon
+        oCoPhoi.placeholder = "Hoặc nhập cỡ phôi khác (VD: 140x140, 165x165, 150x180...)"
+        oCoPhoi.clearButtonMode = .whileEditing
+        oCoPhoi.addAction(UIAction { [weak self] _ in
+            guard let self else { return }
+            let txt = self.oCoPhoi.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            self.kichThuocPhoiChon = txt.isEmpty ? "150x150 mm" : txt
+            self.capNhatTrangThaiNutPhoi()
+        }, for: .editingChanged)
+
         nganCH.addArrangedSubview(lbPhoi)
         nganCH.addArrangedSubview(hangPhoi)
+        nganCH.addArrangedSubview(oCoPhoi)
 
         let lbSP = UILabel()
         lbSP.text = "Quy cách sản phẩm (hệ lỗ hình K9–K20):"
@@ -585,7 +601,7 @@ final class ManHinhTroLyCan: UIViewController,
 
     private func capNhatTrangThaiNutPhoi() {
         let mau = KhoDuLieu.dungChung.mauSac
-        let dsPhoi = ["130x130 mm", "150x150 mm", "160x160 mm"]
+        let dsPhoi = ["120x120 mm", "130x130 mm", "150x150 mm", "160x160 mm"]
         for (idx, b) in cacNutCoPhoi.enumerated() where idx < dsPhoi.count {
             let dangChon = (dsPhoi[idx] == kichThuocPhoiChon)
             b.backgroundColor = dangChon ? mau.primary : mau.iconBg
@@ -737,6 +753,8 @@ final class ManHinhTroLyCan: UIViewController,
         lbTrangThai.isHidden = false
         lbTrangThai.text = "Đang đọc số liệu từ ảnh và phân tích phương án xử lý (\(KhoDuLieu.dungChung.caiDat.tenHienThiModelGemini))..."
 
+        let coPhoiThucTe = oCoPhoi.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !coPhoiThucTe.isEmpty { kichThuocPhoiChon = coPhoiThucTe }
         let gapStr = oGapThucTe.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let ghiChu = oGhiChu.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         DichVuGemini.dungChung.phanTichThongSoCan(

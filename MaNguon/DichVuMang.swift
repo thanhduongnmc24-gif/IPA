@@ -1427,12 +1427,12 @@ final class DichVuGemini {
         return """
         Bạn là kỹ sư chuyên gia vận hành & tự động hóa nhà máy cán thép dài (hệ thống Danieli HMI / TWS).
         Chuyên đề cần phân tích: \(cheDo.tieuDeNgan) — \(cheDo.moTaChuyenDe)
-        Kích thước phôi đầu vào: \(kichThuocPhoi) (chuẩn nhà máy: 150x150x12000 mm, 2065 kg)
+        Kích thước phôi đầu vào THỰC TẾ: \(kichThuocPhoi) (lưu ý: phôi có thể thay đổi kích thước theo từng mẻ/sản phẩm, KHÔNG mặc định là 150x150 nếu người dùng nhập cỡ khác)
         Quy cách sản phẩm đang cán (hệ lỗ hình K9–K20): \(quyCachSanPham)
         Gap thực tế đang chạy (nếu người dùng nhập): \(gapThucTe.isEmpty ? "Chưa nhập (hãy suy luận độ lệch thực tế so với thiết kế từ Elongation dòng xanh vs dòng đen trên ảnh TWS nếu có)" : gapThucTe)
         Ghi chú vận hành thêm: \(ghiChuThem.isEmpty ? "Không có" : ghiChuThem)
 
-        HỆ THỐNG LỖ HÌNH THIẾT KẾ CÁC GIÁ CÁN THÔ DÙNG CHUNG (1H – 8V, K1 – K8):
+        HỆ THỐNG LỖ HÌNH THAM CHIẾU CÁC GIÁ CÁN THÔ (1H – 8V, K1 – K8 — bảng tham chiếu gốc cho phôi 150x150, nếu cỡ phôi đầu vào khác thì tự điều chỉnh kích thước vật cán & lượng ép tương ứng):
         - K1 (1H - SHS 280, Ngang): Lỗ hình Hộp (Box) 162.0 x 108.0 mm | Gap thiết kế: 15.0 mm
         - K2 (2V - SHS 280, Đứng): Lỗ hình Hộp (Box) 119.0 x 119.0 mm | Gap thiết kế: 15.0 mm
         - K3 (3H - SHS 280, Ngang): Lỗ hình Ôvan (Oval) 138.0 x 81.5 mm | Gap thiết kế: 12.0 mm
@@ -1452,7 +1452,7 @@ final class DichVuGemini {
         2. Phân biệt đẩy phôi (N/mm2 âm, Torque % > Sample T0) với kéo căng (N/mm2 dương, Torque % < Sample T0). Nếu bị đẩy phôi nặng (<-2.5 N/mm2) thì ưu tiên triệt tiêu đẩy phôi trước khi nới ép.
         3. Quy tắc nới ép san tải với phôi \(kichThuocPhoi):
            - Khi nới Giá i để dồn tải sang Giá i+1, KHÔNG ép Giá i+1 xuống bằng lượng nới Giá i (giữ nguyên khe hở Giá i+1; chỉ ép bù cực nhẹ 0.2-0.5 mm nếu đo mẫu thấy giãn Mill Spring).
-           - Với phôi 150x150 mm: ở K1-K2 nới bước 1.0-1.5 mm (tổng 2.5-4.0 mm); ở K4-K6 tiết diện đã nhỏ còn ~65-90 mm nên nới bước 1.0 mm (tổng 2.0-3.0 mm, mỗi 1 mm giảm ~3-5% mô-men).
+           - Tính tiết diện và kích thước phôi thực tế qua từng giá dựa theo đúng cỡ phôi đầu vào THỰC TẾ (\(kichThuocPhoi)) và Elongation đọc từ ảnh TWS (nếu phôi khác 150x150 mm thì tự quy đổi lại Δh và bước nới Gap tỷ lệ tương ứng; phôi nhỏ hơn 150x150 thì bước nới nhỏ hơn 0.5-1.0 mm, phôi lớn hơn 150x150 thì bước nới 1.0-2.0 mm).
            - Sau khi chỉnh ổn định 2-3 thanh phôi, nhắc bấm Grab -> Save trên bảng TWS.
         4. Đổi Tension setpoint trên TWS: chỉ dùng mức dương nhẹ (+1.5 đến +2.0 N/mm2) làm phụ trợ chặn đẩy phôi, không đặt quá cao tránh kéo tóp phôi.
         5. Kiểm tra nhiệt độ P1 / Furnace Out Temp / Min billet Temp (nếu < 1000 °C hoặc *** cần cảnh báo sốc đầu phôi) và kiểm tra Lead speed bất thường (VD: ≥ 8-10%).
@@ -1550,8 +1550,7 @@ final class DichVuGemini {
             if let candidates = json["candidates"] as? [[String: Any]],
                let content = candidates.first?["content"] as? [String: Any],
                let respParts = content["parts"] as? [[String: Any]] {
-                let ghepText = respParts.compactMap { $0["text"] as? String }.joined(separator: "
-")
+                let ghepText = respParts.compactMap { $0["text"] as? String }.joined(separator: "\n")
                 if let ketQua = Self.bocTachJSONChanDoanCan(tu: ghepText, cheDo: cheDo, kichThuocPhoi: kichThuocPhoi, model: model) {
                     self.modelVuaSuDung = model
                     DispatchQueue.main.async { hoanThanh(.success(ketQua)) }
