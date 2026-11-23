@@ -1357,9 +1357,11 @@ final class DichVuGemini {
     func phanTichThongSoCan(
         anhHMI: UIImage?,
         anhTWS: UIImage?,
+        anhK9K20: UIImage? = nil,
         cheDo: CheDoChanDoanCan,
         kichThuocPhoi: String,
         quyCachSanPham: String = "D14 (2x14)",
+        heLoHinhK9K20: String = "",
         gapThucTe: String = "",
         ghiChuThem: String,
         hoanThanh: @escaping (Result<KetQuaChanDoanCan, Error>) -> Void
@@ -1375,9 +1377,11 @@ final class DichVuGemini {
             cheDo: cheDo,
             kichThuocPhoi: kichThuocPhoi,
             quyCachSanPham: quyCachSanPham,
+            heLoHinhK9K20: heLoHinhK9K20,
             gapThucTe: gapThucTe,
             coAnhHMI: anhHMI != nil,
             coAnhTWS: anhTWS != nil,
+            coAnhK9K20: anhK9K20 != nil,
             ghiChuThem: ghiChuThem
         )
         parts.append(["text": prompt])
@@ -1387,6 +1391,9 @@ final class DichVuGemini {
         }
         if let anhTWS, let dataTWS = chuanBiAnhQuet(anhTWS) {
             parts.append(["inline_data": ["mime_type": "image/jpeg", "data": dataTWS.base64EncodedString()]])
+        }
+        if let anhK9K20, let dataK9 = chuanBiAnhQuet(anhK9K20) {
+            parts.append(["inline_data": ["mime_type": "image/jpeg", "data": dataK9.base64EncodedString()]])
         }
 
         guard parts.count >= 2 else {
@@ -1410,25 +1417,35 @@ final class DichVuGemini {
         cheDo: CheDoChanDoanCan,
         kichThuocPhoi: String,
         quyCachSanPham: String,
+        heLoHinhK9K20: String,
         gapThucTe: String,
         coAnhHMI: Bool,
         coAnhTWS: Bool,
+        coAnhK9K20: Bool,
         ghiChuThem: String
     ) -> String {
-        let moTaAnh: String
-        if coAnhHMI && coAnhTWS {
-            moTaAnh = "Ảnh 1 là màn hình HMI Stand Motor Bargraph (chứa Torque %, Sample T0, m/s, RPM, N/mm2, Act Tor, Des Tor, nhiệt độ P1 / Furnace Out Temp). Ảnh 2 là bảng Parameters Setup (TWS) chứa Control (TENSION/NONE/LOOP), Elongation (dòng đen Setup vs dòng xanh Actual), Diameter, Groove fac, Lead speed, Tension setpoint."
-        } else if coAnhHMI {
-            moTaAnh = "Ảnh là màn hình HMI Stand Motor Bargraph (chứa Torque %, Sample T0, m/s, RPM, N/mm2, Act Tor, Des Tor, nhiệt độ P1 / Furnace Out Temp)."
-        } else {
-            moTaAnh = "Ảnh là bảng Parameters Setup (TWS) chứa Control, Elongation (Setup vs Actual), Diameter, Groove fac, Lead speed, Tension setpoint."
+        var dsMoTa: [String] = []
+        var sttAnh = 1
+        if coAnhHMI {
+            dsMoTa.append("Ảnh \(sttAnh): Màn hình HMI Bargraph cán thô K1–K8 (Torque %, Sample T0, m/s, RPM, N/mm2, Act Tor, Des Tor, nhiệt độ P1).")
+            sttAnh += 1
         }
+        if coAnhTWS {
+            dsMoTa.append("Ảnh \(sttAnh): Bảng Parameters Setup (TWS) K1–K20 (Control TENSION/NONE/LOOP, Elongation Setup vs Actual, Diameter, Groove fac, Lead speed, Tension, Loop height).")
+            sttAnh += 1
+        }
+        if coAnhK9K20 {
+            dsMoTa.append("Ảnh \(sttAnh): Ảnh khu vực cán trung & cán tinh K9–K20 (màn hình HMI S09–S20 và/hoặc bảng hệ lỗ hình riêng của sản phẩm đang cán từ K9 đến K20).")
+        }
+        let moTaAnh = dsMoTa.joined(separator: " ")
 
         return """
         Bạn là kỹ sư chuyên gia vận hành & tự động hóa nhà máy cán thép dài (hệ thống Danieli HMI / TWS).
         Chuyên đề cần phân tích: \(cheDo.tieuDeNgan) — \(cheDo.moTaChuyenDe)
         Kích thước phôi đầu vào THỰC TẾ: \(kichThuocPhoi) (lưu ý: phôi có thể thay đổi kích thước theo từng mẻ/sản phẩm, KHÔNG mặc định là 150x150 nếu người dùng nhập cỡ khác)
         Quy cách sản phẩm đang cán (hệ lỗ hình K9–K20): \(quyCachSanPham)
+        HỆ LỖ HÌNH K9–K20 ĐÃ LƯU CHO SẢN PHẨM NÀY:
+        \(heLoHinhK9K20.isEmpty ? "Chưa có dữ liệu lưu sẵn (đọc từ ảnh K9–K20 nếu người dùng đính kèm)." : heLoHinhK9K20)
         Gap thực tế đang chạy (nếu người dùng nhập): \(gapThucTe.isEmpty ? "Chưa nhập (hãy suy luận độ lệch thực tế so với thiết kế từ Elongation dòng xanh vs dòng đen trên ảnh TWS nếu có)" : gapThucTe)
         Ghi chú vận hành thêm: \(ghiChuThem.isEmpty ? "Không có" : ghiChuThem)
 
@@ -1456,6 +1473,14 @@ final class DichVuGemini {
            - Sau khi chỉnh ổn định 2-3 thanh phôi, nhắc bấm Grab -> Save trên bảng TWS.
         4. Đổi Tension setpoint trên TWS: chỉ dùng mức dương nhẹ (+1.5 đến +2.0 N/mm2) làm phụ trợ chặn đẩy phôi, không đặt quá cao tránh kéo tóp phôi.
         5. Kiểm tra nhiệt độ P1 / Furnace Out Temp / Min billet Temp (nếu < 1000 °C hoặc *** cần cảnh báo sốc đầu phôi) và kiểm tra Lead speed bất thường (VD: ≥ 8-10%).
+        6. BẮT BUỘC TÍNH KÍCH THƯỚC VẬT CÁN THỰC TẾ (kichThuocThucTe) cho từng giá:
+           - Từ diện tích phôi đầu vào A0 (VD: 150x150 = 22500 mm², 165x165 = 27225 mm²) chia dồn theo Elongation dòng xanh (A_i = A_{i-1} / Elong_i).
+           - Chiều cao thực H_i = H_thiết_kế + (Gap_thực - Gap_thiết_kế) (nếu chưa có Gap thực thì ước tính theo √(A_i / A_TK)).
+           - Chiều rộng thực B_i = A_i / (k * H_i), với k = 0.92 (Hộp), k = 0.785 (Tròn), k = 0.74 (Ôvan). Ghi rõ dấu hiệu tràn biên nếu B_i lớn hơn thiết kế >4%.
+        7. PHÂN TÍCH MỞ RỘNG CHO K9–K20 (nếu có ảnh K9–K20 hoặc dòng K9–K20 trên TWS):
+           - Đọc đầy đủ các giá K9–K20 (lưu ý K10–K13 trở đi chạy chế độ LOOP với Loop height %, và một số sản phẩm như DB 2x14 có cán tách đôi 2 nhánh Slitting).
+           - Tính tiếp kích thước vật cán thực tế qua từng giá K9–K20 dựa trên Elongation thực tế và lỗ hình đọc từ ảnh K9–K20 (nếu tách đôi 2 nhánh thì chia đôi tiết diện mỗi nhánh sau giá tách).
+           - Đưa hướng xử lý mô-men xoắn, Loop height % và san tải Gap cho cả K1–K8 lẫn K9–K20 (ưu tiên các giá báo ĐỎ/VÀNG hoặc lệch Elongation/Loop lớn nhất).
 
         Hãy đọc CHÍNH XÁC toàn bộ các con số có trong ảnh (chú ý ảnh có thể bị xoay ngang 90 độ, hãy đọc đúng cột/hàng) và trả về DUY NHẤT JSON hợp lệ theo cấu trúc:
         {
@@ -1471,6 +1496,7 @@ final class DichVuGemini {
               "torqueMotor": "67% (T0: 66%)",
               "tension": "+1.7 N/mm²",
               "elongation": "1.313 (Setup 1.293)",
+              "kichThuocThucTe": "Ước tính B x H (mm) & tiết diện A (mm²), VD: 74.0 x 72.5 mm (A≈4338 mm²)",
               "nhanDinh": "1 câu nhận định kỹ thuật ngắn gọn."
             }
           ],
@@ -1618,6 +1644,7 @@ final class DichVuGemini {
                     torqueMotor: (item["torqueMotor"] as? String) ?? "",
                     tension: (item["tension"] as? String) ?? "",
                     elongation: (item["elongation"] as? String) ?? "",
+                    kichThuocThucTe: (item["kichThuocThucTe"] as? String) ?? "",
                     nhanDinh: (item["nhanDinh"] as? String) ?? ""
                 ))
             }
