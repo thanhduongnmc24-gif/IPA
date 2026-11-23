@@ -36,7 +36,9 @@ struct ThongSoGiaCanAI: Codable, Hashable {
     var torqueMotor: String     // VD: "67% (T0: 66%)"
     var tension: String         // VD: "+1.7 N/mm²"
     var elongation: String      // VD: "1.313 (Setup 1.293)"
-    var kichThuocThucTe: String // VD: "74.0 × 72.5 mm (A≈4338 mm²)"
+    var kichThuocThucTe: String    // VD: "74.0 × 72.5"
+    var kichThuocMau: String       // VD: "72.5 × 72.5"
+    var chenhLechKichThuoc: String // VD: "+2.1% Đạt"
     var nhanDinh: String
 
     init(
@@ -48,6 +50,8 @@ struct ThongSoGiaCanAI: Codable, Hashable {
         tension: String = "",
         elongation: String = "",
         kichThuocThucTe: String = "",
+        kichThuocMau: String = "",
+        chenhLechKichThuoc: String = "",
         nhanDinh: String = ""
     ) {
         self.gia = gia
@@ -58,7 +62,28 @@ struct ThongSoGiaCanAI: Codable, Hashable {
         self.tension = tension
         self.elongation = elongation
         self.kichThuocThucTe = kichThuocThucTe
+        self.kichThuocMau = kichThuocMau
+        self.chenhLechKichThuoc = chenhLechKichThuoc
         self.nhanDinh = nhanDinh
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case gia, mucDo, actTor, phanTramCoKhi, torqueMotor, tension, elongation, kichThuocThucTe, kichThuocMau, chenhLechKichThuoc, nhanDinh
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.gia = (try? c.decodeIfPresent(String.self, forKey: .gia)) ?? ""
+        self.mucDo = (try? c.decodeIfPresent(String.self, forKey: .mucDo)) ?? "XANH"
+        self.actTor = (try? c.decodeIfPresent(String.self, forKey: .actTor)) ?? ""
+        self.phanTramCoKhi = (try? c.decodeIfPresent(String.self, forKey: .phanTramCoKhi)) ?? ""
+        self.torqueMotor = (try? c.decodeIfPresent(String.self, forKey: .torqueMotor)) ?? ""
+        self.tension = (try? c.decodeIfPresent(String.self, forKey: .tension)) ?? ""
+        self.elongation = (try? c.decodeIfPresent(String.self, forKey: .elongation)) ?? ""
+        self.kichThuocThucTe = (try? c.decodeIfPresent(String.self, forKey: .kichThuocThucTe)) ?? ""
+        self.kichThuocMau = (try? c.decodeIfPresent(String.self, forKey: .kichThuocMau)) ?? ""
+        self.chenhLechKichThuoc = (try? c.decodeIfPresent(String.self, forKey: .chenhLechKichThuoc)) ?? ""
+        self.nhanDinh = (try? c.decodeIfPresent(String.self, forKey: .nhanDinh)) ?? ""
     }
 }
 
@@ -139,7 +164,11 @@ struct KetQuaChanDoanCan: Codable, Hashable, Identifiable {
                 if !g.tension.isEmpty { row += " | Tension: \(g.tension)" }
                 if !g.elongation.isEmpty { row += " | Elong: \(g.elongation)" }
                 lines.append(row)
-                if !g.kichThuocThucTe.isEmpty { lines.append("   📐 Cỡ phôi thực tế: \(g.kichThuocThucTe)") }
+                if !g.kichThuocThucTe.isEmpty {
+                    let mauStr = g.kichThuocMau.isEmpty ? "" : " | Mẫu: \(g.kichThuocMau)"
+                    let lechStr = g.chenhLechKichThuoc.isEmpty ? "" : " (\(g.chenhLechKichThuoc))"
+                    lines.append("   📐 Thực tế: \(g.kichThuocThucTe)\(mauStr)\(lechStr)")
+                }
                 if !g.nhanDinh.isEmpty { lines.append("   → \(g.nhanDinh)") }
             }
         }
@@ -576,8 +605,8 @@ final class ManHinhTroLyCan: UIViewController,
         nganAnh.addArrangedSubview(hangHaiAnh)
 
         let oAnhK9K20 = taoOChonAnh(
-            tieuDe: "3. Ảnh K9–K20 (HMI hoặc Hệ lỗ hình sản phẩm)",
-            phuDe: "Chụp màn hình S09–S20 hoặc bảng lỗ hình K9–K20 (tùy chọn)",
+            tieuDe: "3. Ảnh TWS / HMI K9–K20 (Elongation, Loop...)",
+            phuDe: "Chụp phần K9–K20 trên TWS hoặc HMI S09–S20 (tùy chọn)",
             imgView: anhXemTruocK9K20,
             lbTT: lbTrangThaiK9K20,
             nutXoa: nutXoaK9K20,
@@ -858,7 +887,7 @@ final class ManHinhTroLyCan: UIViewController,
 
     @objc private func bamChonAnhK9K20() {
         loaiAnhDangChon = .k9k20
-        hienMenuChonNguonAnh(tieuDe: "Ảnh K9–K20 (HMI hoặc Hệ lỗ hình)")
+        hienMenuChonNguonAnh(tieuDe: "Ảnh TWS / HMI khu vực K9–K20")
     }
 
     private func hienMenuChonNguonAnh(tieuDe: String) {
@@ -1120,6 +1149,55 @@ final class ManHinhTroLyCan: UIViewController,
             khungKetQua.addArrangedSubview(theXL)
         }
 
+        // 2B. Bảng so sánh kích thước vật cán thực tế vs Mẫu bảng cán (K1 – K20)
+        let dsCoKT = kq.danhSachGia.filter { !$0.kichThuocThucTe.isEmpty || !$0.kichThuocMau.isEmpty }
+        if !dsCoKT.isEmpty {
+            let theBangKT = taoThe()
+            let nganBangKT = taoNganBenTrong(theBangKT)
+
+            let lbTD = UILabel()
+            lbTD.text = "📐 SO SÁNH KÍCH THƯỚC VẬT CÁN THỰC TẾ VS MẪU (K1–K20)"
+            lbTD.font = .systemFont(ofSize: 11.5, weight: .bold)
+            lbTD.textColor = mau.primary
+            lbTD.numberOfLines = 0
+            nganBangKT.addArrangedSubview(lbTD)
+
+            let hdr = taoDongBangSoSanh(
+                c1: "Giá",
+                c2: "Thực tế (mm)",
+                c3: "Mẫu bảng cán",
+                c4: "So sánh",
+                laHeader: true,
+                mauSoSanh: mau.subText,
+                mau: mau
+            )
+            nganBangKT.addArrangedSubview(hdr)
+
+            for (idx, g) in dsCoKT.enumerated() {
+                let lechLower = g.chenhLechKichThuoc.lowercased()
+                let mauSS: UIColor
+                if lechLower.contains("tràn") || lechLower.contains("vượt") || lechLower.contains("cao") {
+                    mauSS = mau.error
+                } else if lechLower.contains("non") || lechLower.contains("thiếu") || lechLower.contains("nhỏ") {
+                    mauSS = .systemOrange
+                } else {
+                    mauSS = mau.success
+                }
+                let dong = taoDongBangSoSanh(
+                    c1: g.gia.components(separatedBy: " ").first ?? g.gia,
+                    c2: g.kichThuocThucTe.isEmpty ? "-" : g.kichThuocThucTe,
+                    c3: g.kichThuocMau.isEmpty ? "-" : g.kichThuocMau,
+                    c4: g.chenhLechKichThuoc.isEmpty ? "-" : g.chenhLechKichThuoc,
+                    laHeader: false,
+                    mauSoSanh: mauSS,
+                    mau: mau,
+                    nenXenKe: (idx % 2 == 1)
+                )
+                nganBangKT.addArrangedSubview(dong)
+            }
+            khungKetQua.addArrangedSubview(theBangKT)
+        }
+
         // 3. Bảng chi tiết từng giá cán
         if !kq.danhSachGia.isEmpty {
             let theGia = taoThe()
@@ -1345,6 +1423,57 @@ final class ManHinhTroLyCan: UIViewController,
     }
 
     // MARK: - Helpers
+
+    private func taoDongBangSoSanh(
+        c1: String,
+        c2: String,
+        c3: String,
+        c4: String,
+        laHeader: Bool,
+        mauSoSanh: UIColor,
+        mau: BangMauChuDe,
+        nenXenKe: Bool = false
+    ) -> UIView {
+        let wrap = UIView()
+        wrap.layer.cornerRadius = 6
+        if laHeader {
+            wrap.backgroundColor = mau.primary.withAlphaComponent(0.14)
+        } else if nenXenKe {
+            wrap.backgroundColor = mau.iconBg
+        } else {
+            wrap.backgroundColor = .clear
+        }
+
+        func taoO(_ txt: String, weight: UIFont.Weight, color: UIColor, align: NSTextAlignment, width: CGFloat? = nil) -> UILabel {
+            let lb = UILabel()
+            lb.text = txt
+            lb.font = laHeader ? .systemFont(ofSize: 11, weight: .bold) : .monospacedDigitSystemFont(ofSize: 11, weight: weight)
+            lb.textColor = color
+            lb.textAlignment = align
+            lb.numberOfLines = 0
+            if let w = width { lb.widthAnchor.constraint(equalToConstant: w).isActive = true }
+            return lb
+        }
+
+        let l1 = taoO(c1, weight: .bold, color: laHeader ? mau.primary : mau.text, align: .left, width: 42)
+        let l2 = taoO(c2, weight: .semibold, color: laHeader ? mau.primary : mau.text, align: .center)
+        let l3 = taoO(c3, weight: .regular, color: laHeader ? mau.primary : mau.subText, align: .center)
+        let l4 = taoO(c4, weight: .semibold, color: laHeader ? mau.primary : mauSoSanh, align: .right, width: 82)
+
+        let st = UIStackView(arrangedSubviews: [l1, l2, l3, l4])
+        st.axis = .horizontal
+        st.spacing = 4
+        st.alignment = .center
+        st.translatesAutoresizingMaskIntoConstraints = false
+        wrap.addSubview(st)
+        NSLayoutConstraint.activate([
+            st.topAnchor.constraint(equalTo: wrap.topAnchor, constant: 5),
+            st.bottomAnchor.constraint(equalTo: wrap.bottomAnchor, constant: -5),
+            st.leadingAnchor.constraint(equalTo: wrap.leadingAnchor, constant: 6),
+            st.trailingAnchor.constraint(equalTo: wrap.trailingAnchor, constant: -6)
+        ])
+        return wrap
+    }
 
     private func taoThe() -> UIView {
         let mau = KhoDuLieu.dungChung.mauSac
@@ -1591,13 +1720,50 @@ final class ManHinhTinhKichThuocPhoi: UIViewController {
         let stKQ = taoNgan(theKQ)
 
         let lbTD = UILabel()
-        lbTD.text = "📊 KẾT QUẢ ƯỚC TÍNH TỪ PHÔI \(nhanPhoi) (A₀ = \(Int(a0)) mm²)"
+        lbTD.text = "📐 BẢNG SO SÁNH KÍCH THƯỚC VẬT CÁN K1–K20 (Phôi \(nhanPhoi))"
         lbTD.font = .systemFont(ofSize: 12, weight: .bold)
         lbTD.textColor = mau.primary
         lbTD.numberOfLines = 0
         stKQ.addArrangedSubview(lbTD)
 
+        func taoDong(_ c1: String, _ c2: String, _ c3: String, _ c4: String, laHeader: Bool, mauSS: UIColor, xenKe: Bool = false) -> UIView {
+            let wrap = UIView()
+            wrap.layer.cornerRadius = 6
+            wrap.backgroundColor = laHeader ? mau.primary.withAlphaComponent(0.14) : (xenKe ? mau.iconBg : .clear)
+            func o(_ t: String, w: UIFont.Weight, c: UIColor, al: NSTextAlignment, width: CGFloat? = nil) -> UILabel {
+                let lb = UILabel()
+                lb.text = t
+                lb.font = laHeader ? .systemFont(ofSize: 11, weight: .bold) : .monospacedDigitSystemFont(ofSize: 11, weight: w)
+                lb.textColor = c
+                lb.textAlignment = al
+                lb.numberOfLines = 0
+                if let ww = width { lb.widthAnchor.constraint(equalToConstant: ww).isActive = true }
+                return lb
+            }
+            let st = UIStackView(arrangedSubviews: [
+                o(c1, w: .bold, c: laHeader ? mau.primary : mau.text, al: .left, width: 46),
+                o(c2, w: .semibold, c: laHeader ? mau.primary : mau.text, al: .center),
+                o(c3, w: .regular, c: laHeader ? mau.primary : mau.subText, al: .center),
+                o(c4, w: .semibold, c: laHeader ? mau.primary : mauSS, al: .right, width: 78)
+            ])
+            st.axis = .horizontal
+            st.spacing = 4
+            st.alignment = .center
+            st.translatesAutoresizingMaskIntoConstraints = false
+            wrap.addSubview(st)
+            NSLayoutConstraint.activate([
+                st.topAnchor.constraint(equalTo: wrap.topAnchor, constant: 5),
+                st.bottomAnchor.constraint(equalTo: wrap.bottomAnchor, constant: -5),
+                st.leadingAnchor.constraint(equalTo: wrap.leadingAnchor, constant: 6),
+                st.trailingAnchor.constraint(equalTo: wrap.trailingAnchor, constant: -6)
+            ])
+            return wrap
+        }
+
+        stKQ.addArrangedSubview(taoDong("Giá", "Thực tế (mm)", "Mẫu bảng cán", "So sánh", laHeader: true, mauSS: mau.subText))
+
         var aHienTai = a0
+        var demDong = 0
         for (idx, g) in dsGiaChuan.enumerated() {
             let eStr = (idx < cacOElong.count ? cacOElong[idx].text : nil)?.replacingOccurrences(of: ",", with: ".") ?? ""
             let gStr = (idx < cacOGap.count ? cacOGap[idx].text : nil)?.replacingOccurrences(of: ",", with: ".") ?? ""
@@ -1609,104 +1775,65 @@ final class ManHinhTinhKichThuocPhoi: UIViewController {
             let bThuc = aRa / (g.heSoHinh * hThuc)
             let tyLeLechB = ((bThuc - g.bTK) / g.bTK) * 100.0
 
-            let canhBao: String
+            let ssText: String
             let mauCB: UIColor
             if tyLeLechB > 4.5 {
-                canhBao = String(format: "⚠️ Nguy cơ tràn biên (+%.1f%% rộng)", tyLeLechB)
+                ssText = String(format: "+%.1f%% Tràn", tyLeLechB)
                 mauCB = mau.error
             } else if tyLeLechB < -5.5 {
-                canhBao = String(format: "🟡 Phôi hơi non (%.1f%% rộng)", tyLeLechB)
+                ssText = String(format: "%.1f%% Non", tyLeLechB)
                 mauCB = .systemOrange
             } else {
-                canhBao = String(format: "✅ Điền đầy tốt (%+.1f%%)", tyLeLechB)
+                ssText = String(format: "%+.1f%% Đạt", tyLeLechB)
                 mauCB = mau.success
             }
 
-            let hop = UIView()
-            hop.backgroundColor = mau.iconBg
-            hop.layer.cornerRadius = 8
-            let st = UIStackView()
-            st.axis = .vertical
-            st.spacing = 2
-            st.translatesAutoresizingMaskIntoConstraints = false
-            hop.addSubview(st)
-
-            let lb1 = UILabel()
-            lb1.text = String(format: "%@ (%@)  •  Thực tế: %.1f × %.1f mm  (A ≈ %.0f mm²)", g.ten, g.loaiLoHinh, bThuc, hThuc, aRa)
-            lb1.font = .systemFont(ofSize: 12.5, weight: .bold)
-            lb1.textColor = mau.text
-            lb1.numberOfLines = 0
-
-            let lb2 = UILabel()
-            lb2.text = String(format: "Thiết kế: %.1f × %.1f mm (Gap %.1f → %.1f)  |  %@", g.bTK, g.hTK, g.gapTK, gapThuc, canhBao)
-            lb2.font = .systemFont(ofSize: 11.5, weight: .medium)
-            lb2.textColor = mauCB
-            lb2.numberOfLines = 0
-
-            st.addArrangedSubview(lb1)
-            st.addArrangedSubview(lb2)
-            NSLayoutConstraint.activate([
-                st.topAnchor.constraint(equalTo: hop.topAnchor, constant: 7),
-                st.bottomAnchor.constraint(equalTo: hop.bottomAnchor, constant: -7),
-                st.leadingAnchor.constraint(equalTo: hop.leadingAnchor, constant: 9),
-                st.trailingAnchor.constraint(equalTo: hop.trailingAnchor, constant: -9)
-            ])
-            stKQ.addArrangedSubview(hop)
+            let tenNgan = "K\(idx + 1)"
+            let thucStr = String(format: "%.1f×%.1f", bThuc, hThuc)
+            let mauStr = String(format: "%.1f×%.1f", g.bTK, g.hTK)
+            stKQ.addArrangedSubview(taoDong(tenNgan, thucStr, mauStr, ssText, laHeader: false, mauSS: mauCB, xenKe: demDong % 2 == 1))
+            demDong += 1
             aHienTai = aRa
         }
 
-        // Tiếp tục ước tính tự động cho K9–K20 theo Hệ lỗ hình sản phẩm đang chọn
+        // Tiếp nối K9–K20 theo Hệ lỗ hình mẫu đang chọn (tỉ lệ truyền sai lệch diện tích từ K8)
         if let sp = KhoHeLoHinhSanPham.dungChung.sanPhamDangChon {
             let dsK9 = sp.danhSachGia.filter { $0.coSuDung }
             if !dsK9.isEmpty {
                 let lbK9 = UILabel()
-                lbK9.text = "📦 TIẾP NỐI K9–K20 THEO MẪU: \(sp.tenSanPham)"
-                lbK9.font = .systemFont(ofSize: 12, weight: .bold)
+                lbK9.text = "📦 K9–K20 THEO MẪU: \(sp.tenSanPham)"
+                lbK9.font = .systemFont(ofSize: 11.5, weight: .bold)
                 lbK9.textColor = mau.xuongCanAccent
-                lbK9.numberOfLines = 0
                 stKQ.addArrangedSubview(lbK9)
 
-                var aTruoc = aHienTai
-                var soNhanhTruoc = 1
+                let aK8TK = 0.785 * 54.5 * 54.5
+                let heSoLanTruyen = (aK8TK > 0) ? (aHienTai / aK8TK) : 1.0
                 for g in dsK9 {
-                    if g.soNhanh > soNhanhTruoc && soNhanhTruoc == 1 {
-                        aTruoc = aTruoc / Double(g.soNhanh)
-                    }
-                    soNhanhTruoc = g.soNhanh
+                    // Quy đổi kích thước thực tế ước tính khi lan truyền sai lệch tiết diện từ K8 (giảm dần ảnh hưởng qua từng giá)
                     let aTK = g.heSoHinhHoc * g.chieuRongTK * g.chieuCaoTK
-                    let elongUoc = (aTK > 0 && aTruoc > aTK) ? (aTruoc / aTK) : 1.22
-                    let aRaK = aTK > 0 ? aTK : (aTruoc / elongUoc)
-                    let hop = UIView()
-                    hop.backgroundColor = mau.iconBg
-                    hop.layer.cornerRadius = 8
-                    let st = UIStackView()
-                    st.axis = .vertical
-                    st.spacing = 2
-                    st.translatesAutoresizingMaskIntoConstraints = false
-                    hop.addSubview(st)
+                    let aThucK = aTK * (1.0 + (heSoLanTruyen - 1.0) * 0.45)
+                    let hThucK = g.chieuCaoTK
+                    let bThucK = (g.heSoHinhHoc * hThucK > 0) ? (aThucK / (g.heSoHinhHoc * hThucK)) : g.chieuRongTK
+                    let lechB = (g.chieuRongTK > 0) ? ((bThucK - g.chieuRongTK) / g.chieuRongTK) * 100.0 : 0
 
-                    let nhanhText = g.soNhanh > 1 ? " [\(g.soNhanh) nhánh]" : ""
-                    let lb1 = UILabel()
-                    lb1.text = String(format: "%@ (%@)%@  •  %.2f × %.2f mm  (Gap %.2f)", g.gia, g.loaiLoHinh, nhanhText, g.chieuRongTK, g.chieuCaoTK, g.gapTK)
-                    lb1.font = .systemFont(ofSize: 12, weight: .bold)
-                    lb1.textColor = mau.text
-                    lb1.numberOfLines = 0
+                    let ssText: String
+                    let mauCB: UIColor
+                    if lechB > 4.5 {
+                        ssText = String(format: "+%.1f%% Tràn", lechB)
+                        mauCB = mau.error
+                    } else if lechB < -5.5 {
+                        ssText = String(format: "%.1f%% Non", lechB)
+                        mauCB = .systemOrange
+                    } else {
+                        ssText = String(format: "%+.1f%% Đạt", lechB)
+                        mauCB = mau.success
+                    }
 
-                    let lb2 = UILabel()
-                    lb2.text = String(format: "A ≈ %.0f mm²  |  Elong ước tính: %.3f", aRaK, elongUoc)
-                    lb2.font = .systemFont(ofSize: 11.5, weight: .medium)
-                    lb2.textColor = mau.subText
-
-                    st.addArrangedSubview(lb1)
-                    st.addArrangedSubview(lb2)
-                    NSLayoutConstraint.activate([
-                        st.topAnchor.constraint(equalTo: hop.topAnchor, constant: 6),
-                        st.bottomAnchor.constraint(equalTo: hop.bottomAnchor, constant: -6),
-                        st.leadingAnchor.constraint(equalTo: hop.leadingAnchor, constant: 9),
-                        st.trailingAnchor.constraint(equalTo: hop.trailingAnchor, constant: -9)
-                    ])
-                    stKQ.addArrangedSubview(hop)
-                    aTruoc = aRaK
+                    let tenK = g.soNhanh > 1 ? "\(g.gia)*2" : g.gia
+                    let thucStr = String(format: "%.1f×%.1f", bThucK, hThucK)
+                    let mauStr = String(format: "%.1f×%.1f", g.chieuRongTK, g.chieuCaoTK)
+                    stKQ.addArrangedSubview(taoDong(tenK, thucStr, mauStr, ssText, laHeader: false, mauSS: mauCB, xenKe: demDong % 2 == 1))
+                    demDong += 1
                 }
             }
         }
@@ -1822,7 +1949,7 @@ final class ManHinhQuanLyLoHinh: UITableViewController {
     }
 }
 
-final class ManHinhBienTapLoHinh: UIViewController {
+final class ManHinhBienTapLoHinh: UIViewController, UIImagePickerControllerDelegate, UINavigationControllerDelegate, PHPickerViewControllerDelegate {
     private let sanPhamGoc: HeLoHinhSanPham?
     private let khiLuu: () -> Void
 
@@ -1831,6 +1958,9 @@ final class ManHinhBienTapLoHinh: UIViewController {
     private let oTenSP = UITextField()
     private let chonPhoi = UISegmentedControl(items: ["150x150 mm", "165x165 mm"])
     private let oPhoiKhac = UITextField()
+    private let nutQuetAnhLoHinh = UIButton(type: .system)
+    private let vongXoayQuet = UIActivityIndicatorView(style: .medium)
+    private let lbTrangThaiQuet = UILabel()
 
     private struct HangNhapGia {
         let gia: String
@@ -1934,6 +2064,26 @@ final class ManHinhBienTapLoHinh: UIViewController {
         oPhoiKhac.text = phoiCu
         oPhoiKhac.placeholder = "Hoặc nhập cỡ phôi khác..."
 
+        nutQuetAnhLoHinh.setTitle("📸 Quét ảnh bảng lỗ hình (AI tự điền K9–K20)", for: .normal)
+        nutQuetAnhLoHinh.titleLabel?.font = .systemFont(ofSize: 13.5, weight: .bold)
+        nutQuetAnhLoHinh.setTitleColor(.white, for: .normal)
+        nutQuetAnhLoHinh.backgroundColor = mau.xuongCanAccent
+        nutQuetAnhLoHinh.layer.cornerRadius = 10
+        nutQuetAnhLoHinh.heightAnchor.constraint(equalToConstant: 42).isActive = true
+        nutQuetAnhLoHinh.addTarget(self, action: #selector(bamQuetAnhLoHinh), for: .touchUpInside)
+
+        vongXoayQuet.hidesWhenStopped = true
+        lbTrangThaiQuet.font = .systemFont(ofSize: 12)
+        lbTrangThaiQuet.textColor = mau.subText
+        lbTrangThaiQuet.numberOfLines = 0
+        lbTrangThaiQuet.isHidden = true
+        let hangQuetTT = UIStackView(arrangedSubviews: [vongXoayQuet, lbTrangThaiQuet])
+        hangQuetTT.axis = .horizontal
+        hangQuetTT.spacing = 8
+        hangQuetTT.alignment = .center
+
+        stC.addArrangedSubview(nutQuetAnhLoHinh)
+        stC.addArrangedSubview(hangQuetTT)
         stC.addArrangedSubview(lbTen)
         stC.addArrangedSubview(oTenSP)
         stC.addArrangedSubview(lbPhoi)
@@ -2079,5 +2229,105 @@ final class ManHinhBienTapLoHinh: UIViewController {
         KhoHeLoHinhSanPham.dungChung.luuHoacCapNhat(sp)
         khiLuu()
         navigationController?.popViewController(animated: true)
+    }
+
+    // MARK: - Quét ảnh bảng lỗ hình bằng Camera / Thư viện ảnh
+
+    @objc private func bamQuetAnhLoHinh() {
+        view.endEditing(true)
+        let sheet = UIAlertController(
+            title: "📸 Quét ảnh bảng hệ lỗ hình (K9–K20)",
+            message: "Chụp hoặc chọn ảnh cột lỗ hình sản phẩm, AI sẽ tự đọc và điền sẵn toàn bộ K9–K20",
+            preferredStyle: .actionSheet
+        )
+        if UIImagePickerController.isSourceTypeAvailable(.camera) {
+            sheet.addAction(UIAlertAction(title: "📷 Chụp ảnh trực tiếp (Camera)", style: .default) { [weak self] _ in
+                guard let self else { return }
+                let p = UIImagePickerController()
+                p.sourceType = .camera
+                p.delegate = self
+                self.present(p, animated: true)
+            })
+        }
+        sheet.addAction(UIAlertAction(title: "🖼️ Chọn từ Thư viện ảnh", style: .default) { [weak self] _ in
+            guard let self else { return }
+            var cfg = PHPickerConfiguration(photoLibrary: .shared())
+            cfg.selectionLimit = 1
+            cfg.filter = .images
+            let p = PHPickerViewController(configuration: cfg)
+            p.delegate = self
+            self.present(p, animated: true)
+        })
+        sheet.addAction(UIAlertAction(title: "Hủy", style: .cancel))
+        if let pop = sheet.popoverPresentationController {
+            pop.sourceView = nutQuetAnhLoHinh
+            pop.sourceRect = nutQuetAnhLoHinh.bounds
+        }
+        present(sheet, animated: true)
+    }
+
+    func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+        picker.dismiss(animated: true)
+        if let img = info[.originalImage] as? UIImage {
+            thucHienQuetAnhLoHinh(img)
+        }
+    }
+
+    func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+        picker.dismiss(animated: true)
+        guard let provider = results.first?.itemProvider,
+              provider.canLoadObject(ofClass: UIImage.self) else { return }
+        provider.loadObject(ofClass: UIImage.self) { [weak self] obj, _ in
+            guard let img = obj as? UIImage else { return }
+            DispatchQueue.main.async {
+                self?.thucHienQuetAnhLoHinh(img)
+            }
+        }
+    }
+
+    private func thucHienQuetAnhLoHinh(_ anh: UIImage) {
+        nutQuetAnhLoHinh.isEnabled = false
+        nutQuetAnhLoHinh.alpha = 0.6
+        vongXoayQuet.startAnimating()
+        lbTrangThaiQuet.isHidden = false
+        lbTrangThaiQuet.text = "Đang đọc ảnh bảng lỗ hình K9–K20 bằng AI..."
+
+        DichVuGemini.dungChung.quetAnhBangLoHinhK9K20(anh: anh) { [weak self] kq in
+            guard let self else { return }
+            self.nutQuetAnhLoHinh.isEnabled = true
+            self.nutQuetAnhLoHinh.alpha = 1.0
+            self.vongXoayQuet.stopAnimating()
+
+            switch kq {
+            case .success(let duLieu):
+                if (self.oTenSP.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                   !duLieu.tenGoiY.isEmpty {
+                    self.oTenSP.text = duLieu.tenGoiY
+                }
+                // Xóa trắng bảng cũ rồi điền dữ liệu quét được
+                for h in self.cacHang {
+                    h.oB.text = ""
+                    h.oH.text = ""
+                    h.oGap.text = ""
+                    h.nutNhanh.setTitle("1n", for: .normal)
+                }
+                for (idx, item) in duLieu.danhSachGia.enumerated() {
+                    let hangMatch = self.cacHang.first(where: { $0.gia == item.gia })
+                        ?? (idx < self.cacHang.count ? self.cacHang[idx] : nil)
+                    guard let h = hangMatch else { continue }
+                    h.nutLoai.setTitle(item.loaiLoHinh, for: .normal)
+                    h.oB.text = String(format: "%.2f", item.chieuRongTK).replacingOccurrences(of: ".00", with: "")
+                    h.oH.text = String(format: "%.2f", item.chieuCaoTK).replacingOccurrences(of: ".00", with: "")
+                    h.oGap.text = String(format: "%.2f", item.gapTK).replacingOccurrences(of: ".00", with: "")
+                    h.nutNhanh.setTitle("\(max(1, item.soNhanh))n", for: .normal)
+                }
+                self.lbTrangThaiQuet.text = "✅ Đã quét xong \(duLieu.danhSachGia.count) giá! Kiểm tra lại tên sản phẩm rồi bấm Lưu."
+            case .failure(let err):
+                self.lbTrangThaiQuet.text = "❌ \(err.localizedDescription)"
+                let alert = UIAlertController(title: "Không quét được ảnh", message: err.localizedDescription, preferredStyle: .alert)
+                alert.addAction(UIAlertAction(title: "Đóng", style: .default))
+                self.present(alert, animated: true)
+            }
+        }
     }
 }

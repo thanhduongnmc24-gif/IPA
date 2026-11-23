@@ -1435,7 +1435,7 @@ final class DichVuGemini {
             sttAnh += 1
         }
         if coAnhK9K20 {
-            dsMoTa.append("Ảnh \(sttAnh): Ảnh khu vực cán trung & cán tinh K9–K20 (màn hình HMI S09–S20 và/hoặc bảng hệ lỗ hình riêng của sản phẩm đang cán từ K9 đến K20).")
+            dsMoTa.append("Ảnh \(sttAnh): Ảnh màn hình TWS / HMI khu vực K9–K20 chứa Elongation (Setup vs Actual), Out speed, Motor RPM, Diameter, Groove fac, Lead speed, Loop height % và tải/mô-men từ K9 đến K20.")
         }
         let moTaAnh = dsMoTa.joined(separator: " ")
 
@@ -1481,6 +1481,7 @@ final class DichVuGemini {
            - Đọc đầy đủ các giá K9–K20 (lưu ý K10–K13 trở đi chạy chế độ LOOP với Loop height %, và một số sản phẩm như DB 2x14 có cán tách đôi 2 nhánh Slitting).
            - Tính tiếp kích thước vật cán thực tế qua từng giá K9–K20 dựa trên Elongation thực tế và lỗ hình đọc từ ảnh K9–K20 (nếu tách đôi 2 nhánh thì chia đôi tiết diện mỗi nhánh sau giá tách).
            - Đưa hướng xử lý mô-men xoắn, Loop height % và san tải Gap cho cả K1–K8 lẫn K9–K20 (ưu tiên các giá báo ĐỎ/VÀNG hoặc lệch Elongation/Loop lớn nhất).
+           - BẮT BUỘC trả về đầy đủ danhSachGia cho TẤT CẢ các giá đọc được từ K1 đến K20 (để app hiển thị bảng so sánh kích thước vật cán thực tế vs kích thước mẫu ở bảng cán cho toàn dãy K1–K20).
 
         Hãy đọc CHÍNH XÁC toàn bộ các con số có trong ảnh (chú ý ảnh có thể bị xoay ngang 90 độ, hãy đọc đúng cột/hàng) và trả về DUY NHẤT JSON hợp lệ theo cấu trúc:
         {
@@ -1496,7 +1497,9 @@ final class DichVuGemini {
               "torqueMotor": "67% (T0: 66%)",
               "tension": "+1.7 N/mm²",
               "elongation": "1.313 (Setup 1.293)",
-              "kichThuocThucTe": "Ước tính B x H (mm) & tiết diện A (mm²), VD: 74.0 x 72.5 mm (A≈4338 mm²)",
+              "kichThuocThucTe": "B x H thực tế (mm), VD: 74.0 × 72.5",
+              "kichThuocMau": "B x H mẫu ở bảng cán (mm), VD: 72.5 × 72.5",
+              "chenhLechKichThuoc": "So sánh với mẫu, VD: +2.1% Đạt | +5.2% Tràn biên | -6.0% Non",
               "nhanDinh": "1 câu nhận định kỹ thuật ngắn gọn."
             }
           ],
@@ -1645,6 +1648,8 @@ final class DichVuGemini {
                     tension: (item["tension"] as? String) ?? "",
                     elongation: (item["elongation"] as? String) ?? "",
                     kichThuocThucTe: (item["kichThuocThucTe"] as? String) ?? "",
+                    kichThuocMau: (item["kichThuocMau"] as? String) ?? "",
+                    chenhLechKichThuoc: (item["chenhLechKichThuoc"] as? String) ?? "",
                     nhanDinh: (item["nhanDinh"] as? String) ?? ""
                 ))
             }
@@ -1677,5 +1682,181 @@ final class DichVuGemini {
             ghiChuTWS: ghiChuTWS,
             modelSuDung: model
         )
+    }
+
+    // MARK: - Quét ảnh Bảng Hệ Lỗ Hình mẫu (K9 – K20) bằng Gemini Vision
+
+    func quetAnhBangLoHinhK9K20(
+        anh: UIImage,
+        hoanThanh: @escaping (Result<(tenGoiY: String, danhSachGia: [ThongSoLoHinhGia]), Error>) -> Void
+    ) {
+        let key = KhoDuLieu.dungChung.caiDat.geminiApiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else {
+            hoanThanh(.failure(NSError(domain: "Gemini", code: 401, userInfo: [NSLocalizedDescriptionKey: "Chưa có Gemini API Key. Hãy nhập Key trong tab Cài đặt trước khi quét ảnh!"])))
+            return
+        }
+        guard let jpegData = chuanBiAnhQuet(anh) else {
+            hoanThanh(.failure(NSError(domain: "Gemini", code: -1, userInfo: [NSLocalizedDescriptionKey: "Không thể xử lý dữ liệu ảnh JPEG."])))
+            return
+        }
+
+        let prompt = """
+        Bạn là hệ thống OCR kỹ thuật chuyên đọc bảng Hệ thống lỗ hình cán thép (Pass Schedule) từ ảnh chụp bảng in tại nhà máy cán thép.
+        Trong mỗi ô của bảng lỗ hình thường có:
+        - Hình vẽ tiết diện lỗ hình: Hộp (Box), Ôvan (Oval), Tròn (Round), Dẹt (Flat), hoặc Tách đôi (Slit / 2 nhánh song song).
+        - Kích thước rộng x cao phía dưới hình (VD: "61.1x35.0", "53.0x36.0", "26.56x13.90", "13.84x13.84").
+        - Số Gap thiết kế gạch chân ở góc trên bên phải mỗi ô (VD: 8.8, 8.5, 9.8, 6.7, 4.0, 1.5, 3.0, 2.20, 1.93, 1.78, 2.80).
+        - Tên quy cách sản phẩm nếu có ở cuối cột (VD: "DB 2x14", "D10", "D12", "D16"...).
+
+        Hãy trích xuất các giá từ K9 đến K20 có trong ảnh (nếu ảnh có cả K7, K8 phía trên thì bỏ qua K1–K8, chỉ lấy các giá từ K9 trở đi; nếu ảnh chỉ chụp một cột sản phẩm từ K9 đến K16/K20 thì gán lần lượt K9, K10, K11...) thành DUY NHẤT JSON hợp lệ:
+        {
+          "tenSanPhamGoiY": "VD: DB 2x14 (hoặc rỗng nếu không thấy)",
+          "danhSachGia": [
+            {
+              "gia": "K9",
+              "loaiLoHinh": "Hộp | Ôvan | Tròn | Dẹt | Tách đôi",
+              "chieuRongTK": 61.1,
+              "chieuCaoTK": 35.0,
+              "gapTK": 35.5,
+              "soNhanh": 1
+            }
+          ]
+        }
+        Lưu ý: Nếu là lỗ hình cán tách đôi 2 nhánh (như hình 2 lỗ tròn/ôvan cạnh nhau sau giá tách), đặt "soNhanh": 2; bình thường đặt "soNhanh": 1. Chỉ trả về JSON thuần.
+        """
+
+        let b64 = jpegData.base64EncodedString()
+        let models = danhSachModelThuNghiem()
+        goiQuetLoHinhTheoModel(prompt: prompt, base64Image: b64, key: key, models: models, chiSo: 0, hoanThanh: hoanThanh)
+    }
+
+    private func goiQuetLoHinhTheoModel(
+        prompt: String,
+        base64Image: String,
+        key: String,
+        models: [String],
+        chiSo: Int,
+        hoanThanh: @escaping (Result<(tenGoiY: String, danhSachGia: [ThongSoLoHinhGia]), Error>) -> Void
+    ) {
+        guard chiSo < models.count else {
+            DispatchQueue.main.async {
+                hoanThanh(.failure(NSError(domain: "Gemini", code: -10, userInfo: [NSLocalizedDescriptionKey: "Các model Gemini hiện quá tải hoặc hết hạn mức. Hãy thử lại sau ít giây!"])))
+            }
+            return
+        }
+
+        let model = models[chiSo]
+        guard let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent?key=\(key)") else {
+            goiQuetLoHinhTheoModel(prompt: prompt, base64Image: base64Image, key: key, models: models, chiSo: chiSo + 1, hoanThanh: hoanThanh)
+            return
+        }
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.timeoutInterval = 45
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = [
+            "contents": [[
+                "parts": [
+                    ["text": prompt],
+                    ["inline_data": ["mime_type": "image/jpeg", "data": base64Image]]
+                ]
+            ]],
+            "generationConfig": [
+                "temperature": 0.1,
+                "responseMimeType": "application/json"
+            ]
+        ]
+        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        URLSession.shared.dataTask(with: req) { [weak self] data, response, error in
+            guard let self else { return }
+            if let error {
+                DispatchQueue.main.async { hoanThanh(.failure(error)) }
+                return
+            }
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+            guard let data,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                if chiSo + 1 < models.count {
+                    self.goiQuetLoHinhTheoModel(prompt: prompt, base64Image: base64Image, key: key, models: models, chiSo: chiSo + 1, hoanThanh: hoanThanh)
+                } else {
+                    DispatchQueue.main.async {
+                        hoanThanh(.failure(NSError(domain: "Gemini", code: -2, userInfo: [NSLocalizedDescriptionKey: "Phản hồi từ Gemini không hợp lệ."])))
+                    }
+                }
+                return
+            }
+
+            if let candidates = json["candidates"] as? [[String: Any]],
+               let content = candidates.first?["content"] as? [String: Any],
+               let respParts = content["parts"] as? [[String: Any]] {
+                let ghepText = respParts.compactMap { $0["text"] as? String }.joined(separator: "\n")
+                if let parsed = Self.bocTachJSONLoHinh(tu: ghepText), !parsed.danhSachGia.isEmpty {
+                    self.modelVuaSuDung = model
+                    DispatchQueue.main.async { hoanThanh(.success(parsed)) }
+                    return
+                }
+            }
+
+            let errObj = json["error"] as? [String: Any]
+            let msg = (errObj?["message"] as? String) ?? "HTTP \(statusCode)"
+            if msg.lowercased().contains("api_key_invalid") || msg.lowercased().contains("api key not valid") {
+                DispatchQueue.main.async {
+                    hoanThanh(.failure(NSError(domain: "Gemini", code: 401, userInfo: [NSLocalizedDescriptionKey: "Gemini API Key không hợp lệ."])))
+                }
+                return
+            }
+
+            if chiSo + 1 < models.count {
+                self.goiQuetLoHinhTheoModel(prompt: prompt, base64Image: base64Image, key: key, models: models, chiSo: chiSo + 1, hoanThanh: hoanThanh)
+            } else {
+                DispatchQueue.main.async {
+                    hoanThanh(.failure(NSError(domain: "Gemini", code: statusCode, userInfo: [NSLocalizedDescriptionKey: "Lỗi quét bảng lỗ hình (\(model)): \(msg)"])))
+                }
+            }
+        }.resume()
+    }
+
+    private static func bocTachJSONLoHinh(tu text: String) -> (tenGoiY: String, danhSachGia: [ThongSoLoHinhGia])? {
+        var clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if clean.hasPrefix("```json") { clean = String(clean.dropFirst(7)) }
+        else if clean.hasPrefix("```") { clean = String(clean.dropFirst(3)) }
+        if clean.hasSuffix("```") { clean = String(clean.dropLast(3)) }
+        clean = clean.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard let firstBrace = clean.firstIndex(of: "{"),
+              let lastBrace = clean.lastIndex(of: "}"),
+              firstBrace <= lastBrace else { return nil }
+        let sub = String(clean[firstBrace...lastBrace])
+        guard let data = sub.data(using: .utf8),
+              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+
+        let tenGoiY = ((dict["tenSanPhamGoiY"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let rawArr = dict["danhSachGia"] as? [[String: Any]] else { return nil }
+
+        func docSo(_ val: Any?) -> Double {
+            if let d = val as? Double { return d }
+            if let i = val as? Int { return Double(i) }
+            if let s = val as? String {
+                return Double(s.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+            }
+            return 0
+        }
+
+        var ketQua: [ThongSoLoHinhGia] = []
+        for (idx, item) in rawArr.enumerated() {
+            let giaRaw = ((item["gia"] as? String) ?? "K\(9 + idx)").uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
+            let loai = ((item["loaiLoHinh"] as? String) ?? "Ôvan").trimmingCharacters(in: .whitespacesAndNewlines)
+            let b = docSo(item["chieuRongTK"])
+            let h = docSo(item["chieuCaoTK"])
+            let gap = docSo(item["gapTK"])
+            let nhanh = max(1, Int(docSo(item["soNhanh"])))
+            if b > 0 && h > 0 {
+                ketQua.append(ThongSoLoHinhGia(gia: giaRaw, loaiLoHinh: loai, chieuRongTK: b, chieuCaoTK: h, gapTK: gap, soNhanh: nhanh))
+            }
+        }
+        return (tenGoiY, ketQua)
     }
 }
