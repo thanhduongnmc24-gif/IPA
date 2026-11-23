@@ -491,6 +491,8 @@ final class ManHinhGocTabBar: UITabBarController,
         switch loai {
         case .xuongCan:
             rootVC = ManHinhXuongCan()
+        case .troLyCan:
+            rootVC = ManHinhTroLyCan()
         case .lenhSanXuat:
             rootVC = ManHinhLenhSanXuat()
         case .baoCao:
@@ -539,6 +541,7 @@ final class ManHinhGocTabBar: UITabBarController,
         }
         switch root {
         case is ManHinhXuongCan: return .xuongCan
+        case is ManHinhTroLyCan: return .troLyCan
         case is ManHinhLenhSanXuat: return .lenhSanXuat
         case is ManHinhBaoCao: return .baoCao
         case is ManHinhLich: return .calendar

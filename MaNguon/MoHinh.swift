@@ -758,6 +758,7 @@ Tổ Vận hành thực hiện TBM đầu ca \(kip) ngày \(chuoiNgay)
 
 enum LoaiTabUngDung: String, Codable, CaseIterable {
     case xuongCan = "xuongCan"
+    case troLyCan = "troLyCan"
     case lenhSanXuat = "lenhSanXuat"
     case baoCao = "baoCao"
     case calendar = "calendar"
@@ -775,6 +776,7 @@ enum LoaiTabUngDung: String, Codable, CaseIterable {
     var tieuDeTab: String {
         switch self {
         case .xuongCan: return "Xưởng Cán"
+        case .troLyCan: return "Trợ Lý Cán"
         case .lenhSanXuat: return "Lệnh SX"
         case .baoCao: return "Báo cáo"
         case .calendar: return "Lịch"
@@ -790,6 +792,7 @@ enum LoaiTabUngDung: String, Codable, CaseIterable {
     var tenCaiDat: String {
         switch self {
         case .xuongCan: return "Tab Xưởng Cán"
+        case .troLyCan: return "Tab Trợ Lý Cán (AI)"
         case .lenhSanXuat: return "Tab Lệnh sản xuất (OCR)"
         case .baoCao: return "Tab Báo cáo (TBM)"
         case .calendar: return "Tab Lịch làm việc"
@@ -805,6 +808,7 @@ enum LoaiTabUngDung: String, Codable, CaseIterable {
     var bieuTuong: String {
         switch self {
         case .xuongCan: return "tablecells"
+        case .troLyCan: return "wrench.and.screwdriver"
         case .lenhSanXuat: return "doc.text.viewfinder"
         case .baoCao: return "list.clipboard"
         case .calendar: return "calendar"
@@ -828,6 +832,7 @@ enum LoaiTabUngDung: String, Codable, CaseIterable {
         case .sheets: return 6
         case .media: return 7
         case .reminders: return 8
+        case .troLyCan: return 10
         case .caiDat: return 9
         }
     }
@@ -835,6 +840,7 @@ enum LoaiTabUngDung: String, Codable, CaseIterable {
 
 struct TrangThaiTab: Codable, Hashable {
     var xuongCan: Bool = true
+    var troLyCan: Bool = true
     var lenhSanXuat: Bool = true
     var baoCao: Bool = true
     var calendar: Bool = true
@@ -846,6 +852,7 @@ struct TrangThaiTab: Codable, Hashable {
 
     init(
         xuongCan: Bool = true,
+        troLyCan: Bool = true,
         lenhSanXuat: Bool = true,
         baoCao: Bool = true,
         calendar: Bool = true,
@@ -856,6 +863,7 @@ struct TrangThaiTab: Codable, Hashable {
         reminders: Bool = true
     ) {
         self.xuongCan = xuongCan
+        self.troLyCan = troLyCan
         self.lenhSanXuat = lenhSanXuat
         self.baoCao = baoCao
         self.calendar = calendar
@@ -867,12 +875,13 @@ struct TrangThaiTab: Codable, Hashable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case xuongCan, lenhSanXuat, baoCao, calendar, thucDon, notes, sheets, media, reminders
+        case xuongCan, troLyCan, lenhSanXuat, baoCao, calendar, thucDon, notes, sheets, media, reminders
     }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.xuongCan = (try? c.decodeIfPresent(Bool.self, forKey: .xuongCan)) ?? true
+        self.troLyCan = (try? c.decodeIfPresent(Bool.self, forKey: .troLyCan)) ?? true
         self.lenhSanXuat = (try? c.decodeIfPresent(Bool.self, forKey: .lenhSanXuat)) ?? true
         self.baoCao = (try? c.decodeIfPresent(Bool.self, forKey: .baoCao)) ?? true
         self.calendar = (try? c.decodeIfPresent(Bool.self, forKey: .calendar)) ?? true
@@ -886,6 +895,7 @@ struct TrangThaiTab: Codable, Hashable {
     func dangBat(_ loai: LoaiTabUngDung) -> Bool {
         switch loai {
         case .xuongCan: return xuongCan
+        case .troLyCan: return troLyCan
         case .lenhSanXuat: return lenhSanXuat
         case .baoCao: return baoCao
         case .calendar: return calendar
@@ -901,6 +911,7 @@ struct TrangThaiTab: Codable, Hashable {
     mutating func datTrangThai(_ loai: LoaiTabUngDung, bat: Bool) {
         switch loai {
         case .xuongCan: xuongCan = bat
+        case .troLyCan: troLyCan = bat
         case .lenhSanXuat: lenhSanXuat = bat
         case .baoCao: baoCao = bat
         case .calendar: calendar = bat
@@ -931,7 +942,9 @@ struct CaiDatUngDung: Codable {
             }
         }
         for macDinh in LoaiTabUngDung.allCases where !ketQua.contains(macDinh) {
-            if macDinh == .baoCao, let idxLenhSX = ketQua.firstIndex(of: .lenhSanXuat) {
+            if macDinh == .troLyCan, let idxXC = ketQua.firstIndex(of: .xuongCan) {
+                ketQua.insert(.troLyCan, at: min(idxXC + 1, ketQua.count))
+            } else if macDinh == .baoCao, let idxLenhSX = ketQua.firstIndex(of: .lenhSanXuat) {
                 ketQua.insert(.baoCao, at: min(idxLenhSX + 1, ketQua.count))
             } else if let idxCaiDat = ketQua.firstIndex(of: .caiDat) {
                 ketQua.insert(macDinh, at: idxCaiDat)

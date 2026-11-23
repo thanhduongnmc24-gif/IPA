@@ -1351,4 +1351,305 @@ final class DichVuGemini {
         }
         return ketQua
     }
+
+    // MARK: - Phân tích ảnh thông số HMI Bargraph & TWS cho Trợ Lý Cán
+
+    func phanTichThongSoCan(
+        anhHMI: UIImage?,
+        anhTWS: UIImage?,
+        cheDo: CheDoChanDoanCan,
+        kichThuocPhoi: String,
+        quyCachSanPham: String = "D14 (2x14)",
+        gapThucTe: String = "",
+        ghiChuThem: String,
+        hoanThanh: @escaping (Result<KetQuaChanDoanCan, Error>) -> Void
+    ) {
+        let key = KhoDuLieu.dungChung.caiDat.geminiApiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else {
+            hoanThanh(.failure(NSError(domain: "Gemini", code: 401, userInfo: [NSLocalizedDescriptionKey: "Chưa có Gemini API Key. Hãy nhập Key trong Cài đặt hoặc hộp thoại cài đặt nhanh!"])))
+            return
+        }
+
+        var parts: [[String: Any]] = []
+        let prompt = Self.taoPromptChanDoanCan(
+            cheDo: cheDo,
+            kichThuocPhoi: kichThuocPhoi,
+            quyCachSanPham: quyCachSanPham,
+            gapThucTe: gapThucTe,
+            coAnhHMI: anhHMI != nil,
+            coAnhTWS: anhTWS != nil,
+            ghiChuThem: ghiChuThem
+        )
+        parts.append(["text": prompt])
+
+        if let anhHMI, let dataHMI = chuanBiAnhQuet(anhHMI) {
+            parts.append(["inline_data": ["mime_type": "image/jpeg", "data": dataHMI.base64EncodedString()]])
+        }
+        if let anhTWS, let dataTWS = chuanBiAnhQuet(anhTWS) {
+            parts.append(["inline_data": ["mime_type": "image/jpeg", "data": dataTWS.base64EncodedString()]])
+        }
+
+        guard parts.count >= 2 else {
+            hoanThanh(.failure(NSError(domain: "Gemini", code: -1, userInfo: [NSLocalizedDescriptionKey: "Không thể chuyển đổi ảnh sang dữ liệu JPEG."])))
+            return
+        }
+
+        let models = danhSachModelThuNghiem()
+        goiChanDoanCanTheoModel(
+            parts: parts,
+            key: key,
+            models: models,
+            chiSo: 0,
+            cheDo: cheDo,
+            kichThuocPhoi: kichThuocPhoi,
+            hoanThanh: hoanThanh
+        )
+    }
+
+    private static func taoPromptChanDoanCan(
+        cheDo: CheDoChanDoanCan,
+        kichThuocPhoi: String,
+        quyCachSanPham: String,
+        gapThucTe: String,
+        coAnhHMI: Bool,
+        coAnhTWS: Bool,
+        ghiChuThem: String
+    ) -> String {
+        let moTaAnh: String
+        if coAnhHMI && coAnhTWS {
+            moTaAnh = "Ảnh 1 là màn hình HMI Stand Motor Bargraph (chứa Torque %, Sample T0, m/s, RPM, N/mm2, Act Tor, Des Tor, nhiệt độ P1 / Furnace Out Temp). Ảnh 2 là bảng Parameters Setup (TWS) chứa Control (TENSION/NONE/LOOP), Elongation (dòng đen Setup vs dòng xanh Actual), Diameter, Groove fac, Lead speed, Tension setpoint."
+        } else if coAnhHMI {
+            moTaAnh = "Ảnh là màn hình HMI Stand Motor Bargraph (chứa Torque %, Sample T0, m/s, RPM, N/mm2, Act Tor, Des Tor, nhiệt độ P1 / Furnace Out Temp)."
+        } else {
+            moTaAnh = "Ảnh là bảng Parameters Setup (TWS) chứa Control, Elongation (Setup vs Actual), Diameter, Groove fac, Lead speed, Tension setpoint."
+        }
+
+        return """
+        Bạn là kỹ sư chuyên gia vận hành & tự động hóa nhà máy cán thép dài (hệ thống Danieli HMI / TWS).
+        Chuyên đề cần phân tích: \(cheDo.tieuDeNgan) — \(cheDo.moTaChuyenDe)
+        Kích thước phôi đầu vào: \(kichThuocPhoi) (chuẩn nhà máy: 150x150x12000 mm, 2065 kg)
+        Quy cách sản phẩm đang cán (hệ lỗ hình K9–K20): \(quyCachSanPham)
+        Gap thực tế đang chạy (nếu người dùng nhập): \(gapThucTe.isEmpty ? "Chưa nhập (hãy suy luận độ lệch thực tế so với thiết kế từ Elongation dòng xanh vs dòng đen trên ảnh TWS nếu có)" : gapThucTe)
+        Ghi chú vận hành thêm: \(ghiChuThem.isEmpty ? "Không có" : ghiChuThem)
+
+        HỆ THỐNG LỖ HÌNH THIẾT KẾ CÁC GIÁ CÁN THÔ DÙNG CHUNG (1H – 8V, K1 – K8):
+        - K1 (1H - SHS 280, Ngang): Lỗ hình Hộp (Box) 162.0 x 108.0 mm | Gap thiết kế: 15.0 mm
+        - K2 (2V - SHS 280, Đứng): Lỗ hình Hộp (Box) 119.0 x 119.0 mm | Gap thiết kế: 15.0 mm
+        - K3 (3H - SHS 280, Ngang): Lỗ hình Ôvan (Oval) 138.0 x 81.5 mm | Gap thiết kế: 12.0 mm
+        - K4 (4V - SHS 230, Đứng): Lỗ hình Tròn (Round) 99.0 x 99.0 mm | Gap thiết kế: 12.0 mm
+        - K5 (5H - SHS 230, Ngang): Lỗ hình Ôvan (Oval) 112.6 x 60.0 mm | Gap thiết kế: 10.0 mm
+        - K6 (6V - SHS 230, Đứng): Lỗ hình Tròn (Round) 72.5 x 72.5 mm | Gap thiết kế: 10.0 mm
+        - K7 (7H - SHS 230, Ngang): Lỗ hình Ôvan (Oval) 88.2 x 42.3 mm (Gap 7.5 mm; riêng DB 2x14: 87.0 x 43.6 mm, Gap 8.8 mm)
+        - K8 (8V - SHS 230, Đứng): Lỗ hình Tròn (Round) 53.5 x 53.5 mm (Gap 7.5 mm; riêng DB 2x14: 54.5 x 54.5 mm, Gap 8.5 mm)
+        LƯU Ý QUAN TRỌNG VỀ LỖ HÌNH & GAP THỰC TẾ:
+        - Các giá chẵn (2V, 4V, 6V, 8V) là GIÁ ĐỨNG (V) mang lỗ hình Hộp/Tròn và có giới hạn Des Tor thấp hơn các giá lẻ (1H, 3H, 5H, 7H — GIÁ NGANG mang lỗ hình Ôvan).
+        - Vì Gap thực tế ngoài xưởng thường khác Gap thiết kế nên kích thước vật cán thực tế qua từng giá sẽ sai khác so với bảng thiết kế; hãy đối chiếu Elongation thực tế (dòng xanh) với Setup (dòng đen) để nhận biết giá nào đang bị ép dày/mỏng hơn thiết kế.
+        - Quy luật an toàn lỗ hình khi nới Gap: Nới Gap ở giá Tròn (4V, 6V) đẩy sang giá Ôvan (5H, 7H) ít rủi ro tràn biên hơn vì rãnh Ôvan rộng (nhưng vẫn phải kiểm tra dẫn hướng vào và góc ăn phôi); ngược lại nới Gap ở giá Ôvan (3H, 5H) đẩy sang giá Tròn (4V, 6V) rất dễ gây tràn biên (overfill/vây mép) hoặc đổ phôi (rollover) nên phải hết sức thận trọng.
+        Mô tả ảnh đính kèm: \(moTaAnh)
+
+        KIẾN THỨC KỸ THUẬT BẮT BUỘC ÁP DỤNG:
+        1. Phân biệt rõ % tải động cơ (Torque %) với % giới hạn cơ khí trục các đăng (Act Tor ÷ Des Tor). Các giá chẵn (S02, S04, S06) thường có Des Tor thấp hơn giá lẻ (S01, S03, S05, S07), nên động cơ 65-72% vẫn có thể báo ĐỎ/VÀNG cơ khí (≥ 94% ĐỎ, 88-93.9% VÀNG).
+        2. Phân biệt đẩy phôi (N/mm2 âm, Torque % > Sample T0) với kéo căng (N/mm2 dương, Torque % < Sample T0). Nếu bị đẩy phôi nặng (<-2.5 N/mm2) thì ưu tiên triệt tiêu đẩy phôi trước khi nới ép.
+        3. Quy tắc nới ép san tải với phôi \(kichThuocPhoi):
+           - Khi nới Giá i để dồn tải sang Giá i+1, KHÔNG ép Giá i+1 xuống bằng lượng nới Giá i (giữ nguyên khe hở Giá i+1; chỉ ép bù cực nhẹ 0.2-0.5 mm nếu đo mẫu thấy giãn Mill Spring).
+           - Với phôi 150x150 mm: ở K1-K2 nới bước 1.0-1.5 mm (tổng 2.5-4.0 mm); ở K4-K6 tiết diện đã nhỏ còn ~65-90 mm nên nới bước 1.0 mm (tổng 2.0-3.0 mm, mỗi 1 mm giảm ~3-5% mô-men).
+           - Sau khi chỉnh ổn định 2-3 thanh phôi, nhắc bấm Grab -> Save trên bảng TWS.
+        4. Đổi Tension setpoint trên TWS: chỉ dùng mức dương nhẹ (+1.5 đến +2.0 N/mm2) làm phụ trợ chặn đẩy phôi, không đặt quá cao tránh kéo tóp phôi.
+        5. Kiểm tra nhiệt độ P1 / Furnace Out Temp / Min billet Temp (nếu < 1000 °C hoặc *** cần cảnh báo sốc đầu phôi) và kiểm tra Lead speed bất thường (VD: ≥ 8-10%).
+
+        Hãy đọc CHÍNH XÁC toàn bộ các con số có trong ảnh (chú ý ảnh có thể bị xoay ngang 90 độ, hãy đọc đúng cột/hàng) và trả về DUY NHẤT JSON hợp lệ theo cấu trúc:
+        {
+          "mucDoTongThe": "NGUY_HIEM | CANH_BAO | ON_DINH",
+          "nhietDoPhoi": "Tóm tắt nhiệt độ đọc được từ ảnh (VD: P1: 989 °C | Min billet: *** °C)",
+          "tomTatNguyenNhan": "Tóm tắt ngắn gọn, đi thẳng vào nguyên nhân gốc rễ (2-4 câu tiếng Việt).",
+          "danhSachGia": [
+            {
+              "gia": "S06 (K6)",
+              "mucDo": "DO | VANG | XANH",
+              "actTor": "80.0 / 85 kNm",
+              "phanTramCoKhi": "94.1%",
+              "torqueMotor": "67% (T0: 66%)",
+              "tension": "+1.7 N/mm²",
+              "elongation": "1.313 (Setup 1.293)",
+              "nhanDinh": "1 câu nhận định kỹ thuật ngắn gọn."
+            }
+          ],
+          "cacBuocXuLy": [
+            {
+              "thuTu": 1,
+              "tieuDe": "San tải S06 sang S07",
+              "mucChinhCuThe": "Nới khe hở S06 từng bước 1.0 mm (tổng 2.0–3.0 mm), giữ nguyên khe hở S07",
+              "chiTiet": "Giải thích ngắn gọn lý do và mục tiêu kNm cần đạt."
+            }
+          ],
+          "canhBaoRuiRo": [
+            "Kiểm tra phôi ra S07 không bị tràn biên (overfill) và kẹt dẫn hướng vào S07."
+          ],
+          "ghiChuTWS": "Sau khi chạy ổn định 2–3 thanh phôi, bấm Grab -> Save trên TWS để đồng bộ tốc độ đặt trước."
+        }
+        Chỉ trả về JSON thuần, không bọc markdown hay lời giải thích ngoài JSON.
+        """
+    }
+
+    private func goiChanDoanCanTheoModel(
+        parts: [[String: Any]],
+        key: String,
+        models: [String],
+        chiSo: Int,
+        cheDo: CheDoChanDoanCan,
+        kichThuocPhoi: String,
+        hoanThanh: @escaping (Result<KetQuaChanDoanCan, Error>) -> Void
+    ) {
+        guard chiSo < models.count else {
+            DispatchQueue.main.async {
+                hoanThanh(.failure(NSError(domain: "Gemini", code: -10, userInfo: [NSLocalizedDescriptionKey: "Các model Gemini hiện đều quá tải hoặc hết hạn mức. Vui lòng thử lại sau ít giây!"])))
+            }
+            return
+        }
+
+        let model = models[chiSo]
+        guard let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent?key=\(key)") else {
+            goiChanDoanCanTheoModel(parts: parts, key: key, models: models, chiSo: chiSo + 1, cheDo: cheDo, kichThuocPhoi: kichThuocPhoi, hoanThanh: hoanThanh)
+            return
+        }
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.timeoutInterval = 55
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = [
+            "contents": [["parts": parts]],
+            "generationConfig": [
+                "temperature": 0.15,
+                "responseMimeType": "application/json"
+            ]
+        ]
+        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        URLSession.shared.dataTask(with: req) { [weak self] data, response, error in
+            guard let self else { return }
+            if let error {
+                DispatchQueue.main.async { hoanThanh(.failure(error)) }
+                return
+            }
+
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+            guard let data,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                if chiSo + 1 < models.count {
+                    self.goiChanDoanCanTheoModel(parts: parts, key: key, models: models, chiSo: chiSo + 1, cheDo: cheDo, kichThuocPhoi: kichThuocPhoi, hoanThanh: hoanThanh)
+                } else {
+                    DispatchQueue.main.async {
+                        hoanThanh(.failure(NSError(domain: "Gemini", code: -2, userInfo: [NSLocalizedDescriptionKey: "Phản hồi từ Gemini không hợp lệ."])))
+                    }
+                }
+                return
+            }
+
+            if let candidates = json["candidates"] as? [[String: Any]],
+               let content = candidates.first?["content"] as? [String: Any],
+               let respParts = content["parts"] as? [[String: Any]] {
+                let ghepText = respParts.compactMap { $0["text"] as? String }.joined(separator: "
+")
+                if let ketQua = Self.bocTachJSONChanDoanCan(tu: ghepText, cheDo: cheDo, kichThuocPhoi: kichThuocPhoi, model: model) {
+                    self.modelVuaSuDung = model
+                    DispatchQueue.main.async { hoanThanh(.success(ketQua)) }
+                    return
+                }
+            }
+
+            let errObj = json["error"] as? [String: Any]
+            let msg = (errObj?["message"] as? String) ?? "HTTP \(statusCode)"
+            let msgLower = msg.lowercased()
+            if msgLower.contains("api_key_invalid") || msgLower.contains("api key not valid") {
+                DispatchQueue.main.async {
+                    hoanThanh(.failure(NSError(domain: "Gemini", code: 401, userInfo: [NSLocalizedDescriptionKey: "Gemini API Key không hợp lệ. Vui lòng kiểm tra lại Key trong Cài đặt."])))
+                }
+                return
+            }
+
+            if chiSo + 1 < models.count {
+                self.goiChanDoanCanTheoModel(parts: parts, key: key, models: models, chiSo: chiSo + 1, cheDo: cheDo, kichThuocPhoi: kichThuocPhoi, hoanThanh: hoanThanh)
+            } else {
+                DispatchQueue.main.async {
+                    hoanThanh(.failure(NSError(domain: "Gemini", code: statusCode, userInfo: [NSLocalizedDescriptionKey: "Lỗi gọi Gemini AI (\(model)): \(msg)"])))
+                }
+            }
+        }.resume()
+    }
+
+    private static func bocTachJSONChanDoanCan(
+        tu text: String,
+        cheDo: CheDoChanDoanCan,
+        kichThuocPhoi: String,
+        model: String
+    ) -> KetQuaChanDoanCan? {
+        var clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if clean.hasPrefix("```json") { clean = String(clean.dropFirst(7)) }
+        else if clean.hasPrefix("```") { clean = String(clean.dropFirst(3)) }
+        if clean.hasSuffix("```") { clean = String(clean.dropLast(3)) }
+        clean = clean.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard let firstBrace = clean.firstIndex(of: "{"),
+              let lastBrace = clean.lastIndex(of: "}"),
+              firstBrace <= lastBrace else {
+            return nil
+        }
+        let sub = String(clean[firstBrace...lastBrace])
+        guard let data = sub.data(using: .utf8),
+              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+
+        let mucDo = (dict["mucDoTongThe"] as? String) ?? "CANH_BAO"
+        let nhietDo = (dict["nhietDoPhoi"] as? String) ?? ""
+        let tomTat = (dict["tomTatNguyenNhan"] as? String) ?? ""
+        let ghiChuTWS = (dict["ghiChuTWS"] as? String) ?? ""
+        let canhBao = (dict["canhBaoRuiRo"] as? [String]) ?? []
+
+        var dsGia: [ThongSoGiaCanAI] = []
+        if let rawGia = dict["danhSachGia"] as? [[String: Any]] {
+            for item in rawGia {
+                dsGia.append(ThongSoGiaCanAI(
+                    gia: (item["gia"] as? String) ?? "",
+                    mucDo: (item["mucDo"] as? String) ?? "XANH",
+                    actTor: (item["actTor"] as? String) ?? "",
+                    phanTramCoKhi: (item["phanTramCoKhi"] as? String) ?? "",
+                    torqueMotor: (item["torqueMotor"] as? String) ?? "",
+                    tension: (item["tension"] as? String) ?? "",
+                    elongation: (item["elongation"] as? String) ?? "",
+                    nhanDinh: (item["nhanDinh"] as? String) ?? ""
+                ))
+            }
+        }
+
+        var dsBuoc: [BuocXuLyCanAI] = []
+        if let rawBuoc = dict["cacBuocXuLy"] as? [[String: Any]] {
+            for (idx, item) in rawBuoc.enumerated() {
+                let stt = (item["thuTu"] as? Int) ?? (idx + 1)
+                dsBuoc.append(BuocXuLyCanAI(
+                    thuTu: stt,
+                    tieuDe: (item["tieuDe"] as? String) ?? "",
+                    chiTiet: (item["chiTiet"] as? String) ?? "",
+                    mucChinhCuThe: (item["mucChinhCuThe"] as? String) ?? ""
+                ))
+            }
+        }
+
+        guard !tomTat.isEmpty || !dsGia.isEmpty || !dsBuoc.isEmpty else { return nil }
+        return KetQuaChanDoanCan(
+            thoiGian: Date(),
+            cheDo: cheDo,
+            kichThuocPhoi: kichThuocPhoi,
+            mucDoTongThe: mucDo,
+            nhietDoPhoi: nhietDo,
+            tomTatNguyenNhan: tomTat,
+            danhSachGia: dsGia,
+            cacBuocXuLy: dsBuoc,
+            canhBaoRuiRo: canhBao,
+            ghiChuTWS: ghiChuTWS,
+            modelSuDung: model
+        )
+    }
 }
